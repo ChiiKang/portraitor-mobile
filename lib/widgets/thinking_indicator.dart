@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-/// Displays the AI's current "thinking" text from SSE thought events.
-///
-/// Shown during chunk processing to reassure the user that work is in progress.
-/// Fades in/out as thoughts arrive and clear.
+import '../app.dart';
+
+/// AI thinking bubble — matches the web app's AI thinking indicator.
 class ThinkingIndicator extends StatefulWidget {
-  /// The current thought text. Pass null to hide the indicator.
   final String? thought;
-
   const ThinkingIndicator({super.key, this.thought});
 
   @override
@@ -24,10 +22,9 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator>
     super.initState();
     _pulse = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1400),
     )..repeat(reverse: true);
-
-    _opacity = Tween<double>(begin: 0.5, end: 1.0).animate(
+    _opacity = Tween<double>(begin: 0.4, end: 1.0).animate(
       CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
     );
   }
@@ -40,21 +37,21 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final thought = widget.thought;
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
-      child: thought == null || thought.isEmpty
+      child: (thought == null || thought.isEmpty)
           ? const SizedBox.shrink(key: ValueKey('empty'))
           : Container(
               key: const ValueKey('thought'),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(10),
+                color: kAccentPill,
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                  color: kAccentPurple.withValues(alpha: 0.2),
                 ),
               ),
               child: Row(
@@ -62,10 +59,15 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator>
                 children: [
                   FadeTransition(
                     opacity: _opacity,
-                    child: Icon(
-                      Icons.psychology_outlined,
-                      size: 18,
-                      color: theme.colorScheme.primary,
+                    child: ShaderMask(
+                      shaderCallback: (b) => const LinearGradient(
+                        colors: kGradientStops,
+                      ).createShader(b),
+                      child: const Icon(
+                        Icons.psychology_outlined,
+                        size: 18,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -74,18 +76,28 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          'AI thinking',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.w600,
+                        ShaderMask(
+                          shaderCallback: (b) => const LinearGradient(
+                            colors: kGradientStops,
+                          ).createShader(b),
+                          child: Text(
+                            'AI thinking',
+                            style: GoogleFonts.spaceGrotesk(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.3,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           thought,
-                          style: theme.textTheme.bodySmall?.copyWith(
+                          style: GoogleFonts.spaceGrotesk(
+                            color: kInkSoft,
+                            fontSize: 13,
                             fontStyle: FontStyle.italic,
+                            height: 1.4,
                           ),
                           maxLines: 4,
                           overflow: TextOverflow.ellipsis,
@@ -100,10 +112,9 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator>
   }
 }
 
-/// Three animated dots used as an inline "thinking" affordance.
+/// Three animated gradient dots used as an inline "thinking" affordance.
 class ThinkingDots extends StatefulWidget {
-  final Color? color;
-  const ThinkingDots({super.key, this.color});
+  const ThinkingDots({super.key});
 
   @override
   State<ThinkingDots> createState() => _ThinkingDotsState();
@@ -130,9 +141,6 @@ class _ThinkingDotsState extends State<ThinkingDots>
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        widget.color ?? Theme.of(context).colorScheme.primary;
-
     return AnimatedBuilder(
       animation: _controller,
       builder: (_, __) {
@@ -141,16 +149,19 @@ class _ThinkingDotsState extends State<ThinkingDots>
           mainAxisSize: MainAxisSize.min,
           children: List.generate(3, (i) {
             final phase = (t - i * 0.15).clamp(0.0, 1.0);
-            final scale = 0.6 + 0.4 * (0.5 - (phase - 0.5).abs()) * 2;
+            final scale = 0.5 + 0.5 * (1.0 - (2 * phase - 1.0).abs());
+            final color = Color.lerp(kAccentBlue, kAccentPink, i / 2.0)!;
             return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 2.5),
               child: Transform.scale(
                 scale: scale,
                 child: Container(
-                  width: 6,
-                  height: 6,
-                  decoration:
-                      BoxDecoration(color: color, shape: BoxShape.circle),
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ),
             );

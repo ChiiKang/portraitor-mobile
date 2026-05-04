@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 
+import '../app.dart';
 import '../providers/chunk_progress_provider.dart';
 import '../providers/payment_provider.dart';
 import '../widgets/progress_bar.dart';
@@ -18,8 +20,6 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
   @override
   void initState() {
     super.initState();
-    // Phase 2 will kick off the actual SSE stream here.
-    // For Phase 1 UI testing, simulate progress.
     _simulateProgressForTesting();
   }
 
@@ -31,7 +31,6 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
       if (!mounted) return;
       ref.read(chunkProgressProvider.notifier).markChunkStarted();
 
-      // Simulate thought events.
       await Future.delayed(const Duration(milliseconds: 600));
       if (!mounted) return;
       ref.read(chunkProgressProvider.notifier).onThought(
@@ -56,25 +55,20 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
   @override
   Widget build(BuildContext context) {
     final progress = ref.watch(chunkProgressProvider);
-    final theme = Theme.of(context);
 
-    // Navigate to result when done.
     ref.listen<ChunkProgressState>(chunkProgressProvider, (prev, next) {
-      if (next.isDone && !next.accumulatedText.isEmpty && context.mounted) {
-        // In Phase 2, the conversation ID comes from the actual job.
+      if (next.isDone && next.accumulatedText.isNotEmpty && context.mounted) {
         context.go('/result/current');
       }
     });
 
     return PopScope(
-      // Warn user before leaving mid-analysis.
       canPop: progress.isDone || progress.completedChunks == 0,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) {
-          _showExitWarning(context);
-        }
+        if (!didPop) _showExitWarning(context);
       },
       child: Scaffold(
+        backgroundColor: kPageBg,
         appBar: AppBar(
           title: const Text('Analyzing'),
           automaticallyImplyLeading: false,
@@ -85,7 +79,6 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ── Main status ─────────────────────────────────────────
                 Expanded(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -100,26 +93,49 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
                       // Status text
                       Text(
                         _statusTitle(progress),
-                        style: theme.textTheme.headlineSmall,
+                        style: GoogleFonts.spaceGrotesk(
+                          color: kInkStrong,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
                       Text(
                         _statusSubtitle(progress),
-                        style: theme.textTheme.bodyMedium,
+                        style: GoogleFonts.spaceGrotesk(
+                          color: kInkSoft,
+                          fontSize: 14,
+                          height: 1.4,
+                        ),
                         textAlign: TextAlign.center,
                       ),
 
-                      const SizedBox(height: 32),
+                      const SizedBox(height: 36),
 
                       // Progress bar
-                      PortraitProgressBar(
-                        progress: progress.progress,
-                        label: progress.progressLabel,
-                        etaLabel: progress.etaLabel,
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: kSurface,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: kBorderSoft),
+                          boxShadow: [
+                            BoxShadow(
+                              color: kAccentPurple.withValues(alpha: 0.06),
+                              blurRadius: 30,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: PortraitProgressBar(
+                          progress: progress.progress,
+                          label: progress.progressLabel,
+                          etaLabel: progress.etaLabel,
+                        ),
                       ),
 
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
 
                       // AI thinking indicator
                       ThinkingIndicator(thought: progress.currentThought),
@@ -134,10 +150,9 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
                   ),
                 ),
 
-                // ── iOS keep-open warning ───────────────────────────────
+                // Keep-open banner
                 _KeepOpenBanner(),
-
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
               ],
             ),
           ),
@@ -166,7 +181,6 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Theme.of(context).colorScheme.surface,
         title: const Text('Analysis in progress'),
         content: const Text(
           'Leaving now may interrupt the analysis. '
@@ -175,7 +189,13 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Stay'),
+            child: Text(
+              'Stay',
+              style: GoogleFonts.spaceGrotesk(
+                color: kAccentPurple,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
           TextButton(
             onPressed: () {
@@ -184,9 +204,12 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
               ref.read(chunkProgressProvider.notifier).reset();
               context.go('/');
             },
-            child: const Text(
+            child: Text(
               'Leave',
-              style: TextStyle(color: Colors.red),
+              style: GoogleFonts.spaceGrotesk(
+                color: Colors.red.shade600,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -215,9 +238,9 @@ class _AnalysisIconState extends State<_AnalysisIcon>
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1600),
+      duration: const Duration(milliseconds: 1800),
     )..repeat(reverse: true);
-    _scale = Tween<double>(begin: 0.95, end: 1.05).animate(
+    _scale = Tween<double>(begin: 0.92, end: 1.08).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
     );
   }
@@ -230,62 +253,84 @@ class _AnalysisIconState extends State<_AnalysisIcon>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     if (widget.isDone) {
       return Container(
-        width: 80,
-        height: 80,
+        width: 88,
+        height: 88,
         decoration: BoxDecoration(
-          color: Colors.green.withValues(alpha: 0.15),
+          color: kSuccess.withValues(alpha: 0.12),
           shape: BoxShape.circle,
+          border: Border.all(color: kSuccess.withValues(alpha: 0.3)),
         ),
-        child: const Icon(Icons.check_circle_outline,
-            color: Colors.green, size: 44),
+        child: const Icon(Icons.check_circle_outline_rounded,
+            color: kSuccess, size: 44),
       );
     }
 
     return ScaleTransition(
       scale: _scale,
       child: Container(
-        width: 80,
-        height: 80,
+        width: 88,
+        height: 88,
         decoration: BoxDecoration(
-          color: theme.colorScheme.primary.withValues(alpha: 0.15),
+          gradient: const LinearGradient(
+            colors: [
+              Color(0x26A855F7), // kAccentPurple at 15%
+              Color(0x1A4F8EFF), // kAccentBlue at 10%
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           shape: BoxShape.circle,
+          border: Border.all(color: kAccentPurple.withValues(alpha: 0.2)),
+          boxShadow: [
+            BoxShadow(
+              color: kAccentPurple.withValues(alpha: 0.2),
+              blurRadius: 32,
+              spreadRadius: -4,
+            ),
+          ],
         ),
-        child: Icon(
-          Icons.psychology_outlined,
-          color: theme.colorScheme.primary,
-          size: 44,
+        child: ShaderMask(
+          shaderCallback: (b) => const LinearGradient(
+            colors: kGradientStops,
+          ).createShader(b),
+          child: const Icon(
+            Icons.psychology_outlined,
+            color: Colors.white,
+            size: 44,
+          ),
         ),
       ),
     );
   }
 }
 
-// ─── Keep open banner (iOS) ───────────────────────────────────────────────────
+// ─── Keep-open banner ─────────────────────────────────────────────────────────
 
 class _KeepOpenBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    // Show only on iOS; on Android a foreground service handles background.
-    // For Phase 1 we show it always — Platform check added in Phase 2.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.orange.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+        color: kWarning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: kWarning.withValues(alpha: 0.25)),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.warning_amber_outlined, color: Colors.orange, size: 18),
-          SizedBox(width: 8),
+          const Icon(Icons.warning_amber_rounded,
+              color: kWarning, size: 18),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               'Keep this screen open while analysis runs.',
-              style: TextStyle(color: Colors.orange, fontSize: 13),
+              style: GoogleFonts.spaceGrotesk(
+                color: Color(0xFFB07000),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
@@ -303,19 +348,24 @@ class _ErrorCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.red.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red.withValues(alpha: 0.25)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, color: Colors.red, size: 18),
-          const SizedBox(width: 8),
+          const Icon(Icons.error_outline_rounded, color: Colors.red, size: 18),
+          const SizedBox(width: 10),
           Expanded(
-            child: Text(message,
-                style: const TextStyle(color: Colors.red, fontSize: 13)),
+            child: Text(
+              message,
+              style: GoogleFonts.spaceGrotesk(
+                color: Colors.red.shade700,
+                fontSize: 13,
+              ),
+            ),
           ),
         ],
       ),

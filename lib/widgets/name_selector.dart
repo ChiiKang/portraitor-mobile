@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-/// A selectable list of participant names extracted from the chat.
-///
-/// The user taps a name to designate it as the portrait subject.
+import '../app.dart';
+
+/// Pill-style name selector matching the web app's detected-names chips.
 class NameSelector extends StatelessWidget {
   final List<String> names;
   final String? selectedName;
@@ -17,12 +18,10 @@ class NameSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     if (names.isEmpty) {
       return Text(
         'No participants detected. Please enter a name manually.',
-        style: theme.textTheme.bodyMedium,
+        style: GoogleFonts.spaceGrotesk(color: kInkSoft, fontSize: 14),
       );
     }
 
@@ -32,23 +31,32 @@ class NameSelector extends StatelessWidget {
       children: [
         Text(
           'Who is this portrait about?',
-          style: theme.textTheme.titleMedium?.copyWith(
+          style: GoogleFonts.spaceGrotesk(
+            color: kInkStrong,
+            fontSize: 15,
             fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           'Select the person whose personality you want to analyze.',
-          style: theme.textTheme.bodySmall,
+          style: GoogleFonts.spaceGrotesk(color: kInkMuted, fontSize: 13),
+        ),
+        const SizedBox(height: 14),
+        // Pill chips — horizontal wrap
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ...names.map((name) => _NamePill(
+                  name: name,
+                  isSelected: name == selectedName,
+                  onTap: () => onSelected(name),
+                )),
+          ],
         ),
         const SizedBox(height: 12),
-        ...names.map((name) => _NameTile(
-              name: name,
-              isSelected: name == selectedName,
-              onTap: () => onSelected(name),
-            )),
-        const SizedBox(height: 8),
-        _ManualEntryTile(
+        _ManualEntryRow(
           onSubmit: onSelected,
           currentSelection: selectedName,
           knownNames: names,
@@ -58,12 +66,12 @@ class NameSelector extends StatelessWidget {
   }
 }
 
-class _NameTile extends StatelessWidget {
+class _NamePill extends StatelessWidget {
   final String name;
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _NameTile({
+  const _NamePill({
     required this.name,
     required this.isSelected,
     required this.onTap,
@@ -71,54 +79,47 @@ class _NameTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
-
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         decoration: BoxDecoration(
-          color: isSelected
-              ? primary.withValues(alpha: 0.15)
-              : theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(10),
+          gradient: isSelected
+              ? const LinearGradient(colors: kGradientStops)
+              : null,
+          color: isSelected ? null : Colors.white,
+          borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: isSelected
-                ? primary
-                : Colors.white.withValues(alpha: 0.08),
-            width: isSelected ? 1.5 : 1.0,
+                ? Colors.transparent
+                : kBorderStrong,
           ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: kAccentPurple.withValues(alpha: 0.25),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  )
+                ]
+              : null,
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: isSelected
-                  ? primary
-                  : Colors.white.withValues(alpha: 0.12),
-              child: Text(
-                name.isNotEmpty ? name[0].toUpperCase() : '?',
-                style: TextStyle(
-                  color: isSelected ? Colors.white : Colors.white70,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
+            if (isSelected) ...[
+              const Icon(Icons.check, color: Colors.white, size: 14),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              name,
+              style: GoogleFonts.spaceGrotesk(
+                color: isSelected ? Colors.white : kInk,
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                name,
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                ),
-              ),
-            ),
-            if (isSelected)
-              Icon(Icons.check_circle, color: primary, size: 20),
           ],
         ),
       ),
@@ -126,23 +127,22 @@ class _NameTile extends StatelessWidget {
   }
 }
 
-/// Allows the user to type a name that wasn't detected automatically.
-class _ManualEntryTile extends StatefulWidget {
+class _ManualEntryRow extends StatefulWidget {
   final ValueChanged<String> onSubmit;
   final String? currentSelection;
   final List<String> knownNames;
 
-  const _ManualEntryTile({
+  const _ManualEntryRow({
     required this.onSubmit,
     required this.currentSelection,
     required this.knownNames,
   });
 
   @override
-  State<_ManualEntryTile> createState() => _ManualEntryTileState();
+  State<_ManualEntryRow> createState() => _ManualEntryRowState();
 }
 
-class _ManualEntryTileState extends State<_ManualEntryTile> {
+class _ManualEntryRowState extends State<_ManualEntryRow> {
   bool _expanded = false;
   final _controller = TextEditingController();
 
@@ -154,45 +154,39 @@ class _ManualEntryTileState extends State<_ManualEntryTile> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    // Show "other name" tile only when no known name is selected or always.
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         GestureDetector(
           onTap: () => setState(() => _expanded = !_expanded),
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.08),
-              ),
+              color: kSurfaceMuted,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: kBorderSoft),
             ),
             child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.edit_outlined,
-                  size: 18,
-                  color: Colors.white54,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Enter a different name',
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(color: Colors.white54),
+                const Icon(Icons.edit_outlined,
+                    size: 15, color: kAccentPurple),
+                const SizedBox(width: 8),
+                Text(
+                  'Enter a different name',
+                  style: GoogleFonts.spaceGrotesk(
+                    color: kAccentPurple,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
+                const SizedBox(width: 4),
                 Icon(
                   _expanded
                       ? Icons.keyboard_arrow_up
                       : Icons.keyboard_arrow_down,
-                  color: Colors.white54,
-                  size: 18,
+                  color: kAccentPurple,
+                  size: 16,
                 ),
               ],
             ),
@@ -203,7 +197,7 @@ class _ManualEntryTileState extends State<_ManualEntryTile> {
           curve: Curves.easeInOut,
           child: _expanded
               ? Padding(
-                  padding: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.only(top: 10),
                   child: Row(
                     children: [
                       Expanded(
@@ -211,23 +205,25 @@ class _ManualEntryTileState extends State<_ManualEntryTile> {
                           controller: _controller,
                           autofocus: true,
                           textCapitalization: TextCapitalization.words,
+                          style: GoogleFonts.spaceGrotesk(
+                            color: kInkStrong,
+                            fontSize: 14,
+                          ),
                           decoration: InputDecoration(
                             hintText: 'Name',
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
+                            hintStyle: GoogleFonts.spaceGrotesk(
+                              color: kInkMuted,
+                              fontSize: 14,
                             ),
                           ),
                           onSubmitted: _submit,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          minimumSize: const Size(72, 52),
-                        ),
+                      _GradientButton(
                         onPressed: () => _submit(_controller.text),
-                        child: const Text('Use'),
+                        label: 'Use',
+                        minWidth: 72,
                       ),
                     ],
                   ),
@@ -243,6 +239,51 @@ class _ManualEntryTileState extends State<_ManualEntryTile> {
     if (name.isNotEmpty) {
       widget.onSubmit(name);
       setState(() => _expanded = false);
+      _controller.clear();
     }
+  }
+}
+
+/// Reusable gradient button widget.
+class _GradientButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  final String label;
+  final double minWidth;
+
+  const _GradientButton({
+    required this.onPressed,
+    required this.label,
+    this.minWidth = double.infinity,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        constraints: BoxConstraints(minWidth: minWidth, minHeight: 48),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: kGradientStopsStrong),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: kAccentPurple.withValues(alpha: 0.3),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: GoogleFonts.spaceGrotesk(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
   }
 }

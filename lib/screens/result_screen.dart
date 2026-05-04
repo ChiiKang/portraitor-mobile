@@ -3,28 +3,25 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 
+import '../app.dart';
 import '../providers/chunk_progress_provider.dart';
 import '../providers/conversation_provider.dart';
 import '../models/conversation.dart';
 
 class ResultScreen extends ConsumerWidget {
   final String conversationId;
-
   const ResultScreen({super.key, required this.conversationId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-
-    // Try loading from conversation list (for revisiting past results).
     final allConvs = ref.watch(conversationProvider).conversations;
     final savedConv = allConvs.cast<Conversation?>().firstWhere(
           (c) => c?.id == conversationId,
           orElse: () => null,
         );
 
-    // Fall back to in-progress accumulated text from chunk provider.
     final chunkState = ref.watch(chunkProgressProvider);
     final portraitText = savedConv?.outputSummary.isNotEmpty == true
         ? savedConv!.outputSummary
@@ -41,6 +38,7 @@ class ResultScreen extends ConsumerWidget {
         'Portrait';
 
     return Scaffold(
+      backgroundColor: kPageBg,
       appBar: AppBar(
         title: Text(targetName),
         actions: [
@@ -48,7 +46,8 @@ class ResultScreen extends ConsumerWidget {
             IconButton(
               icon: const Icon(Icons.share_outlined),
               tooltip: 'Share portrait',
-              onPressed: () => _sharePortrait(context, portraitText, targetName),
+              onPressed: () =>
+                  _sharePortrait(context, portraitText, targetName),
             ),
           IconButton(
             icon: const Icon(Icons.copy_outlined),
@@ -68,20 +67,10 @@ class ResultScreen extends ConsumerWidget {
                   if (emailStatus != null)
                     _EmailStatusBanner(status: emailStatus),
 
-                  // Portrait markdown
+                  // Portrait card
                   Expanded(
-                    child: Markdown(
-                      data: portraitText,
-                      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-                      styleSheet: _buildMarkdownStyle(theme),
-                      selectable: true,
-                    ),
-                  ),
-
-                  // Bottom actions
-                  Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: _BottomActions(
+                    child: _PortraitContent(
+                      portraitText: portraitText,
                       onNewPortrait: () {
                         ref.read(chunkProgressProvider.notifier).reset();
                         ref
@@ -97,65 +86,7 @@ class ResultScreen extends ConsumerWidget {
     );
   }
 
-  MarkdownStyleSheet _buildMarkdownStyle(ThemeData theme) {
-    final baseStyle = TextStyle(
-      color: Colors.white.withValues(alpha: 0.9),
-      fontSize: 15,
-      height: 1.6,
-    );
-
-    return MarkdownStyleSheet(
-      p: baseStyle,
-      h1: theme.textTheme.headlineMedium?.copyWith(
-        color: Colors.white,
-        fontWeight: FontWeight.bold,
-        height: 1.3,
-      ),
-      h2: theme.textTheme.headlineSmall?.copyWith(
-        color: Colors.white,
-        fontWeight: FontWeight.w600,
-        height: 1.3,
-      ),
-      h3: theme.textTheme.titleLarge?.copyWith(
-        color: Colors.white,
-        fontWeight: FontWeight.w600,
-        height: 1.4,
-      ),
-      strong: const TextStyle(
-        color: Colors.white,
-        fontWeight: FontWeight.bold,
-      ),
-      em: TextStyle(
-        color: Colors.white.withValues(alpha: 0.85),
-        fontStyle: FontStyle.italic,
-      ),
-      blockquoteDecoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(4),
-        border: Border(
-          left: BorderSide(
-            color: theme.colorScheme.primary,
-            width: 3,
-          ),
-        ),
-      ),
-      blockquote: baseStyle.copyWith(
-        color: Colors.white.withValues(alpha: 0.75),
-        fontStyle: FontStyle.italic,
-      ),
-      code: TextStyle(
-        backgroundColor: theme.colorScheme.surfaceContainerHighest,
-        color: theme.colorScheme.primary,
-        fontFamily: 'monospace',
-        fontSize: 13,
-      ),
-      listBullet: baseStyle,
-    );
-  }
-
   void _sharePortrait(BuildContext context, String text, String name) {
-    // Phase 2 will use share_plus package.
-    // For now, copy to clipboard and notify.
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Portrait copied to clipboard')),
@@ -173,18 +104,164 @@ class ResultScreen extends ConsumerWidget {
   }
 }
 
+// ─── Portrait content ─────────────────────────────────────────────────────────
+
+class _PortraitContent extends StatelessWidget {
+  final String portraitText;
+  final VoidCallback onNewPortrait;
+
+  const _PortraitContent({
+    required this.portraitText,
+    required this.onNewPortrait,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Scrollable markdown in a white card
+        Expanded(
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: kBorderSoft),
+              boxShadow: [
+                BoxShadow(
+                  color: kAccentPurple.withValues(alpha: 0.08),
+                  blurRadius: 40,
+                  spreadRadius: -4,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Markdown(
+                data: portraitText,
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                styleSheet: _buildMarkdownStyle(),
+                selectable: true,
+              ),
+            ),
+          ),
+        ),
+
+        // Bottom action
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: _NewPortraitButton(onPressed: onNewPortrait),
+        ),
+      ],
+    );
+  }
+
+  MarkdownStyleSheet _buildMarkdownStyle() {
+    final baseStyle = GoogleFonts.spaceGrotesk(
+      color: kInkSoft,
+      fontSize: 14,
+      height: 1.65,
+    );
+
+    return MarkdownStyleSheet(
+      p: baseStyle,
+      h1: GoogleFonts.spaceGrotesk(
+        color: kInkStrong,
+        fontSize: 22,
+        fontWeight: FontWeight.w700,
+        height: 1.3,
+      ),
+      h2: GoogleFonts.spaceGrotesk(
+        color: kInkStrong,
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        height: 1.3,
+      ),
+      h3: GoogleFonts.spaceGrotesk(
+        color: kInkStrong,
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+        height: 1.4,
+      ),
+      strong: GoogleFonts.spaceGrotesk(
+        color: kInkStrong,
+        fontWeight: FontWeight.w700,
+        fontSize: 14,
+      ),
+      em: GoogleFonts.spaceGrotesk(
+        color: kInkSoft,
+        fontStyle: FontStyle.italic,
+        fontSize: 14,
+      ),
+      blockquoteDecoration: BoxDecoration(
+        color: kSurfaceMuted,
+        borderRadius: BorderRadius.circular(8),
+        border: const Border(
+          left: BorderSide(color: kAccentPurple, width: 3),
+        ),
+      ),
+      blockquote: GoogleFonts.spaceGrotesk(
+        color: kInkSoft,
+        fontStyle: FontStyle.italic,
+        fontSize: 14,
+        height: 1.5,
+      ),
+      code: GoogleFonts.spaceGrotesk(
+        backgroundColor: kSurfaceMuted,
+        color: kAccentPurple,
+        fontSize: 12,
+      ),
+      listBullet: baseStyle,
+      horizontalRuleDecoration: const BoxDecoration(
+        border: Border(
+          top: BorderSide(color: kBorderSoft, width: 1),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── New portrait button ──────────────────────────────────────────────────────
+
+class _NewPortraitButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  const _NewPortraitButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: const Icon(Icons.add_rounded, size: 18),
+        label: const Text('New Portrait'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: kAccentPurple,
+          side: const BorderSide(color: kBorderStrong),
+          minimumSize: const Size(double.infinity, 50),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ─── Email status banner ──────────────────────────────────────────────────────
 
 class _EmailStatusBanner extends StatelessWidget {
-  final String status; // 'sent' | 'failed'
-
+  final String status;
   const _EmailStatusBanner({required this.status});
 
   @override
   Widget build(BuildContext context) {
     final isSent = status == 'sent';
-    final color = isSent ? Colors.green : Colors.orange;
-    final icon = isSent ? Icons.mark_email_read_outlined : Icons.email_outlined;
+    final color = isSent ? kSuccess : kWarning;
+    final icon = isSent
+        ? Icons.mark_email_read_outlined
+        : Icons.email_outlined;
     final label = isSent
         ? 'Portrait sent to your email'
         : 'Email delivery failed — your portrait is shown below';
@@ -193,9 +270,9 @@ class _EmailStatusBanner extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
       child: Row(
         children: [
@@ -204,27 +281,17 @@ class _EmailStatusBanner extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: TextStyle(color: color, fontSize: 13),
+              style: GoogleFonts.spaceGrotesk(
+                color: isSent
+                    ? Color(0xFF1B8A7A) // dark teal
+                    : Color(0xFFB07000), // dark amber
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-// ─── Bottom actions ───────────────────────────────────────────────────────────
-
-class _BottomActions extends StatelessWidget {
-  final VoidCallback onNewPortrait;
-  const _BottomActions({required this.onNewPortrait});
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      onPressed: onNewPortrait,
-      icon: const Icon(Icons.add_outlined),
-      label: const Text('New Portrait'),
     );
   }
 }
@@ -237,34 +304,52 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.hourglass_empty_outlined,
-              size: 48,
-              color: Colors.white38,
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: kSurfaceMuted,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.hourglass_empty_outlined,
+                size: 32,
+                color: kInkMuted,
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             Text(
               'Portrait not available',
-              style: theme.textTheme.titleMedium,
+              style: GoogleFonts.spaceGrotesk(
+                color: kInkStrong,
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               'The portrait may still be processing or was not saved.',
-              style: theme.textTheme.bodySmall,
+              style: GoogleFonts.spaceGrotesk(
+                color: kInkMuted,
+                fontSize: 14,
+                height: 1.4,
+              ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 24),
-            OutlinedButton(
-              onPressed: () => context.go('/'),
-              child: const Text('Back to Home'),
+            const SizedBox(height: 28),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () => context.go('/'),
+                child: const Text('Back to Home'),
+              ),
             ),
           ],
         ),

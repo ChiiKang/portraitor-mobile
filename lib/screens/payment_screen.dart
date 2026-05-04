@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 
+import '../app.dart';
 import '../providers/payment_provider.dart';
 import '../providers/conversation_provider.dart';
 
@@ -27,9 +29,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   Widget build(BuildContext context) {
     final paymentState = ref.watch(paymentProvider);
     final runtimeConfig = ref.watch(runtimeConfigProvider);
-    final theme = Theme.of(context);
 
-    // Navigate to processing when authorized.
     ref.listen<PaymentState>(paymentProvider, (prev, next) {
       if (next.status == PaymentStatus.authorized && context.mounted) {
         context.push('/processing');
@@ -45,33 +45,39 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         paymentState.status == PaymentStatus.authorized;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Payment'),
-      ),
+      backgroundColor: kPageBg,
+      appBar: AppBar(title: const Text('Payment')),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(20),
           children: [
             // ── Price card ──────────────────────────────────────────────
             _PriceCard(
               formattedPrice: formattedPrice,
-              targetName:
-                  ref.watch(conversationProvider).pendingImport?.selectedTarget,
+              targetName: ref
+                  .watch(conversationProvider)
+                  .pendingImport
+                  ?.selectedTarget,
             ),
-
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
             // ── Email field ─────────────────────────────────────────────
+            _SectionLabel('Send portrait to'),
+            const SizedBox(height: 8),
             Form(
               key: _formKey,
               child: TextFormField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
                 textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(
-                  labelText: 'Email address',
+                style: GoogleFonts.spaceGrotesk(
+                  color: kInkStrong,
+                  fontSize: 15,
+                ),
+                decoration: InputDecoration(
                   hintText: 'your@email.com',
-                  prefixIcon: Icon(Icons.email_outlined),
+                  prefixIcon: const Icon(Icons.email_outlined,
+                      color: kInkMuted, size: 20),
                 ),
                 validator: (v) {
                   if (v == null || v.isEmpty) return 'Email is required';
@@ -80,58 +86,92 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 },
               ),
             ),
-
             const SizedBox(height: 8),
             Text(
               'Your portrait will be emailed here after analysis.',
-              style: theme.textTheme.bodySmall,
+              style: GoogleFonts.spaceGrotesk(
+                color: kInkMuted,
+                fontSize: 12,
+              ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
 
             // ── Terms ───────────────────────────────────────────────────
-            CheckboxListTile(
-              value: _agreedToTerms,
-              onChanged: (v) =>
-                  setState(() => _agreedToTerms = v ?? false),
-              activeColor: theme.colorScheme.primary,
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              title: RichText(
-                text: TextSpan(
-                  style: theme.textTheme.bodySmall,
-                  children: const [
-                    TextSpan(text: 'I agree to the '),
-                    TextSpan(
-                      text: 'Terms of Service',
-                      style: TextStyle(
-                        decoration: TextDecoration.underline,
-                        color: Colors.white70,
+            GestureDetector(
+              onTap: () =>
+                  setState(() => _agreedToTerms = !_agreedToTerms),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 120),
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      gradient: _agreedToTerms
+                          ? const LinearGradient(colors: kGradientStops)
+                          : null,
+                      color: _agreedToTerms ? null : Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: _agreedToTerms
+                            ? Colors.transparent
+                            : kBorderStrong,
                       ),
                     ),
-                    TextSpan(text: ' and '),
-                    TextSpan(
-                      text: 'Privacy Policy',
-                      style: TextStyle(
-                        decoration: TextDecoration.underline,
-                        color: Colors.white70,
+                    child: _agreedToTerms
+                        ? const Icon(Icons.check,
+                            color: Colors.white, size: 14)
+                        : null,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: RichText(
+                      text: TextSpan(
+                        style: GoogleFonts.spaceGrotesk(
+                          color: kInkSoft,
+                          fontSize: 13,
+                          height: 1.4,
+                        ),
+                        children: [
+                          const TextSpan(text: 'I agree to the '),
+                          TextSpan(
+                            text: 'Terms of Service',
+                            style: GoogleFonts.spaceGrotesk(
+                              color: kAccentPurple,
+                              fontWeight: FontWeight.w600,
+                              decoration: TextDecoration.underline,
+                              decorationColor: kAccentPurple,
+                            ),
+                          ),
+                          const TextSpan(text: ' and '),
+                          TextSpan(
+                            text: 'Privacy Policy',
+                            style: GoogleFonts.spaceGrotesk(
+                              color: kAccentPurple,
+                              fontWeight: FontWeight.w600,
+                              decoration: TextDecoration.underline,
+                              decorationColor: kAccentPurple,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
 
             const SizedBox(height: 24),
 
-            // ── Error ───────────────────────────────────────────────────
+            // ── Error messages ──────────────────────────────────────────
             if (paymentState.status == PaymentStatus.failed &&
                 paymentState.errorMessage != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: _ErrorCard(message: paymentState.errorMessage!),
               ),
-
             if (paymentState.status == PaymentStatus.expired)
               const Padding(
                 padding: EdgeInsets.only(bottom: 16),
@@ -142,19 +182,13 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               ),
 
             // ── Pay button ──────────────────────────────────────────────
-            ElevatedButton(
-              onPressed:
-                  isLoading || !_agreedToTerms ? null : _handlePayment,
-              child: isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Text('Pay $formattedPrice'),
+            _GradientPayButton(
+              label: isLoading ? '...' : 'Pay $formattedPrice',
+              enabled: !isLoading && _agreedToTerms,
+              isLoading: isLoading,
+              onPressed: (!isLoading && _agreedToTerms)
+                  ? _handlePayment
+                  : null,
             ),
 
             const SizedBox(height: 16),
@@ -163,16 +197,22 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.lock_outline, size: 14, color: Colors.white38),
-                const SizedBox(width: 4),
-                Text(
-                  'Secured by Stripe. Card not charged until analysis completes.',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: Colors.white38),
-                  textAlign: TextAlign.center,
+                const Icon(Icons.lock_outline_rounded,
+                    size: 13, color: kInkMuted),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Secured by Stripe. Card not charged until analysis completes.',
+                    style: GoogleFonts.spaceGrotesk(
+                      color: kInkMuted,
+                      fontSize: 11,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ],
             ),
+            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -181,30 +221,17 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
   Future<void> _handlePayment() async {
     if (!_formKey.currentState!.validate()) return;
-
     ref.read(paymentProvider.notifier).setEmail(_emailController.text.trim());
-
-    // Phase 2 will integrate the actual flutter_stripe PaymentSheet here.
-    // For now, show the intent-creation loading state.
-    //
-    // Full flow:
-    //   1. POST /api/payment.php  -> client_secret, publishable_key, session_id
-    //   2. Stripe.instance.initPaymentSheet(...)
-    //   3. Stripe.instance.presentPaymentSheet()
-    //   4. paymentNotifier.onAuthorized()
-    //   5. GoRouter pushes /processing
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          'Payment integration coming in Phase 2. '
-          'Navigating to processing for UI testing.',
+          'Payment integration coming in Phase 2. Navigating to processing for UI testing.',
         ),
         duration: Duration(seconds: 3),
       ),
     );
 
-    // Simulate authorized state for UI flow testing.
     await Future.delayed(const Duration(seconds: 1));
     if (mounted) {
       ref.read(paymentProvider.notifier).onIntentCreated(
@@ -231,53 +258,185 @@ class _PriceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Icon(
-              Icons.portrait,
-              size: 40,
-              color: theme.colorScheme.primary,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'AI Personality Portrait',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            if (targetName != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'for $targetName',
-                style: theme.textTheme.bodyMedium,
-                textAlign: TextAlign.center,
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: kHeroGradientStops,
+          stops: [0.0, 0.5, 1.0],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
+        boxShadow: [
+          BoxShadow(
+            color: kAccentPurple.withValues(alpha: 0.12),
+            blurRadius: 40,
+            spreadRadius: -4,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Gradient icon
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: kGradientStopsStrong,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-            ],
-            const SizedBox(height: 16),
-            Text(
-              formattedPrice,
-              style: theme.textTheme.headlineLarge?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: kAccentPurple.withValues(alpha: 0.35),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
+            child: const Icon(Icons.psychology_rounded,
+                color: Colors.white, size: 28),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'AI Psychological Portrait',
+            style: GoogleFonts.spaceGrotesk(
+              color: kInkStrong,
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          if (targetName != null) ...[
+            const SizedBox(height: 4),
             Text(
-              'One-time payment. Results emailed to you.',
-              style: theme.textTheme.bodySmall,
+              'for $targetName',
+              style: GoogleFonts.spaceGrotesk(
+                color: kInkSoft,
+                fontSize: 13,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
-        ),
+          const SizedBox(height: 16),
+          ShaderMask(
+            shaderCallback: (b) => const LinearGradient(
+              colors: kGradientStops,
+            ).createShader(b),
+            child: Text(
+              formattedPrice,
+              style: GoogleFonts.spaceGrotesk(
+                color: Colors.white,
+                fontSize: 36,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'One-time payment. Results emailed to you.',
+            style: GoogleFonts.spaceGrotesk(
+              color: kInkMuted,
+              fontSize: 12,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }
 }
 
-// ─── Error card ───────────────────────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+class _SectionLabel extends StatelessWidget {
+  final String text;
+  const _SectionLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: GoogleFonts.spaceGrotesk(
+        color: kInkStrong,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+}
+
+class _GradientPayButton extends StatelessWidget {
+  final String label;
+  final bool enabled;
+  final bool isLoading;
+  final VoidCallback? onPressed;
+
+  const _GradientPayButton({
+    required this.label,
+    required this.enabled,
+    required this.isLoading,
+    this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: enabled ? onPressed : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: double.infinity,
+        height: 56,
+        decoration: BoxDecoration(
+          gradient: enabled
+              ? const LinearGradient(colors: kGradientStopsStrong)
+              : null,
+          color: enabled ? null : kBorderStrong,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: enabled
+              ? [
+                  BoxShadow(
+                    color: kAccentPurple.withValues(alpha: 0.35),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ]
+              : null,
+        ),
+        child: Center(
+          child: isLoading
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Colors.white,
+                  ),
+                )
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.lock_outline_rounded,
+                        color: Colors.white, size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      label,
+                      style: GoogleFonts.spaceGrotesk(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
 
 class _ErrorCard extends StatelessWidget {
   final String message;
@@ -286,19 +445,24 @@ class _ErrorCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.red.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red.withValues(alpha: 0.25)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, color: Colors.red, size: 18),
-          const SizedBox(width: 8),
+          const Icon(Icons.error_outline_rounded, color: Colors.red, size: 18),
+          const SizedBox(width: 10),
           Expanded(
-            child: Text(message,
-                style: const TextStyle(color: Colors.red, fontSize: 13)),
+            child: Text(
+              message,
+              style: GoogleFonts.spaceGrotesk(
+                color: Colors.red.shade700,
+                fontSize: 13,
+              ),
+            ),
           ),
         ],
       ),

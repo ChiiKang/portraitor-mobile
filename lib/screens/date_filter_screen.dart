@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 
+import '../app.dart';
 import '../providers/conversation_provider.dart';
 
 class DateFilterScreen extends ConsumerStatefulWidget {
@@ -24,80 +26,124 @@ class _DateFilterScreenState extends ConsumerState<DateFilterScreen> {
       _start = imported.firstDate;
       _end = imported.lastDate;
     }
-    // Default to a wide range if no dates detected.
     _start ??= DateTime.now().subtract(const Duration(days: 365));
     _end ??= DateTime.now();
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final imported = ref.watch(conversationProvider).pendingImport;
-
-    // Token estimate for the current range.
     final totalTokens = imported?.tokenAnalysis.totalTokens ?? 0;
 
     return Scaffold(
+      backgroundColor: kPageBg,
       appBar: AppBar(
-        title: const Text('Date Range Filter'),
+        title: const Text('Date Range'),
         actions: [
           TextButton(
             onPressed: () => context.push('/payment'),
-            child: const Text('Skip'),
+            child: Text(
+              'Skip',
+              style: GoogleFonts.spaceGrotesk(
+                color: kAccentPurple,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(20),
           children: [
             // ── Info card ───────────────────────────────────────────────
-            Card(
+            _LightCard(
               child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
+                padding: const EdgeInsets.all(18),
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.tune_outlined,
-                          color: theme.colorScheme.primary,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Filter by date range',
-                          style: theme.textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w600),
-                        ),
-                      ],
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(colors: kGradientStops),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.tune_rounded,
+                          color: Colors.white, size: 18),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Analyzing a shorter range reduces cost and focuses the portrait on a specific period.',
-                      style: theme.textTheme.bodySmall,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Filter by date range',
+                            style: GoogleFonts.spaceGrotesk(
+                              color: kInkStrong,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'A shorter range reduces cost and focuses the portrait on a specific period.',
+                            style: GoogleFonts.spaceGrotesk(
+                              color: kInkMuted,
+                              fontSize: 13,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
             // ── Toggle ──────────────────────────────────────────────────
-            Card(
-              child: SwitchListTile(
-                title: const Text('Enable date filter'),
-                subtitle: const Text('Only analyze messages in a date range'),
-                value: _filterEnabled,
-                onChanged: (v) => setState(() => _filterEnabled = v),
-                activeThumbColor: theme.colorScheme.primary,
-                activeTrackColor: theme.colorScheme.primary.withValues(alpha: 0.5),
+            _LightCard(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Enable date filter',
+                            style: GoogleFonts.spaceGrotesk(
+                              color: kInkStrong,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            'Only analyze messages in a date range',
+                            style: GoogleFonts.spaceGrotesk(
+                              color: kInkMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: _filterEnabled,
+                      onChanged: (v) => setState(() => _filterEnabled = v),
+                    ),
+                  ],
+                ),
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
             // ── Date pickers ────────────────────────────────────────────
             AnimatedOpacity(
@@ -107,15 +153,15 @@ class _DateFilterScreenState extends ConsumerState<DateFilterScreen> {
                 ignoring: !_filterEnabled,
                 child: Column(
                   children: [
-                    _DatePickerTile(
+                    _DatePickerCard(
                       label: 'Start date',
                       date: _start,
                       onPick: (d) => setState(() => _start = d),
                       firstDate: DateTime(2010),
                       lastDate: _end ?? DateTime.now(),
                     ),
-                    const SizedBox(height: 8),
-                    _DatePickerTile(
+                    const SizedBox(height: 10),
+                    _DatePickerCard(
                       label: 'End date',
                       date: _end,
                       onPick: (d) => setState(() => _end = d),
@@ -127,18 +173,23 @@ class _DateFilterScreenState extends ConsumerState<DateFilterScreen> {
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
             // ── Token estimate ──────────────────────────────────────────
-            Card(
+            _LightCard(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(18),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.data_usage_outlined,
-                      color: theme.colorScheme.primary,
-                      size: 20,
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: kAccentPill,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.data_usage_outlined,
+                          color: kAccentPurple, size: 18),
                     ),
                     const SizedBox(width: 12),
                     Column(
@@ -146,13 +197,22 @@ class _DateFilterScreenState extends ConsumerState<DateFilterScreen> {
                       children: [
                         Text(
                           'Estimated tokens',
-                          style: theme.textTheme.bodySmall,
+                          style: GoogleFonts.spaceGrotesk(
+                            color: kInkMuted,
+                            fontSize: 12,
+                          ),
                         ),
-                        Text(
-                          '~${_fmtTokens(totalTokens)}',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.primary,
+                        ShaderMask(
+                          shaderCallback: (b) => const LinearGradient(
+                            colors: kGradientStops,
+                          ).createShader(b),
+                          child: Text(
+                            '~${_fmtTokens(totalTokens)}',
+                            style: GoogleFonts.spaceGrotesk(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ],
@@ -162,18 +222,20 @@ class _DateFilterScreenState extends ConsumerState<DateFilterScreen> {
               ),
             ),
 
-            const SizedBox(height: 32),
+            const SizedBox(height: 28),
 
             // ── Apply / Skip ────────────────────────────────────────────
-            ElevatedButton(
+            _GradientActionButton(
+              label: 'Apply & Continue',
+              enabled: _canApply,
               onPressed: _canApply ? _apply : null,
-              child: const Text('Apply & Continue'),
             ),
             const SizedBox(height: 12),
             OutlinedButton(
               onPressed: () => context.push('/payment'),
               child: const Text('Skip — Analyze Full Chat'),
             ),
+            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -182,16 +244,12 @@ class _DateFilterScreenState extends ConsumerState<DateFilterScreen> {
 
   bool get _canApply {
     if (!_filterEnabled) return true;
-    return _start != null &&
-        _end != null &&
-        !_end!.isBefore(_start!);
+    return _start != null && _end != null && !_end!.isBefore(_start!);
   }
 
   void _apply() {
     if (_filterEnabled && _start != null && _end != null) {
-      ref
-          .read(conversationProvider.notifier)
-          .applyDateRange(_start!, _end!);
+      ref.read(conversationProvider.notifier).applyDateRange(_start!, _end!);
     }
     context.push('/payment');
   }
@@ -202,16 +260,43 @@ class _DateFilterScreenState extends ConsumerState<DateFilterScreen> {
   }
 }
 
-// ─── Date picker tile ─────────────────────────────────────────────────────────
+// ─── Light card ───────────────────────────────────────────────────────────────
 
-class _DatePickerTile extends StatelessWidget {
+class _LightCard extends StatelessWidget {
+  final Widget child;
+  const _LightCard({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: kSurface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: kBorderSoft),
+        boxShadow: [
+          BoxShadow(
+            color: kAccentPurple.withValues(alpha: 0.05),
+            blurRadius: 24,
+            spreadRadius: -4,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+// ─── Date picker card ─────────────────────────────────────────────────────────
+
+class _DatePickerCard extends StatelessWidget {
   final String label;
   final DateTime? date;
   final ValueChanged<DateTime> onPick;
   final DateTime firstDate;
   final DateTime lastDate;
 
-  const _DatePickerTile({
+  const _DatePickerCard({
     required this.label,
     required this.date,
     required this.onPick,
@@ -221,40 +306,124 @@ class _DatePickerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Card(
-      child: ListTile(
-        leading: Icon(
-          Icons.event_outlined,
-          color: theme.colorScheme.primary,
-        ),
-        title: Text(label, style: theme.textTheme.bodySmall),
-        subtitle: Text(
-          date != null
-              ? '${date!.day}/${date!.month}/${date!.year}'
-              : 'Tap to select',
-          style: theme.textTheme.bodyLarge
-              ?.copyWith(fontWeight: FontWeight.w500),
-        ),
-        trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+    return _LightCard(
+      child: InkWell(
         onTap: () async {
           final picked = await showDatePicker(
             context: context,
             initialDate: date ?? DateTime.now(),
             firstDate: firstDate,
             lastDate: lastDate,
-            builder: (context, child) {
-              return Theme(
-                data: Theme.of(context).copyWith(
-                  colorScheme: Theme.of(context).colorScheme,
-                ),
-                child: child!,
-              );
-            },
+            builder: (ctx, child) => Theme(
+              data: Theme.of(ctx).copyWith(
+                colorScheme: Theme.of(ctx).colorScheme.copyWith(
+                      primary: kAccentPurple,
+                    ),
+              ),
+              child: child!,
+            ),
           );
           if (picked != null) onPick(picked);
         },
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: kAccentPill,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.event_outlined,
+                    color: kAccentPurple, size: 18),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: GoogleFonts.spaceGrotesk(
+                        color: kInkMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      date != null
+                          ? '${date!.day}/${date!.month}/${date!.year}'
+                          : 'Tap to select',
+                      style: GoogleFonts.spaceGrotesk(
+                        color: date != null ? kInkStrong : kInkMuted,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded,
+                  color: kInkMuted, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Gradient action button ───────────────────────────────────────────────────
+
+class _GradientActionButton extends StatelessWidget {
+  final String label;
+  final bool enabled;
+  final VoidCallback? onPressed;
+
+  const _GradientActionButton({
+    required this.label,
+    required this.enabled,
+    this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: enabled ? onPressed : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: double.infinity,
+        height: 52,
+        decoration: BoxDecoration(
+          gradient: enabled
+              ? const LinearGradient(colors: kGradientStopsStrong)
+              : null,
+          color: enabled ? null : kBorderStrong,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: enabled
+              ? [
+                  BoxShadow(
+                    color: kAccentPurple.withValues(alpha: 0.3),
+                    blurRadius: 18,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : null,
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: GoogleFonts.spaceGrotesk(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -27,6 +27,7 @@ dependencies:
   archive: ^4.0.4
   flutter_foreground_task: ^9.2.2
   file_picker: ^9.2.2
+  google_fonts: ^6.2.1
 
 dev_dependencies:
   flutter_test:

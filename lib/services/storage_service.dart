@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
@@ -13,6 +14,9 @@ import '../models/conversation.dart';
 ///   - Device ID stored in SharedPreferences (like localStorage)
 ///   - Conversations table for history (max 100 entries, oldest pruned)
 ///   - pending_chunks table for crash recovery during chunked analysis
+///
+/// On web (kIsWeb), SQLite is not available. The service gracefully degrades
+/// to an in-memory store so the app runs without crashing in Chrome.
 ///
 /// Usage:
 ///   final storage = StorageService.instance;
@@ -30,13 +34,29 @@ class StorageService {
   static const int _maxConversations = 100;
 
   Database? _db;
+  bool _webFallback = false;
+
+  // In-memory fallback store for web (sqflite is not supported on web).
+  final List<Map<String, dynamic>> _memConversations = [];
+  final List<Map<String, dynamic>> _memChunks = [];
 
   // ---------------------------------------------------------------------------
   // Initialisation
   // ---------------------------------------------------------------------------
 
   Future<void> init() async {
-    _db ??= await _openDb();
+    if (kIsWeb) {
+      // sqflite does not support web — degrade gracefully to in-memory store.
+      _webFallback = true;
+      return;
+    }
+    try {
+      _db ??= await _openDb();
+    } catch (e) {
+      // Unexpected init failure (e.g. on a simulator without proper storage).
+      // Fall back to in-memory so the app doesn't crash.
+      _webFallback = true;
+    }
   }
 
   Future<Database> _openDb() async {
@@ -119,6 +139,18 @@ class StorageService {
   /// Return summary rows for all conversations on this device, newest first.
   /// Skips heavy fields (input_text, chunks) — matches web getAll() cursor logic.
   Future<List<Map<String, dynamic>>> getAll() async {
+    if (_webFallback) {
+      final deviceId = await getDeviceId();
+      final rows = _memConversations
+          .where((r) => r['device_id'] == deviceId)
+          .map((r) => Map<String, dynamic>.from(r)
+            ..removeWhere((k, _) =>
+                k == 'input_text' || k == 'chunks'))
+          .toList()
+        ..sort((a, b) => (b['created_at'] as String)
+            .compareTo(a['created_at'] as String));
+      return rows;
+    }
     final deviceId = await getDeviceId();
     final rows = await _database.query(
       _conversationsTable,
@@ -132,6 +164,14 @@ class StorageService {
 
   /// Return the full conversation row by ID, or null if not found / wrong device.
   Future<Conversation?> getById(String id) async {
+    if (_webFallback) {
+      final deviceId = await getDeviceId();
+      final matches = _memConversations
+          .where((r) => r['id'] == id && r['device_id'] == deviceId)
+          .toList();
+      if (matches.isEmpty) return null;
+      return _rowToConversation(matches.first);
+    }
     final deviceId = await getDeviceId();
     final rows = await _database.query(
       _conversationsTable,
@@ -149,6 +189,13 @@ class StorageService {
     final record = conversation.copyWith(deviceId: deviceId);
     final map = _conversationToRow(record);
 
+    if (_webFallback) {
+      _memConversations.removeWhere((r) => r['id'] == record.id);
+      _memConversations.add(Map<String, dynamic>.from(map));
+      _pruneMemConversations(deviceId);
+      return record;
+    }
+
     await _database.insert(
       _conversationsTable,
       map,
@@ -165,12 +212,16 @@ class StorageService {
     final existing = await getById(id);
     if (existing == null) return null;
 
-    // Merge updates onto the existing record.
     final merged = _conversationToRow(existing);
     merged.addAll(updates);
-    // Ensure chunks is JSON-encoded if the caller passed a List.
     if (updates['chunks'] is List) {
       merged['chunks'] = jsonEncode(updates['chunks']);
+    }
+
+    if (_webFallback) {
+      final idx = _memConversations.indexWhere((r) => r['id'] == id);
+      if (idx >= 0) _memConversations[idx] = Map<String, dynamic>.from(merged);
+      return _rowToConversation(merged);
     }
 
     await _database.update(
@@ -188,6 +239,12 @@ class StorageService {
     final existing = await getById(id);
     if (existing == null) return false;
 
+    if (_webFallback) {
+      final before = _memConversations.length;
+      _memConversations.removeWhere((r) => r['id'] == id);
+      return _memConversations.length < before;
+    }
+
     final count = await _database.delete(
       _conversationsTable,
       where: 'id = ?',
@@ -199,6 +256,10 @@ class StorageService {
   /// Wipe all conversations for the current device.
   Future<void> clearAll() async {
     final deviceId = await getDeviceId();
+    if (_webFallback) {
+      _memConversations.removeWhere((r) => r['device_id'] == deviceId);
+      return;
+    }
     await _database.delete(
       _conversationsTable,
       where: 'device_id = ?',
@@ -211,8 +272,12 @@ class StorageService {
   // ---------------------------------------------------------------------------
 
   /// Persist a completed chunk result after a successful SSE stream.
-  /// Upserts so re-saves of the same chunkIndex are idempotent.
   Future<void> savePendingChunk(ChunkProgress chunk) async {
+    if (_webFallback) {
+      _memChunks.removeWhere((r) => r['row_id'] == chunk.toMap()['row_id']);
+      _memChunks.add(Map<String, dynamic>.from(chunk.toMap()));
+      return;
+    }
     await _database.insert(
       _pendingChunksTable,
       chunk.toMap(),
@@ -221,8 +286,15 @@ class StorageService {
   }
 
   /// Return all persisted chunks for a job, ordered by chunk_index.
-  /// Use on app restart to find which chunks already completed.
   Future<List<ChunkProgress>> getPendingChunks(String jobId) async {
+    if (_webFallback) {
+      final rows = _memChunks
+          .where((r) => r['job_id'] == jobId)
+          .toList()
+        ..sort((a, b) =>
+            (a['chunk_index'] as int).compareTo(b['chunk_index'] as int));
+      return rows.map(ChunkProgress.fromMap).toList();
+    }
     final rows = await _database.query(
       _pendingChunksTable,
       where: 'job_id = ?',
@@ -234,6 +306,10 @@ class StorageService {
 
   /// Remove all persisted chunks for a job once analysis is complete.
   Future<void> deletePendingChunks(String jobId) async {
+    if (_webFallback) {
+      _memChunks.removeWhere((r) => r['job_id'] == jobId);
+      return;
+    }
     await _database.delete(
       _pendingChunksTable,
       where: 'job_id = ?',
@@ -244,6 +320,21 @@ class StorageService {
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  /// In-memory prune for web fallback.
+  void _pruneMemConversations(String deviceId) {
+    final entries = _memConversations
+        .where((r) => r['device_id'] == deviceId)
+        .toList()
+      ..sort((a, b) => (a['created_at'] as String)
+          .compareTo(b['created_at'] as String));
+    if (entries.length > _maxConversations) {
+      final toRemove = entries.take(entries.length - _maxConversations);
+      for (final r in toRemove) {
+        _memConversations.removeWhere((x) => x['id'] == r['id']);
+      }
+    }
+  }
 
   /// Delete oldest conversations when the device exceeds the 100-entry limit.
   /// Mirrors pruneOldConversations() in storageManager.js.
