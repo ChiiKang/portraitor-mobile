@@ -4,9 +4,16 @@ import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import 'app.dart';
 import 'providers/conversation_provider.dart';
+import 'services/storage_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    await StorageService.instance.init();
+  } catch (_) {
+    // Storage init failure is non-fatal; service falls back to in-memory store.
+  }
 
   runApp(
     const ProviderScope(

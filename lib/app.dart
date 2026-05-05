@@ -4,12 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'main.dart';
-import 'screens/home_screen.dart';
-import 'screens/chat_import_screen.dart';
-import 'screens/date_filter_screen.dart';
-import 'screens/payment_screen.dart';
-import 'screens/processing_screen.dart';
-import 'screens/result_screen.dart';
+import 'screens/confirmation_screen.dart';
+import 'screens/webview_screen.dart';
+import 'screens/portrait_viewer_screen.dart';
 import 'providers/conversation_provider.dart';
 
 // ─── Router ──────────────────────────────────────────────────────────────────
@@ -19,35 +16,26 @@ final _router = GoRouter(
   routes: [
     GoRoute(
       path: '/',
-      name: 'home',
-      builder: (context, state) => const HomeScreen(),
+      name: 'confirmation',
+      builder: (context, state) => const ConfirmationScreen(),
     ),
     GoRoute(
-      path: '/import',
-      name: 'import',
-      builder: (context, state) => const ChatImportScreen(),
+      path: '/webview',
+      name: 'webview',
+      builder: (context, state) {
+        final extra = state.extra as Map<String, dynamic>?;
+        return WebViewScreen(
+          pendingChatText: extra?['pendingChatText'] as String?,
+          pendingMetadata: extra?['pendingMetadata'] as Map<String, dynamic>?,
+        );
+      },
     ),
     GoRoute(
-      path: '/filter',
-      name: 'filter',
-      builder: (context, state) => const DateFilterScreen(),
-    ),
-    GoRoute(
-      path: '/payment',
-      name: 'payment',
-      builder: (context, state) => const PaymentScreen(),
-    ),
-    GoRoute(
-      path: '/processing',
-      name: 'processing',
-      builder: (context, state) => const ProcessingScreen(),
-    ),
-    GoRoute(
-      path: '/result/:id',
-      name: 'result',
+      path: '/portrait/:id',
+      name: 'portrait',
       builder: (context, state) {
         final id = state.pathParameters['id']!;
-        return ResultScreen(conversationId: id);
+        return PortraitViewerScreen(conversationId: id);
       },
     ),
   ],
