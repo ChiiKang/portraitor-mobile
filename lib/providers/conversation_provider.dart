@@ -6,6 +6,8 @@ import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import '../models/conversation.dart';
 import '../config/api_config.dart';
+import '../services/chat_normalizer.dart' as chat_normalizer;
+import '../services/date_parser.dart' as date_parser;
 import '../services/token_calculator.dart';
 
 // ─── Runtime config ───────────────────────────────────────────────────────────
@@ -49,12 +51,11 @@ class RuntimeConfig {
 class ImportedChat {
   final String rawText;
   final String normalizedText;
-  final String detectedFormat; // 'whatsapp' | 'telegram_html' | 'telegram_text'
+  final String detectedFormat; // 'whatsapp' | 'telegram_html' | 'telegram_text' | 'unknown'
   final int messageCount;
   final DateTime? firstDate;
   final DateTime? lastDate;
   final List<String> participantNames;
-  final String? selectedTarget;
   final TextAnalysis tokenAnalysis;
 
   const ImportedChat({
@@ -65,7 +66,6 @@ class ImportedChat {
     required this.firstDate,
     required this.lastDate,
     required this.participantNames,
-    this.selectedTarget,
     required this.tokenAnalysis,
   });
 
@@ -77,7 +77,6 @@ class ImportedChat {
     DateTime? firstDate,
     DateTime? lastDate,
     List<String>? participantNames,
-    String? selectedTarget,
     TextAnalysis? tokenAnalysis,
   }) {
     return ImportedChat(
@@ -88,7 +87,6 @@ class ImportedChat {
       firstDate: firstDate ?? this.firstDate,
       lastDate: lastDate ?? this.lastDate,
       participantNames: participantNames ?? this.participantNames,
-      selectedTarget: selectedTarget ?? this.selectedTarget,
       tokenAnalysis: tokenAnalysis ?? this.tokenAnalysis,
     );
   }
@@ -167,32 +165,6 @@ class ConversationNotifier extends Notifier<ConversationState> {
     await _processRawText(text);
   }
 
-  // ── Target person selection ─────────────────────────────────────────────────
-
-  void selectTarget(String name) {
-    final current = state.pendingImport;
-    if (current == null) return;
-    state = state.copyWith(
-      pendingImport: current.copyWith(selectedTarget: name),
-    );
-  }
-
-  // ── Date range filtering ───────────────────────────────────────────────────
-
-  void applyDateRange(DateTime start, DateTime end) {
-    final current = state.pendingImport;
-    if (current == null) return;
-    // Placeholder — dateParser.dart will provide proper line filtering.
-    final analysis = analyzeText(current.normalizedText, 'Portrait prompt');
-    state = state.copyWith(
-      pendingImport: current.copyWith(
-        firstDate: start,
-        lastDate: end,
-        tokenAnalysis: analysis,
-      ),
-    );
-  }
-
   // ── Conversation list management ───────────────────────────────────────────
 
   void addConversation(Conversation conv) {
@@ -206,58 +178,84 @@ class ConversationNotifier extends Notifier<ConversationState> {
     );
   }
 
+  // ── Pending import accessors ────────────────────────────────────────────────
+
+  /// The normalized text ready for WebView injection.
+  /// Returns null if no import is pending.
+  String? get pendingNormalizedText => state.pendingImport?.normalizedText;
+
+  /// Metadata map for the WebView bridge injection.
+  /// Returns null if no import is pending.
+  Map<String, dynamic>? get pendingMetadata {
+    final p = state.pendingImport;
+    if (p == null) return null;
+    return {
+      'format': p.detectedFormat,
+      'messageCount': p.messageCount,
+      'startDate': p.firstDate?.toIso8601String(),
+      'endDate': p.lastDate?.toIso8601String(),
+      'participantNames': p.participantNames,
+      'tokenEstimate': p.tokenAnalysis.totalTokens,
+    };
+  }
+
+  /// Called by WebViewScreen after the text has been injected into the WebView.
+  void clearPending() => state = state.copyWith(clearPendingImport: true);
+
+  // ── State helpers ──────────────────────────────────────────────────────────
+
   void clearPendingImport() =>
       state = state.copyWith(clearPendingImport: true);
 
   void clearError() => state = state.copyWith(clearError: true);
 
+  void setError(String message) =>
+      state = state.copyWith(isLoading: false, error: message);
+
   // ── Private helpers ────────────────────────────────────────────────────────
 
   Future<void> _processRawText(String raw) async {
-    final format = _detectFormat(raw);
-    final normalized = raw; // placeholder until chat_normalizer.dart is ported
-    final lines = normalized.split('\n').where((l) => l.trim().isNotEmpty);
-    final names = _extractNames(normalized);
-    final analysis = analyzeText(normalized, 'Portrait prompt');
+    // Normalize using the real chat_normalizer service
+    final normalizedText = chat_normalizer.normalize(raw);
+
+    // Detect format from the raw text (normalizer returns whatsapp-style)
+    final format = chat_normalizer.detectFormat(raw);
+    final detectedFormat = switch (format) {
+      chat_normalizer.ChatFormat.whatsapp => 'whatsapp',
+      chat_normalizer.ChatFormat.telegramHtml => 'telegram_html',
+      chat_normalizer.ChatFormat.telegramText => 'telegram_text',
+      chat_normalizer.ChatFormat.unknown => 'unknown',
+    };
+
+    // Extract participant names from the normalized text
+    final names = chat_normalizer.detectNamesFromChat(normalizedText);
+
+    // Extract date range from the normalized text
+    date_parser.resetDetectedFormat();
+    final dateBounds = date_parser.getDateRange(normalizedText);
+
+    // Count messages (non-empty lines that look like chat messages)
+    final messageCount = normalizedText
+        .split('\n')
+        .where((l) => l.trim().isNotEmpty)
+        .length;
+
+    // Token analysis (empty prompt — the web app applies its own prompt)
+    final tokenAnalysis = analyzeText(normalizedText, '');
 
     state = state.copyWith(
       pendingImport: ImportedChat(
         rawText: raw,
-        normalizedText: normalized,
-        detectedFormat: format,
-        messageCount: lines.length,
-        firstDate: null,
-        lastDate: null,
+        normalizedText: normalizedText,
+        detectedFormat: detectedFormat,
+        messageCount: messageCount,
+        firstDate: dateBounds.minDate,
+        lastDate: dateBounds.maxDate,
         participantNames: names,
-        tokenAnalysis: analysis,
+        tokenAnalysis: tokenAnalysis,
       ),
       isLoading: false,
     );
-  }
-
-  String _detectFormat(String text) {
-    final lines = text.split('\n').take(20).toList();
-    final waPattern = RegExp(r'^\[\d{2}/\d{2}/\d{4},\s\d{2}:\d{2}:\d{2}\]');
-    if (lines.where((l) => waPattern.hasMatch(l)).length >= 3) {
-      return 'whatsapp';
-    }
-    if (text.contains('<!DOCTYPE html') &&
-        text.contains('class="message ')) {
-      return 'telegram_html';
-    }
-    return 'telegram_text';
-  }
-
-  List<String> _extractNames(String text) {
-    final pattern = RegExp(r'^\[.*?\]\s(.+?):\s', multiLine: true);
-    final names = <String>{};
-    for (final m in pattern.allMatches(text).take(200)) {
-      final name = m.group(1)?.trim();
-      if (name != null && name.isNotEmpty && name.length < 50) {
-        names.add(name);
-      }
-    }
-    return names.toList()..sort();
   }
 }
 
