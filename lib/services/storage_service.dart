@@ -1,391 +1,319 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
-import '../models/chunk_progress.dart';
-import '../models/conversation.dart';
-
-/// StorageService — SQLite-backed persistence for conversations and chunk progress.
-///
-/// Mirrors storageManager.js (IndexedDB) in the web app:
-///   - Device ID stored in SharedPreferences (like localStorage)
-///   - Conversations table for history (max 100 entries, oldest pruned)
-///   - pending_chunks table for crash recovery during chunked analysis
-///
-/// On web (kIsWeb), SQLite is not available. The service gracefully degrades
-/// to an in-memory store so the app runs without crashing in Chrome.
-///
-/// Usage:
-///   final storage = StorageService.instance;
-///   await storage.init();
-///   final deviceId = await storage.getDeviceId();
 class StorageService {
-  StorageService._();
   static final StorageService instance = StorageService._();
+  StorageService._();
 
-  static const String _dbName = 'portraitor.db';
-  static const int _dbVersion = 1;
-  static const String _conversationsTable = 'conversations';
-  static const String _pendingChunksTable = 'pending_chunks';
   static const String _deviceIdKey = 'portraitor_device_id';
   static const int _maxConversations = 100;
+  static const int _dbVersion = 3;
 
   Database? _db;
-  bool _webFallback = false;
+  String? _deviceId;
 
-  // In-memory fallback store for web (sqflite is not supported on web).
-  final List<Map<String, dynamic>> _memConversations = [];
-  final List<Map<String, dynamic>> _memChunks = [];
-
-  // ---------------------------------------------------------------------------
-  // Initialisation
-  // ---------------------------------------------------------------------------
+  String get deviceId => _deviceId ?? '';
 
   Future<void> init() async {
-    if (kIsWeb) {
-      // sqflite does not support web — degrade gracefully to in-memory store.
-      _webFallback = true;
-      return;
-    }
-    try {
-      _db ??= await _openDb();
-    } catch (e) {
-      // Unexpected init failure (e.g. on a simulator without proper storage).
-      // Fall back to in-memory so the app doesn't crash.
-      _webFallback = true;
-    }
+    _deviceId = await _getOrCreateDeviceId();
+    _db = await _openDatabase();
   }
 
-  Future<Database> _openDb() async {
+  Future<String> _getOrCreateDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    var id = prefs.getString(_deviceIdKey);
+    if (id == null) {
+      id = 'device_${const Uuid().v4()}';
+      await prefs.setString(_deviceIdKey, id);
+    }
+    return id;
+  }
+
+  Future<Database> _openDatabase() async {
+    final dbPath = await getDatabasesPath();
+    final path = join(dbPath, 'portraitor.db');
+
     return openDatabase(
-      _dbName,
+      path,
       version: _dbVersion,
       onCreate: (db, version) async {
         await db.execute('''
-          CREATE TABLE $_conversationsTable (
+          CREATE TABLE conversations (
             id TEXT PRIMARY KEY,
             device_id TEXT NOT NULL,
-            title TEXT NOT NULL DEFAULT '',
-            input_text TEXT NOT NULL DEFAULT '',
-            target_name TEXT NOT NULL DEFAULT '',
-            output_summary TEXT NOT NULL DEFAULT '',
-            chunks TEXT NOT NULL DEFAULT '[]',
-            mode TEXT NOT NULL DEFAULT 'single',
+            title TEXT,
+            input_text TEXT,
+            target_name TEXT,
+            output_summary TEXT,
+            chunks TEXT,
+            mode TEXT DEFAULT 'single',
             token_estimate INTEGER,
             token_limit INTEGER,
-            status TEXT NOT NULL DEFAULT 'completed',
+            status TEXT DEFAULT 'completed',
             created_at TEXT NOT NULL
           )
         ''');
-
         await db.execute(
-          'CREATE INDEX idx_conversations_device_id ON $_conversationsTable(device_id)',
+          'CREATE INDEX idx_conversations_device ON conversations(device_id)',
         );
         await db.execute(
-          'CREATE INDEX idx_conversations_created_at ON $_conversationsTable(created_at)',
+          'CREATE INDEX idx_conversations_date ON conversations(device_id, created_at)',
         );
 
         await db.execute('''
-          CREATE TABLE $_pendingChunksTable (
-            row_id TEXT PRIMARY KEY,
-            job_id TEXT NOT NULL,
-            conversation_id TEXT NOT NULL,
-            payment_session_id TEXT NOT NULL,
-            chunk_index INTEGER NOT NULL,
-            total_chunks INTEGER NOT NULL,
-            chunking_mode TEXT NOT NULL DEFAULT 'map_reduce',
-            content TEXT,
-            thoughts TEXT NOT NULL DEFAULT '',
-            status TEXT NOT NULL DEFAULT 'pending',
+          CREATE TABLE pending_jobs (
+            id TEXT PRIMARY KEY,
+            device_id TEXT NOT NULL,
+            client_conversation_ref TEXT NOT NULL,
+            target_name TEXT,
+            status TEXT DEFAULT 'processing',
+            chunks_completed INTEGER DEFAULT 0,
+            chunks_total INTEGER DEFAULT 0,
             created_at TEXT NOT NULL
           )
         ''');
-
         await db.execute(
-          'CREATE INDEX idx_pending_chunks_job_id ON $_pendingChunksTable(job_id)',
+          'CREATE INDEX idx_pending_jobs_device ON pending_jobs(device_id)',
         );
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 3) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS pending_jobs (
+              id TEXT PRIMARY KEY,
+              device_id TEXT NOT NULL,
+              client_conversation_ref TEXT NOT NULL,
+              target_name TEXT,
+              status TEXT DEFAULT 'processing',
+              chunks_completed INTEGER DEFAULT 0,
+              chunks_total INTEGER DEFAULT 0,
+              created_at TEXT NOT NULL
+            )
+          ''');
+        }
       },
     );
   }
 
-  Database get _database {
-    assert(_db != null, 'StorageService.init() must be called before use');
-    return _db!;
-  }
+  // ── Conversations ───────────────────────────────────────────
 
-  // ---------------------------------------------------------------------------
-  // Device ID — equivalent to localStorage getDeviceId() in storageManager.js
-  // ---------------------------------------------------------------------------
+  Future<List<Map<String, dynamic>>> getAllConversations() async {
+    final db = _db;
+    if (db == null) return [];
 
-  /// Get or create a persistent device identifier.
-  /// Format: "device_{uuid}" — matches the web app's getDeviceId().
-  Future<String> getDeviceId() async {
-    final prefs = await SharedPreferences.getInstance();
-    var deviceId = prefs.getString(_deviceIdKey);
-    if (deviceId == null || deviceId.isEmpty) {
-      deviceId = 'device_${const Uuid().v4()}';
-      await prefs.setString(_deviceIdKey, deviceId);
-    }
-    return deviceId;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Conversations
-  // ---------------------------------------------------------------------------
-
-  /// Return summary rows for all conversations on this device, newest first.
-  /// Skips heavy fields (input_text, chunks) — matches web getAll() cursor logic.
-  Future<List<Map<String, dynamic>>> getAll() async {
-    if (_webFallback) {
-      final deviceId = await getDeviceId();
-      final rows = _memConversations
-          .where((r) => r['device_id'] == deviceId)
-          .map((r) => Map<String, dynamic>.from(r)
-            ..removeWhere((k, _) =>
-                k == 'input_text' || k == 'chunks'))
-          .toList()
-        ..sort((a, b) => (b['created_at'] as String)
-            .compareTo(a['created_at'] as String));
-      return rows;
-    }
-    final deviceId = await getDeviceId();
-    final rows = await _database.query(
-      _conversationsTable,
-      columns: ['id', 'title', 'mode', 'status', 'created_at'],
+    return db.query(
+      'conversations',
+      columns: ['id', 'title', 'target_name', 'mode', 'status', 'token_estimate', 'created_at'],
       where: 'device_id = ?',
-      whereArgs: [deviceId],
+      whereArgs: [_deviceId],
       orderBy: 'created_at DESC',
     );
-    return rows;
   }
 
-  /// Return the full conversation row by ID, or null if not found / wrong device.
-  Future<Conversation?> getById(String id) async {
-    if (_webFallback) {
-      final deviceId = await getDeviceId();
-      final matches = _memConversations
-          .where((r) => r['id'] == id && r['device_id'] == deviceId)
-          .toList();
-      if (matches.isEmpty) return null;
-      return _rowToConversation(matches.first);
-    }
-    final deviceId = await getDeviceId();
-    final rows = await _database.query(
-      _conversationsTable,
+  Future<Map<String, dynamic>?> getConversationById(String id) async {
+    final db = _db;
+    if (db == null) return null;
+
+    final results = await db.query(
+      'conversations',
       where: 'id = ? AND device_id = ?',
-      whereArgs: [id, deviceId],
+      whereArgs: [id, _deviceId],
       limit: 1,
     );
-    if (rows.isEmpty) return null;
-    return _rowToConversation(rows.first);
+
+    return results.isEmpty ? null : results.first;
   }
 
-  /// Persist a new conversation. Auto-prunes oldest if over the 100-entry limit.
-  Future<Conversation> create(Conversation conversation) async {
-    final deviceId = await getDeviceId();
-    final record = conversation.copyWith(deviceId: deviceId);
-    final map = _conversationToRow(record);
+  Future<Map<String, dynamic>> createConversation({
+    String? id,
+    required String targetName,
+    required String inputText,
+    String? outputSummary,
+    List<String>? chunks,
+    String mode = 'single',
+    int? tokenEstimate,
+    int? tokenLimit,
+    String status = 'completed',
+  }) async {
+    final db = _db;
+    if (db == null) throw Exception('Database not initialized');
 
-    if (_webFallback) {
-      _memConversations.removeWhere((r) => r['id'] == record.id);
-      _memConversations.add(Map<String, dynamic>.from(map));
-      _pruneMemConversations(deviceId);
-      return record;
-    }
+    final conversationId = id ?? const Uuid().v4();
+    final title = _generateTitle(inputText);
+    final now = DateTime.now().toIso8601String();
 
-    await _database.insert(
-      _conversationsTable,
-      map,
-      conflictAlgorithm: ConflictAlgorithm.replace,
+    final data = {
+      'id': conversationId,
+      'device_id': _deviceId,
+      'title': title,
+      'input_text': inputText,
+      'target_name': targetName,
+      'output_summary': outputSummary ?? '',
+      'chunks': jsonEncode(chunks ?? []),
+      'mode': mode,
+      'token_estimate': tokenEstimate,
+      'token_limit': tokenLimit,
+      'status': status,
+      'created_at': now,
+    };
+
+    await db.insert('conversations', data, conflictAlgorithm: ConflictAlgorithm.replace);
+    await _pruneOldConversations();
+
+    return data;
+  }
+
+  Future<void> updateConversation(String id, Map<String, dynamic> updates) async {
+    final db = _db;
+    if (db == null) return;
+
+    await db.update(
+      'conversations',
+      updates,
+      where: 'id = ? AND device_id = ?',
+      whereArgs: [id, _deviceId],
     );
-
-    await _pruneOldConversations(deviceId);
-    return record;
   }
 
-  /// Apply a partial update to an existing conversation.
-  /// Accepts a Map with any subset of Conversation fields (snake_case keys).
-  Future<Conversation?> update(String id, Map<String, dynamic> updates) async {
-    final existing = await getById(id);
-    if (existing == null) return null;
+  Future<void> deleteConversation(String id) async {
+    final db = _db;
+    if (db == null) return;
 
-    final merged = _conversationToRow(existing);
-    merged.addAll(updates);
-    if (updates['chunks'] is List) {
-      merged['chunks'] = jsonEncode(updates['chunks']);
-    }
-
-    if (_webFallback) {
-      final idx = _memConversations.indexWhere((r) => r['id'] == id);
-      if (idx >= 0) _memConversations[idx] = Map<String, dynamic>.from(merged);
-      return _rowToConversation(merged);
-    }
-
-    await _database.update(
-      _conversationsTable,
-      merged,
-      where: 'id = ?',
-      whereArgs: [id],
+    await db.delete(
+      'conversations',
+      where: 'id = ? AND device_id = ?',
+      whereArgs: [id, _deviceId],
     );
-
-    return _rowToConversation(merged);
   }
 
-  /// Delete a single conversation by ID (ownership-verified).
-  Future<bool> delete(String id) async {
-    final existing = await getById(id);
-    if (existing == null) return false;
+  Future<void> deleteAllConversations() async {
+    final db = _db;
+    if (db == null) return;
 
-    if (_webFallback) {
-      final before = _memConversations.length;
-      _memConversations.removeWhere((r) => r['id'] == id);
-      return _memConversations.length < before;
-    }
-
-    final count = await _database.delete(
-      _conversationsTable,
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    return count > 0;
-  }
-
-  /// Wipe all conversations for the current device.
-  Future<void> clearAll() async {
-    final deviceId = await getDeviceId();
-    if (_webFallback) {
-      _memConversations.removeWhere((r) => r['device_id'] == deviceId);
-      return;
-    }
-    await _database.delete(
-      _conversationsTable,
+    await db.delete(
+      'conversations',
       where: 'device_id = ?',
-      whereArgs: [deviceId],
+      whereArgs: [_deviceId],
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Chunk persistence — crash recovery
-  // ---------------------------------------------------------------------------
+  Future<int> getConversationCount() async {
+    final db = _db;
+    if (db == null) return 0;
 
-  /// Persist a completed chunk result after a successful SSE stream.
-  Future<void> savePendingChunk(ChunkProgress chunk) async {
-    if (_webFallback) {
-      _memChunks.removeWhere((r) => r['row_id'] == chunk.toMap()['row_id']);
-      _memChunks.add(Map<String, dynamic>.from(chunk.toMap()));
-      return;
-    }
-    await _database.insert(
-      _pendingChunksTable,
-      chunk.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM conversations WHERE device_id = ?',
+      [_deviceId],
     );
+    return result.first['count'] as int? ?? 0;
   }
 
-  /// Return all persisted chunks for a job, ordered by chunk_index.
-  Future<List<ChunkProgress>> getPendingChunks(String jobId) async {
-    if (_webFallback) {
-      final rows = _memChunks
-          .where((r) => r['job_id'] == jobId)
-          .toList()
-        ..sort((a, b) =>
-            (a['chunk_index'] as int).compareTo(b['chunk_index'] as int));
-      return rows.map(ChunkProgress.fromMap).toList();
-    }
-    final rows = await _database.query(
-      _pendingChunksTable,
-      where: 'job_id = ?',
-      whereArgs: [jobId],
-      orderBy: 'chunk_index ASC',
+  Future<int> getTotalTokensUsed() async {
+    final db = _db;
+    if (db == null) return 0;
+
+    final result = await db.rawQuery(
+      'SELECT SUM(token_estimate) as total FROM conversations WHERE device_id = ?',
+      [_deviceId],
     );
-    return rows.map(ChunkProgress.fromMap).toList();
+    return (result.first['total'] as int?) ?? 0;
   }
 
-  /// Remove all persisted chunks for a job once analysis is complete.
-  Future<void> deletePendingChunks(String jobId) async {
-    if (_webFallback) {
-      _memChunks.removeWhere((r) => r['job_id'] == jobId);
-      return;
-    }
-    await _database.delete(
-      _pendingChunksTable,
-      where: 'job_id = ?',
-      whereArgs: [jobId],
-    );
+  // ── Pending Jobs ────────────────────────────────────────────
+
+  Future<void> savePendingJob({
+    required String id,
+    required String clientConversationRef,
+    String? targetName,
+    int chunksTotal = 0,
+  }) async {
+    final db = _db;
+    if (db == null) return;
+
+    await db.insert('pending_jobs', {
+      'id': id,
+      'device_id': _deviceId,
+      'client_conversation_ref': clientConversationRef,
+      'target_name': targetName,
+      'status': 'processing',
+      'chunks_completed': 0,
+      'chunks_total': chunksTotal,
+      'created_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  // ---------------------------------------------------------------------------
-  // Private helpers
-  // ---------------------------------------------------------------------------
+  Future<void> updatePendingJob(String id, {int? chunksCompleted, String? status}) async {
+    final db = _db;
+    if (db == null) return;
 
-  /// In-memory prune for web fallback.
-  void _pruneMemConversations(String deviceId) {
-    final entries = _memConversations
-        .where((r) => r['device_id'] == deviceId)
-        .toList()
-      ..sort((a, b) => (a['created_at'] as String)
-          .compareTo(b['created_at'] as String));
-    if (entries.length > _maxConversations) {
-      final toRemove = entries.take(entries.length - _maxConversations);
-      for (final r in toRemove) {
-        _memConversations.removeWhere((x) => x['id'] == r['id']);
-      }
+    final updates = <String, dynamic>{};
+    if (chunksCompleted != null) updates['chunks_completed'] = chunksCompleted;
+    if (status != null) updates['status'] = status;
+
+    if (updates.isNotEmpty) {
+      await db.update('pending_jobs', updates, where: 'id = ?', whereArgs: [id]);
     }
   }
 
-  /// Delete oldest conversations when the device exceeds the 100-entry limit.
-  /// Mirrors pruneOldConversations() in storageManager.js.
-  Future<void> _pruneOldConversations(String deviceId) async {
-    final countResult = await _database.rawQuery(
-      'SELECT COUNT(*) as cnt FROM $_conversationsTable WHERE device_id = ?',
-      [deviceId],
+  Future<List<Map<String, dynamic>>> getPendingJobs() async {
+    final db = _db;
+    if (db == null) return [];
+
+    return db.query(
+      'pending_jobs',
+      where: 'device_id = ? AND status = ?',
+      whereArgs: [_deviceId, 'processing'],
+      orderBy: 'created_at DESC',
     );
-    final count = (countResult.first['cnt'] as int?) ?? 0;
+  }
+
+  Future<void> deletePendingJob(String id) async {
+    final db = _db;
+    if (db == null) return;
+
+    await db.delete('pending_jobs', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ── Helpers ─────────────────────────────────────────────────
+
+  String _generateTitle(String inputText) {
+    final lines = inputText.trim().split('\n');
+    var firstLine = lines.isNotEmpty ? lines.first.trim() : 'Untitled';
+
+    firstLine = firstLine.replaceFirst(
+      RegExp(r'^\[?\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4},?\s*\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?\]?\s*-?\s*', caseSensitive: false),
+      '',
+    );
+
+    final cleaned = firstLine.replaceFirst(RegExp(r'^[^:]+:\s*'), '');
+    if (cleaned.length > 10) firstLine = cleaned;
+
+    if (firstLine.length > 100) firstLine = '${firstLine.substring(0, 97)}...';
+    return firstLine.isEmpty ? 'Untitled Conversation' : firstLine;
+  }
+
+  Future<void> _pruneOldConversations() async {
+    final db = _db;
+    if (db == null) return;
+
+    final count = await getConversationCount();
     if (count <= _maxConversations) return;
 
-    final toDelete = count - _maxConversations;
-    await _database.rawDelete(
-      '''
-      DELETE FROM $_conversationsTable
-      WHERE id IN (
-        SELECT id FROM $_conversationsTable
-        WHERE device_id = ?
-        ORDER BY created_at ASC
-        LIMIT ?
-      )
-      ''',
-      [deviceId, toDelete],
+    final oldest = await db.query(
+      'conversations',
+      columns: ['id'],
+      where: 'device_id = ?',
+      whereArgs: [_deviceId],
+      orderBy: 'created_at ASC',
+      limit: count - _maxConversations,
     );
-  }
 
-  /// Convert a sqflite row map to a Conversation, decoding the chunks JSON column.
-  Conversation _rowToConversation(Map<String, dynamic> row) {
-    final mutable = Map<String, dynamic>.from(row);
-    // Decode the chunks TEXT column to a List before calling fromMap.
-    final rawChunks = mutable['chunks'];
-    if (rawChunks is String) {
-      try {
-        final decoded = jsonDecode(rawChunks);
-        if (decoded is List) {
-          mutable['chunks'] = decoded.cast<Map<String, dynamic>>();
-        } else {
-          mutable['chunks'] = <Map<String, dynamic>>[];
-        }
-      } catch (_) {
-        mutable['chunks'] = <Map<String, dynamic>>[];
-      }
+    for (final row in oldest) {
+      await db.delete('conversations', where: 'id = ?', whereArgs: [row['id']]);
     }
-    return Conversation.fromMap(mutable);
-  }
-
-  /// Convert a Conversation to a sqflite row map, JSON-encoding the chunks list.
-  Map<String, dynamic> _conversationToRow(Conversation c) {
-    final map = c.toMap();
-    // toMap() writes chunks as a manually-encoded string; re-encode properly.
-    map['chunks'] = jsonEncode(c.chunks);
-    return map;
   }
 }
