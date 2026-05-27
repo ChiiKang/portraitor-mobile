@@ -59,61 +59,64 @@ Useful local values:
 
 Android emulators cannot reach your computer through `localhost`; use `10.0.2.2` instead. Physical devices need your computer's LAN IP and the backend port must be reachable from the device.
 
-## Launch Locally
-
-List connected devices:
+## Launch on iOS Simulator (macOS)
 
 ```sh
-flutter devices
-```
-
-List available emulators:
-
-```sh
-flutter emulators
-```
-
-Start an Android emulator:
-
-```sh
-flutter emulators --launch <emulator_id>
-```
-
-Start the iOS simulator:
-
-```sh
+# 1. Open the Simulator app and boot a device
 open -a Simulator
+xcrun simctl boot "iPhone 17 Pro"
+
+# 2. Run the app
+flutter run -d "iPhone 17 Pro"
 ```
 
-Run on the selected device with the default local API URL:
+The app will build via Xcode (~5-10s after first build) and launch on the simulator.
+
+## Launch on Android Emulator (macOS)
 
 ```sh
-flutter run
+# 1. Launch the Pixel 8 emulator
+flutter emulators --launch Pixel_8
+
+# 2. Wait ~10 seconds for boot, then run the app
+flutter run -d emulator-5554
 ```
 
-Run on an Android emulator against a local backend:
+First Android build downloads NDK/CMake and runs Gradle (~2-5 min). Subsequent builds are ~10s.
 
-```sh
-flutter run -d <android_device_id> --dart-define=API_URL=https://10.0.2.2:8443/api
-```
+## Quick Reference
 
-Run on an iOS simulator against a local backend:
+| Command | What it does |
+|---------|-------------|
+| `flutter devices` | List all connected simulators/emulators/devices |
+| `flutter emulators` | List available emulators you can launch |
+| `flutter run` | Run on the only connected device (or prompts to choose) |
+| `flutter run -d "iPhone 17 Pro"` | Run on a specific iOS simulator |
+| `flutter run -d emulator-5554` | Run on the Android emulator |
 
-```sh
-flutter run -d <ios_device_id> --dart-define=API_URL=https://localhost:8443/api
-```
+During `flutter run`, use these keyboard shortcuts in the terminal:
 
-Run against staging:
+- `r` — hot reload (keeps app state, applies code changes)
+- `R` — hot restart (resets app state)
+- `q` — quit and stop the app
+
+## Custom API URL
+
+Pass a backend URL at build time:
 
 ```sh
 flutter run --dart-define=API_URL=https://staging.portraitor.ai/api
 ```
 
-During `flutter run`, use:
+| Target | API URL |
+| --- | --- |
+| iOS simulator | `https://localhost:8443/api` (default) |
+| Android emulator | `https://10.0.2.2:8443/api` |
+| Physical device | `https://<your-lan-ip>:8443/api` |
+| Staging | `https://staging.portraitor.ai/api` |
+| Production | `https://portraitor.ai/api` |
 
-- `r` to hot reload
-- `R` to hot restart
-- `q` to quit
+Android emulators cannot reach `localhost` — use `10.0.2.2` instead.
 
 ## Test Locally
 
