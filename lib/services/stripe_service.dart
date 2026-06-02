@@ -1,30 +1,29 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
-
-import 'api_service.dart';
 
 class StripeService {
   static final StripeService instance = StripeService._();
   StripeService._();
 
-  Future<void> init({required String publishableKey}) async {
-    Stripe.publishableKey = publishableKey;
-    await Stripe.instance.applySettings();
-  }
+  static const String _returnURL = 'portraitor://stripe-redirect';
+  static const Duration _presentTimeout = Duration(minutes: 3);
 
-  Future<Map<String, dynamic>> createPaymentIntent({
-    required String clientConversationRef,
-    String? email,
-  }) async {
-    return ApiService.instance.createPayment(
-      clientConversationRef: clientConversationRef,
-      email: email,
-    );
+  Future<void> init({required String publishableKey}) async {
+    debugPrint('[Stripe] Setting publishableKey: ${publishableKey.substring(0, 20)}...');
+    Stripe.publishableKey = publishableKey;
+    if (Platform.isIOS) {
+      Stripe.urlScheme = 'portraitor';
+    }
+    await Stripe.instance.applySettings();
+    debugPrint('[Stripe] Settings applied (urlScheme: portraitor)');
   }
 
   Future<void> initPaymentSheet({
     required String clientSecret,
     required String merchantName,
+    String? merchantIdentifier,
     bool applePayEnabled = true,
     bool googlePayEnabled = true,
   }) async {
@@ -32,31 +31,31 @@ class StripeService {
       paymentSheetParameters: SetupPaymentSheetParameters(
         paymentIntentClientSecret: clientSecret,
         merchantDisplayName: merchantName,
+        returnURL: _returnURL,
         style: ThemeMode.light,
-        applePay: applePayEnabled
-            ? const PaymentSheetApplePay(merchantCountryCode: 'US')
+        applePay: (applePayEnabled && merchantIdentifier != null && Platform.isIOS)
+            ? PaymentSheetApplePay(merchantCountryCode: 'US')
             : null,
-        googlePay: googlePayEnabled
+        // Google Pay is Android-only — setting it on iOS can cause hangs
+        googlePay: (googlePayEnabled && Platform.isAndroid)
             ? const PaymentSheetGooglePay(
                 merchantCountryCode: 'US',
-                testEnv: false,
+                testEnv: true,
               )
             : null,
       ),
     );
+    debugPrint('[Stripe] PaymentSheet initialized (returnURL: $_returnURL)');
   }
 
   Future<void> presentPaymentSheet() async {
-    await Stripe.instance.presentPaymentSheet();
-  }
-
-  Future<Map<String, dynamic>> verifyPayment({
-    required String clientConversationRef,
-    required String paymentIntentId,
-  }) async {
-    return ApiService.instance.verifyPayment(
-      clientConversationRef: clientConversationRef,
-      paymentIntentId: paymentIntentId,
+    debugPrint('[Stripe] Presenting PaymentSheet...');
+    await Stripe.instance.presentPaymentSheet().timeout(
+      _presentTimeout,
+      onTimeout: () {
+        throw Exception('Payment sheet timed out — please try again');
+      },
     );
+    debugPrint('[Stripe] PaymentSheet completed');
   }
 }

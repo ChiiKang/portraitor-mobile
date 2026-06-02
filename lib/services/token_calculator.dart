@@ -15,15 +15,32 @@ class TokenAnalysis {
 class TokenCalculator {
   TokenCalculator._();
 
+  /// Word-based token estimation matching the web app's tokenCalculator.js.
+  /// Uses words.length * 1.2 (not character-based).
   static int estimateTokens(String text) {
     if (text.isEmpty) return 0;
-    return (text.length / 4).ceil();
+    final clean = text.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (clean.isEmpty) return 0;
+    final words = clean.split(RegExp(r'\s+'));
+    return (words.length * 1.2).ceil();
   }
 
-  static List<String> splitIntoChunks(String text, {int maxTokensPerChunk = 30000}) {
-    final totalTokens = estimateTokens(text);
-    if (totalTokens <= maxTokensPerChunk) return [text];
+  /// Split text into chunks that fit within [maxTokensPerChunk].
+  /// [promptTokens] is deducted from capacity (web parity: prompt tokens
+  /// reduce the space available for content in each chunk).
+  static List<String> splitIntoChunks(
+    String text, {
+    int maxTokensPerChunk = 30000,
+    int promptTokens = 0,
+  }) {
+    final effectiveMax = maxTokensPerChunk - promptTokens;
+    if (effectiveMax <= 0) return [text];
 
+    final totalTokens = estimateTokens(text);
+    if (totalTokens <= effectiveMax) return [text];
+
+    // Split on line boundaries to preserve chat message structure.
+    // Each line's token count is estimated and accumulated until the chunk limit.
     final lines = text.split('\n');
     final chunks = <String>[];
     final currentChunk = StringBuffer();
@@ -32,18 +49,22 @@ class TokenCalculator {
     for (final line in lines) {
       final lineTokens = estimateTokens(line);
 
-      if (currentTokens + lineTokens > maxTokensPerChunk && currentChunk.isNotEmpty) {
+      if (currentTokens + lineTokens > effectiveMax && currentChunk.isNotEmpty) {
         chunks.add(currentChunk.toString().trim());
         currentChunk.clear();
         currentTokens = 0;
       }
 
-      currentChunk.writeln(line);
+      if (currentChunk.isNotEmpty) currentChunk.write('\n');
+      currentChunk.write(line);
       currentTokens += lineTokens;
     }
 
     if (currentChunk.isNotEmpty) {
-      chunks.add(currentChunk.toString().trim());
+      final remaining = currentChunk.toString().trim();
+      if (remaining.isNotEmpty) {
+        chunks.add(remaining);
+      }
     }
 
     return chunks;

@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
@@ -99,6 +101,7 @@ class ImportNotifier extends StateNotifier<ImportState> {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['txt', 'zip'],
+        withData: true,
       );
 
       if (result == null || result.files.isEmpty) {
@@ -110,20 +113,43 @@ class ImportNotifier extends StateNotifier<ImportState> {
       String text;
 
       if (file.extension == 'zip') {
-        final bytes = await File(file.path!).readAsBytes();
+        List<int> bytes;
+        if (file.bytes != null) {
+          bytes = file.bytes!;
+        } else if (file.path != null) {
+          bytes = await File(file.path!).readAsBytes();
+        } else {
+          state = state.copyWith(isLoading: false, error: 'Could not read file');
+          return;
+        }
         final archive = ZipDecoder().decodeBytes(bytes);
         final txtFile = archive.files.firstWhere(
-          (f) => f.name.endsWith('.txt'),
-          orElse: () => archive.files.first,
+          (f) => f.name.endsWith('.txt') && !f.name.startsWith('__MACOSX'),
+          orElse: () => archive.files.firstWhere(
+            (f) => !f.isFile || f.name.endsWith('.txt'),
+            orElse: () => archive.files.first,
+          ),
         );
-        text = String.fromCharCodes(txtFile.content as List<int>);
+        text = utf8.decode(txtFile.content as List<int>, allowMalformed: true);
       } else {
-        text = await File(file.path!).readAsString();
+        if (file.bytes != null) {
+          text = utf8.decode(file.bytes!, allowMalformed: true);
+        } else if (file.path != null) {
+          text = await File(file.path!).readAsString();
+        } else {
+          state = state.copyWith(isLoading: false, error: 'Could not read file');
+          return;
+        }
+      }
+
+      if (text.trim().isEmpty) {
+        state = state.copyWith(isLoading: false, error: 'File is empty');
+        return;
       }
 
       _processText(text);
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(isLoading: false, error: 'Failed to read file: $e');
     }
   }
 
@@ -137,17 +163,58 @@ class ImportNotifier extends StateNotifier<ImportState> {
   }
 
   void handleSharedFiles(List<SharedMediaFile> files) {
+    debugPrint('[Import] handleSharedFiles: ${files.length} files');
     for (final file in files) {
-      if (file.type == SharedMediaType.text || file.path.endsWith('.txt')) {
-        state = state.copyWith(isLoading: true);
-        File(file.path).readAsString().then((text) {
-          _processText(text);
+      final path = file.path;
+      debugPrint('[Import]   file: path=$path, type=${file.type}, mimeType=${file.mimeType}');
+
+      // Accept text files, zip files, or any file type shared as text
+      if (file.type == SharedMediaType.text ||
+          file.type == SharedMediaType.file ||
+          path.endsWith('.txt') ||
+          path.endsWith('.zip')) {
+        state = state.copyWith(isLoading: true, error: null);
+        _readSharedFile(path).then((text) {
+          if (text != null && text.trim().isNotEmpty) {
+            debugPrint('[Import] Read ${text.length} chars from shared file');
+            _processText(text);
+          } else {
+            debugPrint('[Import] Shared file is empty or null');
+            state = state.copyWith(isLoading: false, error: 'Shared file is empty');
+          }
         }).catchError((e) {
+          debugPrint('[Import] Error reading shared file: $e');
           state = state.copyWith(isLoading: false, error: e.toString());
         });
         return;
       }
     }
+    debugPrint('[Import] No compatible file found in shared files');
+  }
+
+  Future<String?> _readSharedFile(String path) async {
+    final fileObj = File(path);
+    final exists = await fileObj.exists();
+    debugPrint('[Import] _readSharedFile: path=$path, exists=$exists');
+
+    if (!exists) return null;
+
+    if (path.endsWith('.zip')) {
+      final bytes = await fileObj.readAsBytes();
+      debugPrint('[Import] Zip file: ${bytes.length} bytes');
+      final archive = ZipDecoder().decodeBytes(bytes);
+      debugPrint('[Import] Zip contains ${archive.files.length} entries: '
+          '${archive.files.map((f) => f.name).join(', ')}');
+      final txtFile = archive.files.firstWhere(
+        (f) => f.name.endsWith('.txt') && !f.name.startsWith('__MACOSX'),
+        orElse: () => archive.files.first,
+      );
+      return utf8.decode(txtFile.content as List<int>, allowMalformed: true);
+    }
+
+    final bytes = await fileObj.readAsBytes();
+    debugPrint('[Import] Text file: ${bytes.length} bytes');
+    return utf8.decode(bytes, allowMalformed: true);
   }
 
   void _processText(String rawText) {

@@ -17,10 +17,15 @@ import 'screens/gdpr_screen.dart';
 
 // ─── Router ──────────────────────────────────────────────────────────────────
 
-final _router = GoRouter(
+final router = GoRouter(
   initialLocation: '/',
   redirect: (context, state) async {
     if (state.matchedLocation == '/') {
+      // Skip onboarding when launched via share intent — the ShareIntentHandler
+      // will navigate to /setup once processing completes.
+      if (shareIntentPending.value) {
+        return '/home';
+      }
       return '/onboarding';
     }
     return null;
@@ -64,6 +69,7 @@ final _router = GoRouter(
           targetName: extra['targetName'] as String? ?? '',
           tokenEstimate: extra['tokenEstimate'] as int? ?? 0,
           conversationId: extra['conversationId'] as String?,
+          dateRange: extra['dateRange'] as String?,
         );
       },
     ),
@@ -76,7 +82,8 @@ final _router = GoRouter(
           normalizedText: extra['normalizedText'] as String? ?? '',
           targetName: extra['targetName'] as String? ?? '',
           conversationId: extra['conversationId'] as String? ?? '',
-          paymentIntentId: extra['paymentIntentId'] as String?,
+          paymentIntentId: extra['paymentIntentId'] as String? ?? '',
+          dateRange: extra['dateRange'] as String?,
         );
       },
     ),
@@ -124,7 +131,7 @@ class PortraitorApp extends ConsumerWidget {
       child: MaterialApp.router(
         title: 'Portraitor',
         theme: portraitorTheme,
-        routerConfig: _router,
+        routerConfig: router,
         debugShowCheckedModeBanner: false,
       ),
     );
