@@ -21,6 +21,9 @@ class ApiService {
 
   static const String _defaultBaseUrl = 'https://staging.portraitor.ai';
 
+  /// Public base URL for constructing non-API URLs (e.g., /pay/ page)
+  String get baseUrl => _dio.options.baseUrl;
+
   late final Dio _dio = Dio(BaseOptions(
     baseUrl: const String.fromEnvironment('API_BASE', defaultValue: _defaultBaseUrl),
     connectTimeout: const Duration(seconds: 15),

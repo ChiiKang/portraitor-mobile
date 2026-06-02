@@ -3,10 +3,10 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:uuid/uuid.dart';
 
 import '../services/api_service.dart';
-import '../services/stripe_service.dart';
 
 enum PaymentStatus { idle, loading, authorized, success, error }
 
@@ -62,12 +62,14 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     return digest.toString().substring(0, 16);
   }
 
-  /// Full payment flow: create → Stripe confirm → verify
+  /// Full payment flow: create PaymentIntent → open web payment page → catch deep link → verify
   /// [normalizedText] is used to compute inputHash for duplicate detection.
+  /// [targetName] is shown on the payment page as "Sarah's portrait".
   Future<bool> initiatePayment({
     required String email,
     String? existingConversationRef,
     String? normalizedText,
+    String? targetName,
   }) async {
     final conversationRef = existingConversationRef ?? const Uuid().v4();
     state = state.copyWith(
@@ -81,35 +83,25 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
           ? computeInputHash(normalizedText)
           : null;
 
+      // Step 1: Create PaymentIntent on backend
       debugPrint('[Payment] Step 1: Creating PaymentIntent...');
       final result = await ApiService.instance.createPayment(
         clientConversationRef: conversationRef,
         customerEmail: email,
         inputHash: inputHash,
       );
-      debugPrint('[Payment] Step 1 done. Response keys: ${result.keys.toList()}');
 
       final data = result['data'] as Map<String, dynamic>? ?? result;
       final clientSecret = data['client_secret'] as String?;
       final paymentIntentId = data['payment_intent_id'] as String?;
       final publishableKey = data['publishable_key'] as String?;
+      final amountCents = data['amount_cents'] as int? ?? 500;
+      final currency = data['currency'] as String? ?? 'usd';
 
-      debugPrint('[Payment] clientSecret: ${clientSecret != null ? '${clientSecret.substring(0, 20)}...' : 'NULL'}');
-      debugPrint('[Payment] paymentIntentId: $paymentIntentId');
-      debugPrint('[Payment] publishableKey: ${publishableKey != null ? '${publishableKey.substring(0, 20)}...' : 'NULL'}');
-
-      if (clientSecret == null || paymentIntentId == null) {
+      if (clientSecret == null || paymentIntentId == null || publishableKey == null) {
         state = state.copyWith(
           status: PaymentStatus.error,
           error: 'Missing payment credentials from server',
-        );
-        return false;
-      }
-
-      if (publishableKey == null || publishableKey.isEmpty) {
-        state = state.copyWith(
-          status: PaymentStatus.error,
-          error: 'No Stripe publishable key returned from server',
         );
         return false;
       }
@@ -120,41 +112,63 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         publishableKey: publishableKey,
       );
 
-      debugPrint('[Payment] Step 2: Initializing Stripe...');
-      await StripeService.instance.init(publishableKey: publishableKey);
+      // Step 2: Open web payment page in browser
+      debugPrint('[Payment] Step 2: Opening web payment page...');
+      final baseUrl = ApiService.instance.baseUrl;
+      final payUrl = Uri.parse('$baseUrl/pay/').replace(queryParameters: {
+        'client_secret': clientSecret,
+        'publishable_key': publishableKey,
+        'amount': amountCents.toString(),
+        'currency': currency,
+        'pi_id': paymentIntentId,
+        'ref': conversationRef,
+        if (targetName != null && targetName.isNotEmpty) 'name': targetName,
+      });
 
-      debugPrint('[Payment] Step 3: Initializing PaymentSheet...');
-      await StripeService.instance.initPaymentSheet(
-        clientSecret: clientSecret,
-        merchantName: 'Portraitor',
-        merchantIdentifier: null,
-        applePayEnabled: false,
+      final callbackUrl = await FlutterWebAuth2.authenticate(
+        url: payUrl.toString(),
+        callbackUrlScheme: 'portraitor',
       );
 
-      debugPrint('[Payment] Step 4: Presenting PaymentSheet...');
-      await StripeService.instance.presentPaymentSheet();
-      debugPrint('[Payment] Step 4 done — user completed payment');
+      // Step 3: Parse the deep link callback
+      final uri = Uri.parse(callbackUrl);
+      debugPrint('[Payment] Callback received: ${uri.host}');
 
-      debugPrint('[Payment] Step 5: Verifying payment...');
-      final verification = await ApiService.instance.verifyPayment(
-        paymentIntentId: paymentIntentId,
-      );
-
-      final verifyData = verification['data'] as Map<String, dynamic>? ?? verification;
-      final paid = verifyData['paid'] == true ||
-          verifyData['status'] == 'requires_capture' ||
-          verifyData['status'] == 'succeeded';
-
-      if (paid) {
-        debugPrint('[Payment] Payment verified successfully');
-        state = state.copyWith(status: PaymentStatus.authorized);
-        return true;
+      if (uri.host == 'payment-cancel') {
+        debugPrint('[Payment] User cancelled payment');
+        state = state.copyWith(status: PaymentStatus.idle, error: null);
+        return false;
       }
 
-      debugPrint('[Payment] Payment NOT verified. Data: $verifyData');
+      if (uri.host == 'payment-success') {
+        // Step 4: Verify server-side (never trust redirect alone)
+        debugPrint('[Payment] Step 4: Verifying payment server-side...');
+        final verification = await ApiService.instance.verifyPayment(
+          paymentIntentId: paymentIntentId,
+        );
+
+        final verifyData = verification['data'] as Map<String, dynamic>? ?? verification;
+        final paid = verifyData['paid'] == true ||
+            verifyData['status'] == 'requires_capture' ||
+            verifyData['status'] == 'succeeded';
+
+        if (paid) {
+          debugPrint('[Payment] Payment verified successfully');
+          state = state.copyWith(status: PaymentStatus.authorized);
+          return true;
+        }
+
+        debugPrint('[Payment] Payment NOT verified. Data: $verifyData');
+        state = state.copyWith(
+          status: PaymentStatus.error,
+          error: 'Payment not confirmed by server',
+        );
+        return false;
+      }
+
       state = state.copyWith(
         status: PaymentStatus.error,
-        error: 'Payment not confirmed by server',
+        error: 'Unexpected payment response',
       );
       return false;
     } on ApiException catch (e) {

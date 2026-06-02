@@ -67,6 +67,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         email: email,
         existingConversationRef: widget.conversationId,
         normalizedText: widget.normalizedText,
+        targetName: widget.targetName,
       );
     }
 
@@ -119,8 +120,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       const SizedBox(height: 22),
                       _EmailField(controller: _emailController),
                       const SizedBox(height: 24),
-                      _AcceptedCards(),
-                      const SizedBox(height: 14),
                       GradientButton(
                         onPressed: _isProcessing ? null : _pay,
                         isLoading: _isProcessing,
@@ -129,12 +128,16 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                           children: [
                             const Icon(Icons.lock_outline, size: 16, color: Colors.white),
                             const SizedBox(width: 8),
-                            Text('Pay \$${price.toStringAsFixed(2)} with card'),
+                            Text('Pay \$${price.toStringAsFixed(2)}'),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 18),
-                      _TrustBadge(),
+                      const SizedBox(height: 14),
+                      Text(
+                        "You'll be redirected to a secure payment page",
+                        style: PortraitorTokens.bodySm.copyWith(color: PortraitorTokens.inkMuted),
+                        textAlign: TextAlign.center,
+                      ),
                       const SizedBox(height: 40),
                     ],
                   ),
@@ -442,124 +445,3 @@ class _EmailField extends StatelessWidget {
   }
 }
 
-class _AcceptedCards extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          'WE ACCEPT',
-          style: PortraitorTokens.labelSm.copyWith(
-            color: PortraitorTokens.inkMuted,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.3,
-          ),
-        ),
-        const SizedBox(width: 8),
-        _CardBadge(label: 'VISA', color: const Color(0xFF1A1F71)),
-        const SizedBox(width: 5),
-        _CardBadge(label: '', color: const Color(0xFFEB001B), isCircles: true),
-        const SizedBox(width: 5),
-        _CardBadge(label: 'AMEX', color: const Color(0xFF006FCF)),
-      ],
-    );
-  }
-}
-
-class _CardBadge extends StatelessWidget {
-  final String label;
-  final Color color;
-  final bool isCircles;
-
-  const _CardBadge({required this.label, required this.color, this.isCircles = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 38,
-      height: 24,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Center(
-        child: isCircles
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(width: 10, height: 10, decoration: BoxDecoration(color: const Color(0xFFEB001B), shape: BoxShape.circle)),
-                  Transform.translate(
-                    offset: const Offset(-3, 0),
-                    child: Container(width: 10, height: 10, decoration: BoxDecoration(color: const Color(0xFFF79E1B), shape: BoxShape.circle)),
-                  ),
-                ],
-              )
-            : Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 8,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: 0.5,
-                ),
-              ),
-      ),
-    );
-  }
-}
-
-class _TrustBadge extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.7),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: PortraitorTokens.borderSoft),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.lock_outline, size: 12, color: PortraitorTokens.inkMuted),
-              const SizedBox(width: 8),
-              Text(
-                'SECURED BY',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  color: PortraitorTokens.inkMuted,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.2,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                'stripe',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  color: PortraitorTokens.inkStrong,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.2,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          'Card details never touch our servers · No subscription · No saved payment method',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 11,
-            color: PortraitorTokens.inkDim,
-            fontWeight: FontWeight.w500,
-            height: 1.5,
-          ),
-        ),
-      ],
-    );
-  }
-}
