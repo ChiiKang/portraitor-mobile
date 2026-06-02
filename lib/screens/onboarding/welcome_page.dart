@@ -20,7 +20,7 @@ class WelcomePage extends StatelessWidget {
           const PortraitorOrb(size: 140),
           const SizedBox(height: PortraitorTokens.space40),
           const Text(
-            'Understand anyone\nthrough their words',
+            'Understand someone through conversations',
             style: PortraitorTokens.displayMd,
             textAlign: TextAlign.center,
           ),

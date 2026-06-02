@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../providers/import_provider.dart';
 import '../providers/portraits_provider.dart';
+import '../providers/processing_provider.dart';
 import '../theme/tokens.dart';
 import '../widgets/gradient_avatar.dart';
 import '../widgets/gradient_background.dart';
@@ -49,6 +50,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   Widget build(BuildContext context) {
     final portraits = ref.watch(portraitsProvider);
     final importState = ref.watch(importProvider);
+
+    // Auto-refresh portraits when processing completes
+    ref.listen(processingProvider, (prev, next) {
+      if (prev?.status != ProcessingStatus.done && next.status == ProcessingStatus.done) {
+        ref.read(portraitsProvider.notifier).loadPortraits();
+      }
+    });
 
     return Scaffold(
       body: GradientBackground(

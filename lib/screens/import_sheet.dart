@@ -11,12 +11,13 @@ void showImportSheet(BuildContext context, WidgetRef ref) {
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => const _ImportSheetContent(),
+    builder: (_) => _ImportSheetContent(parentContext: context),
   );
 }
 
 class _ImportSheetContent extends ConsumerWidget {
-  const _ImportSheetContent();
+  final BuildContext parentContext;
+  const _ImportSheetContent({required this.parentContext});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -51,6 +52,18 @@ class _ImportSheetContent extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Row(
+                  children: [
+                    const Spacer(),
+                    Text(
+                      'STEP 1 OF 3',
+                      style: PortraitorTokens.labelSm.copyWith(
+                        color: PortraitorTokens.inkMuted,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ],
+                ),
                 const Text('Add a conversation', style: PortraitorTokens.titleLg),
                 const SizedBox(height: 4),
                 Text(
@@ -71,9 +84,7 @@ class _ImportSheetContent extends ConsumerWidget {
           ],
 
           _OptionTile(
-            icon: Icons.chat_bubble,
-            iconColor: const Color(0xFF25D366),
-            iconBgColor: const Color(0xFFE8FBF0),
+            iconWidget: const _WhatsAppIcon(),
             title: 'Share from WhatsApp',
             subtitle: 'Open WhatsApp → Share → Portraitor',
             onTap: () => _handleWhatsAppShare(context, ref),
@@ -102,10 +113,9 @@ class _ImportSheetContent extends ConsumerWidget {
   }
 
   void _handleWhatsAppShare(BuildContext context, WidgetRef ref) {
+    final navContext = parentContext;
     Navigator.pop(context);
-    // In production, this is handled by the OS share intent.
-    // For testing, navigate to setup with sample data.
-    context.push('/setup', extra: {
+    navContext.push('/setup', extra: {
       'normalizedText': '[2024-05-19, 10:32] Sarah: hey did you see that?\n'
           '[2024-05-19, 10:33] You: yeah it was amazing\n'
           '[2024-05-19, 10:35] Sarah: I know right! Can\'t believe it happened\n'
@@ -127,28 +137,36 @@ class _ImportSheetContent extends ConsumerWidget {
   }
 
   void _handleClipboard(BuildContext context, WidgetRef ref) async {
+    final navContext = parentContext;
+    final notifier = ref.read(importProvider.notifier);
+    final container = ProviderScope.containerOf(navContext);
     Navigator.pop(context);
-    await ref.read(importProvider.notifier).importFromClipboard();
-    if (!context.mounted) return;
-    _navigateToSetup(context, ref);
+    await notifier.importFromClipboard();
+    if (!navContext.mounted) return;
+    _navigateOrShowError(navContext, container);
   }
 
   void _handleFile(BuildContext context, WidgetRef ref) async {
+    final navContext = parentContext;
+    final notifier = ref.read(importProvider.notifier);
+    final container = ProviderScope.containerOf(navContext);
     Navigator.pop(context);
-    await ref.read(importProvider.notifier).importFromFile();
-    if (!context.mounted) return;
-    _navigateToSetup(context, ref);
+    await notifier.importFromFile();
+    if (!navContext.mounted) return;
+    _navigateOrShowError(navContext, container);
   }
 
   void _handlePaste(BuildContext context, WidgetRef ref) {
+    final navContext = parentContext;
+    final container = ProviderScope.containerOf(navContext);
     Navigator.pop(context);
-    _showPasteDialog(context, ref);
+    _showPasteDialog(navContext, container);
   }
 
-  void _showPasteDialog(BuildContext context, WidgetRef ref) {
+  void _showPasteDialog(BuildContext navContext, ProviderContainer container) {
     final controller = TextEditingController();
     showDialog(
-      context: context,
+      context: navContext,
       builder: (ctx) => AlertDialog(
         title: const Text('Paste chat text'),
         content: TextField(
@@ -165,9 +183,18 @@ class _ImportSheetContent extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () async {
+              final text = controller.text;
               Navigator.pop(ctx);
-              await ref.read(importProvider.notifier).importFromPaste(controller.text);
-              if (context.mounted) _navigateToSetup(context, ref);
+              if (text.trim().isEmpty) {
+                if (navContext.mounted) {
+                  ScaffoldMessenger.of(navContext).showSnackBar(
+                    const SnackBar(content: Text('Please paste some text first')),
+                  );
+                }
+                return;
+              }
+              await container.read(importProvider.notifier).importFromPaste(text);
+              if (navContext.mounted) _navigateOrShowError(navContext, container);
             },
             child: const Text('Import'),
           ),
@@ -176,19 +203,39 @@ class _ImportSheetContent extends ConsumerWidget {
     );
   }
 
-  void _navigateToSetup(BuildContext context, WidgetRef ref) {
-    final state = ref.read(importProvider);
-    if (state.normalized != null) {
-      context.push('/setup', extra: {
-        'normalizedText': state.normalized!.text,
-        'format': state.normalized!.format.name,
-        'detectedNames': state.normalized!.detectedNames,
-        'messageCount': state.normalized!.messageCount,
-        'dateRange': state.dateRange != null
-            ? {'start': state.dateRange!.start, 'end': state.dateRange!.end}
-            : null,
-      });
+  void _navigateOrShowError(BuildContext navContext, ProviderContainer container) {
+    final state = container.read(importProvider);
+
+    if (state.error != null) {
+      ScaffoldMessenger.of(navContext).showSnackBar(
+        SnackBar(content: Text('Import failed: ${state.error}')),
+      );
+      return;
     }
+
+    if (state.normalized == null) {
+      return;
+    }
+
+    if (state.normalized!.text.trim().isEmpty) {
+      ScaffoldMessenger.of(navContext).showSnackBar(
+        const SnackBar(
+          content: Text('No content found in the imported text.'),
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
+    navContext.push('/setup', extra: {
+      'normalizedText': state.normalized!.text,
+      'format': state.normalized!.format.name,
+      'detectedNames': state.normalized!.detectedNames,
+      'messageCount': state.normalized!.messageCount,
+      'dateRange': state.dateRange != null
+          ? {'start': state.dateRange!.start, 'end': state.dateRange!.end}
+          : null,
+    });
   }
 }
 
@@ -274,17 +321,19 @@ class _ClipboardOption extends StatelessWidget {
 }
 
 class _OptionTile extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final Color iconBgColor;
+  final IconData? icon;
+  final Color? iconColor;
+  final Color? iconBgColor;
+  final Widget? iconWidget;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
 
   const _OptionTile({
-    required this.icon,
-    required this.iconColor,
-    required this.iconBgColor,
+    this.icon,
+    this.iconColor,
+    this.iconBgColor,
+    this.iconWidget,
     required this.title,
     required this.subtitle,
     required this.onTap,
@@ -301,15 +350,18 @@ class _OptionTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: iconBgColor,
-                borderRadius: BorderRadius.circular(12),
+            if (iconWidget != null)
+              iconWidget!
+            else
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: iconBgColor ?? PortraitorTokens.surfaceMuted,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 22, color: iconColor ?? PortraitorTokens.ink),
               ),
-              child: Icon(icon, size: 22, color: iconColor),
-            ),
             const SizedBox(width: PortraitorTokens.space14),
             Expanded(
               child: Column(
@@ -331,3 +383,20 @@ class _OptionTile extends StatelessWidget {
     );
   }
 }
+
+class _WhatsAppIcon extends StatelessWidget {
+  const _WhatsAppIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.asset(
+        'assets/images/whatsapp.png',
+        width: 44,
+        height: 44,
+      ),
+    );
+  }
+}
+

@@ -14,6 +14,7 @@ class PaymentScreen extends ConsumerStatefulWidget {
   final String targetName;
   final int tokenEstimate;
   final String? conversationId;
+  final String? dateRange;
 
   const PaymentScreen({
     super.key,
@@ -21,6 +22,7 @@ class PaymentScreen extends ConsumerStatefulWidget {
     required this.targetName,
     required this.tokenEstimate,
     this.conversationId,
+    this.dateRange,
   });
 
   @override
@@ -40,18 +42,54 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   Future<void> _pay() async {
     setState(() => _isProcessing = true);
 
-    // Skip payment for demo — go straight to processing
-    await Future.delayed(const Duration(milliseconds: 500));
+    final configAsync = ref.read(runtimeConfigProvider);
+    final config = configAsync.valueOrNull;
+    final isDemoMode = config?.paymentMode == 'testing' ||
+        const String.fromEnvironment('DEMO_MODE', defaultValue: 'false') == 'true';
+
+    final email = _emailController.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid email to receive your portrait')),
+      );
+      setState(() => _isProcessing = false);
+      return;
+    }
+    final paymentNotifier = ref.read(paymentProvider.notifier);
+    bool success;
+
+    if (isDemoMode) {
+      success = await paymentNotifier.initiateDemo(
+        existingConversationRef: widget.conversationId,
+      );
+    } else {
+      success = await paymentNotifier.initiatePayment(
+        email: email,
+        existingConversationRef: widget.conversationId,
+        normalizedText: widget.normalizedText,
+      );
+    }
 
     if (!mounted) return;
     setState(() => _isProcessing = false);
 
-    context.pushReplacement('/processing', extra: {
-      'normalizedText': widget.normalizedText,
-      'targetName': widget.targetName,
-      'conversationId': 'demo-${DateTime.now().millisecondsSinceEpoch}',
-      'paymentIntentId': 'demo_pi_skip',
-    });
+    if (success) {
+      final paymentState = ref.read(paymentProvider);
+      context.pushReplacement('/processing', extra: {
+        'normalizedText': widget.normalizedText,
+        'targetName': widget.targetName,
+        'conversationId': paymentState.clientConversationRef ?? widget.conversationId ?? '',
+        'paymentIntentId': paymentState.paymentIntentId ?? '',
+        'dateRange': widget.dateRange,
+      });
+    } else {
+      final errorMsg = ref.read(paymentProvider).error ?? 'Payment failed';
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMsg)),
+        );
+      }
+    }
   }
 
   @override
@@ -67,30 +105,41 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               _buildHeader(context),
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: PortraitorTokens.space20),
-                      _OrderSummaryCard(
+                      const SizedBox(height: 28),
+                      _ReceiptCard(
                         targetName: widget.targetName,
                         tokenEstimate: widget.tokenEstimate,
+                        dateRange: widget.dateRange,
                         price: price,
                       ),
-                      const SizedBox(height: PortraitorTokens.space24),
-                      _WalletButtons(),
-                      const SizedBox(height: PortraitorTokens.space24),
-                      _OrDivider(),
-                      const SizedBox(height: PortraitorTokens.space24),
-                      _CardFields(),
-                      const SizedBox(height: PortraitorTokens.space16),
+                      const SizedBox(height: 22),
                       _EmailField(controller: _emailController),
-                      const SizedBox(height: 100),
+                      const SizedBox(height: 24),
+                      _AcceptedCards(),
+                      const SizedBox(height: 14),
+                      GradientButton(
+                        onPressed: _isProcessing ? null : _pay,
+                        isLoading: _isProcessing,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.lock_outline, size: 16, color: Colors.white),
+                            const SizedBox(width: 8),
+                            Text('Pay \$${price.toStringAsFixed(2)} with card'),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      _TrustBadge(),
+                      const SizedBox(height: 40),
                     ],
                   ),
                 ),
               ),
-              _buildPayButton(price),
             ],
           ),
         ),
@@ -100,63 +149,47 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
   Widget _buildHeader(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 12, 20, 0),
-      child: Column(
+      padding: const EdgeInsets.fromLTRB(10, 12, 24, 0),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.chevron_left, size: 28),
-                onPressed: () => context.pop(),
+          GestureDetector(
+            onTap: () => context.pop(),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: PortraitorTokens.borderSoft),
               ),
-              const Spacer(),
-              Text(
-                'STEP 3 OF 3',
-                style: PortraitorTokens.labelSm.copyWith(
-                  color: PortraitorTokens.inkMuted,
-                  letterSpacing: 1,
-                ),
-              ),
-            ],
-          ),
-          Padding(
-            padding: const EdgeInsets.only(left: 12),
-            child: const Text('Pay to generate', style: PortraitorTokens.titleLg),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPayButton(double price) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-      child: Column(
-        children: [
-          GradientButton(
-            onPressed: _isProcessing ? null : _pay,
-            isLoading: _isProcessing,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.lock_outline, size: 16, color: Colors.white),
-                const SizedBox(width: 8),
-                Text('Pay \$${price.toStringAsFixed(2)}'),
-              ],
+              child: const Icon(Icons.chevron_left, size: 20, color: PortraitorTokens.ink),
             ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.lock_outline, size: 12, color: PortraitorTokens.inkDim),
-              const SizedBox(width: 4),
-              Text(
-                'Payment secured by Stripe · No data saved',
-                style: PortraitorTokens.bodySm.copyWith(color: PortraitorTokens.inkDim),
-              ),
-            ],
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'STEP 3 OF 3',
+                  style: PortraitorTokens.labelSm.copyWith(
+                    color: PortraitorTokens.inkMuted,
+                    letterSpacing: 0.4,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Review & pay',
+                  style: PortraitorTokens.titleLg.copyWith(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -164,24 +197,26 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   }
 }
 
-class _OrderSummaryCard extends StatelessWidget {
+class _ReceiptCard extends StatelessWidget {
   final String targetName;
   final int tokenEstimate;
+  final String? dateRange;
   final double price;
 
-  const _OrderSummaryCard({
+  const _ReceiptCard({
     required this.targetName,
     required this.tokenEstimate,
+    this.dateRange,
     required this.price,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(PortraitorTokens.space20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: PortraitorTokens.surface,
-        borderRadius: BorderRadius.circular(PortraitorTokens.radiusXl),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: PortraitorTokens.borderSoft),
         boxShadow: PortraitorTokens.shadowSubtle,
       ),
@@ -189,31 +224,103 @@ class _OrderSummaryCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              GradientAvatar(name: targetName, size: 44),
+              GradientAvatar(name: targetName, size: 52),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("$targetName's portrait", style: PortraitorTokens.titleSm),
+                    Text(
+                      "$targetName's portrait",
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: PortraitorTokens.inkStrong,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
                     const SizedBox(height: 2),
                     Text(
-                      '${_formatTokens(tokenEstimate)} tokens · ~90 seconds',
-                      style: PortraitorTokens.bodySm.copyWith(color: PortraitorTokens.inkMuted),
+                      'WhatsApp · ${_formatTokenCount(tokenEstimate)} messages${dateRange != null ? ' · $dateRange' : ''}',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: PortraitorTokens.inkMuted,
+                      ),
                     ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: PortraitorTokens.surfaceMuted,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              children: [
+                _LineItem(
+                  label: 'AI analysis',
+                  value: '\$${price.toStringAsFixed(2)}',
+                  isBold: true,
+                ),
+                const SizedBox(height: 10),
+                _LineItem(
+                  label: '~${_formatTokens(tokenEstimate)} tokens',
+                  value: 'included',
+                  isSmall: true,
+                ),
+                const SizedBox(height: 10),
+                _LineItem(
+                  label: 'Processing time',
+                  value: '~90s',
+                  isSmall: true,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Text('Total', style: PortraitorTokens.bodyMd),
-              Text(
-                '\$${price.toStringAsFixed(2)}',
-                style: PortraitorTokens.titleLg.copyWith(color: PortraitorTokens.brandPurple),
+              const Text(
+                'Total today',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: PortraitorTokens.inkSoft,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [PortraitorTokens.brandPurple, PortraitorTokens.brandPink],
+                    ).createShader(bounds),
+                    child: Text(
+                      '\$${price.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'One-time · USD',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: PortraitorTokens.inkMuted,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -223,204 +330,107 @@ class _OrderSummaryCard extends StatelessWidget {
   }
 
   String _formatTokens(int tokens) {
-    if (tokens >= 1000) return '${(tokens / 1000).toStringAsFixed(0)},${(tokens % 1000).toString().padLeft(3, '0')}';
+    if (tokens >= 1000) {
+      return '${(tokens / 1000).toStringAsFixed(1)}k'.replaceAll('.0k', 'k');
+    }
+    return tokens.toString();
+  }
+
+  String _formatTokenCount(int tokens) {
+    if (tokens >= 1000) {
+      return '${(tokens / 1000).toStringAsFixed(0)},${(tokens % 1000).toString().padLeft(3, '0')}';
+    }
     return tokens.toString();
   }
 }
 
-class _WalletButtons extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          flex: 5,
-          child: Container(
-            height: 52,
-            decoration: BoxDecoration(
-              color: PortraitorTokens.ink,
-              borderRadius: BorderRadius.circular(PortraitorTokens.radiusMd),
-            ),
-            child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.apple, color: Colors.white, size: 22),
-                  const SizedBox(width: 6),
-                  Text('Pay', style: PortraitorTokens.labelMd.copyWith(color: Colors.white)),
-                ],
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          flex: 4,
-          child: Container(
-            height: 52,
-            decoration: BoxDecoration(
-              color: PortraitorTokens.surface,
-              borderRadius: BorderRadius.circular(PortraitorTokens.radiusMd),
-              border: Border.all(color: PortraitorTokens.borderStrong),
-            ),
-            child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('G', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: PortraitorTokens.ink)),
-                  const SizedBox(width: 6),
-                  Text('Pay', style: PortraitorTokens.labelMd.copyWith(color: PortraitorTokens.ink)),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _OrDivider extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Expanded(child: Divider(color: PortraitorTokens.borderSoft)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'OR PAY WITH CARD',
-            style: PortraitorTokens.labelSm.copyWith(
-              color: PortraitorTokens.inkMuted,
-              letterSpacing: 0.8,
-            ),
-          ),
-        ),
-        const Expanded(child: Divider(color: PortraitorTokens.borderSoft)),
-      ],
-    );
-  }
-}
-
-class _CardFields extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _FieldContainer(
-          label: 'CARD NUMBER',
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '4242  4242  4242  4242',
-                  style: PortraitorTokens.bodyLg.copyWith(letterSpacing: 1),
-                ),
-              ),
-              Container(
-                width: 28, height: 20,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A1F71),
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Container(
-                width: 28, height: 20,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEB001B),
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _FieldContainer(
-                label: 'EXPIRY',
-                child: Text('12 / 28', style: PortraitorTokens.bodyLg),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _FieldContainer(
-                label: 'CVC',
-                child: Text('•••', style: PortraitorTokens.bodyLg),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _FieldContainer extends StatelessWidget {
+class _LineItem extends StatelessWidget {
   final String label;
-  final Widget child;
-  const _FieldContainer({required this.label, required this.child});
+  final String value;
+  final bool isBold;
+  final bool isSmall;
+
+  const _LineItem({
+    required this.label,
+    required this.value,
+    this.isBold = false,
+    this.isSmall = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-      decoration: BoxDecoration(
-        color: PortraitorTokens.surface,
-        borderRadius: BorderRadius.circular(PortraitorTokens.radiusLg),
-        border: Border.all(color: PortraitorTokens.borderSoft),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: PortraitorTokens.labelSm.copyWith(
-              color: PortraitorTokens.inkMuted,
-              letterSpacing: 0.8,
-            ),
+    final fontSize = isSmall ? 12.0 : 13.5;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: fontSize,
+            color: isSmall ? PortraitorTokens.inkMuted : PortraitorTokens.inkSoft,
+            fontWeight: isBold ? FontWeight.w500 : FontWeight.w400,
           ),
-          const SizedBox(height: 4),
-          child,
-        ],
-      ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: fontSize,
+            color: isBold ? PortraitorTokens.inkStrong : PortraitorTokens.inkMuted,
+            fontWeight: isBold ? FontWeight.w600 : FontWeight.w400,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+      ],
     );
   }
 }
 
 class _EmailField extends StatelessWidget {
   final TextEditingController controller;
+
   const _EmailField({required this.controller});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: PortraitorTokens.surface,
-        borderRadius: BorderRadius.circular(PortraitorTokens.radiusLg),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: PortraitorTokens.borderSoft),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'RECEIPT EMAIL (OPTIONAL)',
-            style: PortraitorTokens.labelSm.copyWith(
-              color: PortraitorTokens.inkMuted,
-              letterSpacing: 0.8,
-            ),
+          Row(
+            children: [
+              Icon(Icons.mail_outline, size: 18, color: PortraitorTokens.inkMuted),
+              const SizedBox(width: 12),
+              Text(
+                'EMAIL · REQUIRED',
+                style: PortraitorTokens.labelSm.copyWith(
+                  color: PortraitorTokens.inkMuted,
+                  letterSpacing: 0.3,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 4),
+          Text(
+            'Your portrait will be sent to this email',
+            style: PortraitorTokens.bodySm.copyWith(
+              color: PortraitorTokens.inkMuted,
+            ),
+          ),
+          const SizedBox(height: 8),
           TextField(
             controller: controller,
             keyboardType: TextInputType.emailAddress,
-            style: PortraitorTokens.bodyLg,
+            style: const TextStyle(fontSize: 14.5),
             decoration: InputDecoration(
-              hintText: 'your@email.com',
-              hintStyle: PortraitorTokens.bodyLg.copyWith(color: PortraitorTokens.inkDim),
+              hintText: 'you@example.com',
+              hintStyle: TextStyle(color: PortraitorTokens.inkDim),
               border: InputBorder.none,
               isDense: true,
               contentPadding: EdgeInsets.zero,
@@ -428,6 +438,128 @@ class _EmailField extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AcceptedCards extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          'WE ACCEPT',
+          style: PortraitorTokens.labelSm.copyWith(
+            color: PortraitorTokens.inkMuted,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.3,
+          ),
+        ),
+        const SizedBox(width: 8),
+        _CardBadge(label: 'VISA', color: const Color(0xFF1A1F71)),
+        const SizedBox(width: 5),
+        _CardBadge(label: '', color: const Color(0xFFEB001B), isCircles: true),
+        const SizedBox(width: 5),
+        _CardBadge(label: 'AMEX', color: const Color(0xFF006FCF)),
+      ],
+    );
+  }
+}
+
+class _CardBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+  final bool isCircles;
+
+  const _CardBadge({required this.label, required this.color, this.isCircles = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 38,
+      height: 24,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Center(
+        child: isCircles
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 10, height: 10, decoration: BoxDecoration(color: const Color(0xFFEB001B), shape: BoxShape.circle)),
+                  Transform.translate(
+                    offset: const Offset(-3, 0),
+                    child: Container(width: 10, height: 10, decoration: BoxDecoration(color: const Color(0xFFF79E1B), shape: BoxShape.circle)),
+                  ),
+                ],
+              )
+            : Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+class _TrustBadge extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.7),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: PortraitorTokens.borderSoft),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.lock_outline, size: 12, color: PortraitorTokens.inkMuted),
+              const SizedBox(width: 8),
+              Text(
+                'SECURED BY',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: PortraitorTokens.inkMuted,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                'stripe',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: PortraitorTokens.inkStrong,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'Card details never touch our servers · No subscription · No saved payment method',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 11,
+            color: PortraitorTokens.inkDim,
+            fontWeight: FontWeight.w500,
+            height: 1.5,
+          ),
+        ),
+      ],
     );
   }
 }

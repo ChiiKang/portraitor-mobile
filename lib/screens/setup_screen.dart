@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 
 import '../providers/runtime_config_provider.dart';
 import '../providers/setup_provider.dart';
@@ -98,7 +99,10 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       _NameChips(
                         names: setup.detectedNames,
                         selected: setup.targetName,
-                        onSelected: (name) => ref.read(setupProvider.notifier).setTargetName(name),
+                        onSelected: (name) {
+                          ref.read(setupProvider.notifier).setTargetName(name);
+                          _nameController.text = name;
+                        },
                       ),
                       const SizedBox(height: PortraitorTokens.space16),
                       _NameTextField(
@@ -114,9 +118,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                         const SizedBox(height: PortraitorTokens.space32),
                         const Text('Date range', style: PortraitorTokens.titleSm),
                         const SizedBox(height: PortraitorTokens.space12),
-                        _DateRangeCard(setup: setup),
+                        _DateRangeSelector(setup: setup),
                       ],
-                      const SizedBox(height: 100),
+                      const SizedBox(height: 160),
                     ],
                   ),
                 ),
@@ -167,10 +171,17 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 
   void _navigateToPayment(SetupState setup) {
+    final conversationId = const Uuid().v4();
+    final dateRange = (setup.rangeStart != null && setup.rangeEnd != null)
+        ? '${DateFormat('MMM yyyy').format(setup.rangeStart!)} – ${DateFormat('MMM yyyy').format(setup.rangeEnd!)}'
+        : null;
+
     context.push('/payment', extra: {
       'normalizedText': setup.filteredText,
       'targetName': setup.targetName,
       'tokenEstimate': setup.tokenEstimate,
+      'conversationId': conversationId,
+      'dateRange': dateRange,
     });
   }
 }
@@ -247,39 +258,92 @@ class _ChatImportedChip extends StatelessWidget {
   }
 }
 
-class _NameChips extends StatelessWidget {
+class _NameChips extends StatefulWidget {
   final List<String> names;
   final String selected;
   final ValueChanged<String> onSelected;
   const _NameChips({required this.names, required this.selected, required this.onSelected});
 
   @override
+  State<_NameChips> createState() => _NameChipsState();
+}
+
+class _NameChipsState extends State<_NameChips> {
+  bool _isOverflowing = false;
+  bool _checked = false;
+
+  @override
+  void didUpdateWidget(covariant _NameChips oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.names != widget.names) _checked = false;
+  }
+
+  void _onScrollMetrics(ScrollMetrics metrics) {
+    if (_checked) return;
+    final overflows = metrics.maxScrollExtent > 0;
+    if (overflows != _isOverflowing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _isOverflowing = overflows);
+      });
+    }
+    _checked = true;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: names.map((name) {
-        final isSelected = name == selected;
-        return GestureDetector(
-          onTap: () => onSelected(name),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: isSelected ? PortraitorTokens.ink : PortraitorTokens.surface,
-              borderRadius: BorderRadius.circular(PortraitorTokens.radiusPill),
-              border: Border.all(
-                color: isSelected ? PortraitorTokens.ink : PortraitorTokens.borderStrong,
-              ),
-            ),
-            child: Text(
-              name,
-              style: PortraitorTokens.labelMd.copyWith(
-                color: isSelected ? Colors.white : PortraitorTokens.ink,
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        NotificationListener<ScrollMetricsNotification>(
+          onNotification: (notification) {
+            _onScrollMetrics(notification.metrics);
+            return false;
+          },
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: widget.names.map((name) {
+                final isSelected = name == widget.selected;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => widget.onSelected(name),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isSelected ? PortraitorTokens.ink : PortraitorTokens.surface,
+                        borderRadius: BorderRadius.circular(PortraitorTokens.radiusPill),
+                        border: Border.all(
+                          color: isSelected ? PortraitorTokens.ink : PortraitorTokens.borderStrong,
+                        ),
+                      ),
+                      child: Text(
+                        name,
+                        style: PortraitorTokens.labelMd.copyWith(
+                          color: isSelected ? Colors.white : PortraitorTokens.ink,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
             ),
           ),
-        );
-      }).toList(),
+        ),
+        if (_isOverflowing) ...[
+          const SizedBox(height: 6),
+          Container(
+            height: 3,
+            width: 40,
+            decoration: BoxDecoration(
+              color: PortraitorTokens.borderStrong,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -312,93 +376,196 @@ class _NameTextField extends StatelessWidget {
   }
 }
 
-class _DateRangeCard extends StatelessWidget {
+enum _DateRangeOption { all, latest1, latest3, latest6, custom }
+
+class _DateRangeSelector extends StatefulWidget {
   final SetupState setup;
-  const _DateRangeCard({required this.setup});
+  const _DateRangeSelector({required this.setup});
+
+  @override
+  State<_DateRangeSelector> createState() => _DateRangeSelectorState();
+}
+
+class _DateRangeSelectorState extends State<_DateRangeSelector> {
+  _DateRangeOption _selected = _DateRangeOption.all;
+
+  List<Widget> _buildDateLabels(DateTime fullStart, DateTime fullEnd) {
+    final totalMonths = (fullEnd.year - fullStart.year) * 12 + fullEnd.month - fullStart.month;
+    final labelStyle = PortraitorTokens.bodySm.copyWith(
+      color: PortraitorTokens.inkDim,
+      fontSize: 11,
+    );
+
+    if (totalMonths <= 6) {
+      // Short range: show start and end
+      return [
+        Text(DateFormat('MMM yyyy').format(fullStart), style: labelStyle),
+        Text(DateFormat('MMM yyyy').format(fullEnd), style: labelStyle),
+      ];
+    }
+
+    // Longer range: show ~4 evenly spaced labels
+    final labels = <Widget>[];
+    final step = totalMonths ~/ 3;
+    for (int i = 0; i <= 3; i++) {
+      final monthsToAdd = i == 3 ? totalMonths : i * step;
+      final date = DateTime(fullStart.year, fullStart.month + monthsToAdd);
+      final label = i == 0 || i == 3
+          ? DateFormat('MMM yyyy').format(date)
+          : date.year.toString();
+      labels.add(Text(label, style: labelStyle));
+    }
+    return labels;
+  }
+
+  void _applyOption(WidgetRef ref, _DateRangeOption option) {
+    final fullStart = widget.setup.fullRangeStart!;
+    final fullEnd = widget.setup.fullRangeEnd!;
+
+    setState(() => _selected = option);
+
+    switch (option) {
+      case _DateRangeOption.all:
+        ref.read(setupProvider.notifier).setDateRange(fullStart, fullEnd);
+        break;
+      case _DateRangeOption.latest1:
+        final start = fullEnd.subtract(const Duration(days: 30));
+        ref.read(setupProvider.notifier).setDateRange(
+          start.isBefore(fullStart) ? fullStart : start,
+          fullEnd,
+        );
+        break;
+      case _DateRangeOption.latest3:
+        final start = fullEnd.subtract(const Duration(days: 90));
+        ref.read(setupProvider.notifier).setDateRange(
+          start.isBefore(fullStart) ? fullStart : start,
+          fullEnd,
+        );
+        break;
+      case _DateRangeOption.latest6:
+        final start = fullEnd.subtract(const Duration(days: 180));
+        ref.read(setupProvider.notifier).setDateRange(
+          start.isBefore(fullStart) ? fullStart : start,
+          fullEnd,
+        );
+        break;
+      case _DateRangeOption.custom:
+        break;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final start = setup.rangeStart!;
-    final end = setup.rangeEnd!;
-    final fullStart = setup.fullRangeStart!;
-    final fullEnd = setup.fullRangeEnd!;
-
+    final start = widget.setup.rangeStart!;
+    final end = widget.setup.rangeEnd!;
+    final fullStart = widget.setup.fullRangeStart!;
+    final fullEnd = widget.setup.fullRangeEnd!;
     final totalDays = fullEnd.difference(fullStart).inDays.toDouble();
+
     if (totalDays <= 0) return const SizedBox.shrink();
 
-    return Container(
-      padding: const EdgeInsets.all(PortraitorTokens.space20),
-      decoration: BoxDecoration(
-        color: PortraitorTokens.surface,
-        borderRadius: BorderRadius.circular(PortraitorTokens.radiusXl),
-        border: Border.all(color: PortraitorTokens.borderSoft),
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'FROM',
-                    style: PortraitorTokens.labelSm.copyWith(
-                      color: PortraitorTokens.inkMuted,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    DateFormat('MMM d, yyyy').format(start),
-                    style: PortraitorTokens.titleSm,
-                  ),
-                ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Dropdown
+        Consumer(
+          builder: (context, ref, _) {
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              decoration: BoxDecoration(
+                color: PortraitorTokens.surface,
+                borderRadius: BorderRadius.circular(PortraitorTokens.radiusXl),
+                border: Border.all(color: PortraitorTokens.borderSoft),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    'TO',
-                    style: PortraitorTokens.labelSm.copyWith(
-                      color: PortraitorTokens.inkMuted,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    DateFormat('MMM d, yyyy').format(end),
-                    style: PortraitorTokens.titleSm,
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Consumer(
-            builder: (context, ref, _) {
-              return GradientRangeSlider(
-                startValue: start.difference(fullStart).inDays.toDouble(),
-                endValue: end.difference(fullStart).inDays.toDouble(),
-                min: 0,
-                max: totalDays,
-                startLabel: DateParser.formatDateShort(start),
-                endLabel: DateParser.formatDateShort(end),
-                onChanged: (values) {
-                  final newStart = fullStart.add(Duration(days: values.start.round()));
-                  final newEnd = fullStart.add(Duration(days: values.end.round()));
-                  ref.read(setupProvider.notifier).setDateRange(newStart, newEnd);
+              child: DropdownButton<_DateRangeOption>(
+                value: _selected,
+                isExpanded: true,
+                underline: const SizedBox.shrink(),
+                icon: const Icon(Icons.keyboard_arrow_down, color: PortraitorTokens.inkMuted),
+                style: PortraitorTokens.labelMd.copyWith(color: PortraitorTokens.ink),
+                items: _DateRangeOption.values.map((option) {
+                  final labels = {
+                    _DateRangeOption.all: 'Process all messages',
+                    _DateRangeOption.latest1: 'Latest 1 month',
+                    _DateRangeOption.latest3: 'Latest 3 months',
+                    _DateRangeOption.latest6: 'Latest 6 months',
+                    _DateRangeOption.custom: 'Custom range',
+                  };
+                  return DropdownMenuItem(
+                    value: option,
+                    child: Text(labels[option]!),
+                  );
+                }).toList(),
+                onChanged: (option) {
+                  if (option != null) _applyOption(ref, option);
                 },
-              );
-            },
+              ),
+            );
+          },
+        ),
+
+        // Range slider (shown for presets + custom, hidden for "all")
+        if (_selected != _DateRangeOption.all) ...[
+          const SizedBox(height: 16),
+          Opacity(
+            opacity: _selected == _DateRangeOption.custom ? 1.0 : 0.5,
+            child: IgnorePointer(
+              ignoring: _selected != _DateRangeOption.custom,
+              child: Consumer(
+                builder: (context, ref, _) {
+                  return GradientRangeSlider(
+                    startValue: start.difference(fullStart).inDays.toDouble(),
+                    endValue: end.difference(fullStart).inDays.toDouble(),
+                    min: 0,
+                    max: totalDays,
+                    startLabel: DateParser.formatDateShort(fullStart),
+                    endLabel: DateParser.formatDateShort(fullEnd),
+                    onChanged: (values) {
+                      final newStart = fullStart.add(Duration(days: values.start.round()));
+                      final newEnd = fullStart.add(Duration(days: values.end.round()));
+                      ref.read(setupProvider.notifier).setDateRange(newStart, newEnd);
+                    },
+                  );
+                },
+              ),
+            ),
           ),
-          const SizedBox(height: 12),
-          Text(
-            '${setup.filteredMessages} of ${setup.totalMessages} messages',
-            style: PortraitorTokens.bodySm.copyWith(color: PortraitorTokens.brandPurple),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: _buildDateLabels(fullStart, fullEnd),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: Text(
+              '${DateFormat('MMM yyyy').format(start)} — ${DateFormat('MMM yyyy').format(end)}',
+              style: PortraitorTokens.labelMd.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Center(
+            child: Text(
+              _selected == _DateRangeOption.custom
+                  ? '${widget.setup.filteredMessages > widget.setup.totalMessages ? widget.setup.totalMessages : widget.setup.filteredMessages} of ${widget.setup.totalMessages} messages'
+                  : 'Select "Custom range" to drag',
+              style: PortraitorTokens.bodySm.copyWith(color: PortraitorTokens.inkMuted),
+            ),
           ),
         ],
-      ),
+
+        // Message count for "all" option
+        if (_selected == _DateRangeOption.all) ...[
+          const SizedBox(height: 12),
+          Center(
+            child: Text(
+              '${widget.setup.totalMessages} messages',
+              style: PortraitorTokens.bodySm.copyWith(color: PortraitorTokens.brandPurple),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

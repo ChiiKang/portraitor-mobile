@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,14 +14,16 @@ class ProcessingScreen extends ConsumerStatefulWidget {
   final String normalizedText;
   final String targetName;
   final String conversationId;
-  final String? paymentIntentId;
+  final String paymentIntentId;
+  final String? dateRange;
 
   const ProcessingScreen({
     super.key,
     required this.normalizedText,
     required this.targetName,
     required this.conversationId,
-    this.paymentIntentId,
+    required this.paymentIntentId,
+    this.dateRange,
   });
 
   @override
@@ -27,16 +31,43 @@ class ProcessingScreen extends ConsumerStatefulWidget {
 }
 
 class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
+  Timer? _elapsedTimer;
+  int _elapsedSeconds = 0;
+
   @override
   void initState() {
     super.initState();
+    _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _elapsedSeconds++);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(processingProvider.notifier).startProcessing(
         conversationId: widget.conversationId,
+        paymentSessionId: widget.paymentIntentId,
         normalizedText: widget.normalizedText,
         targetName: widget.targetName,
+        dateRange: widget.dateRange,
       );
     });
+  }
+
+  @override
+  void dispose() {
+    _elapsedTimer?.cancel();
+    super.dispose();
+  }
+
+  String _formatElapsed(int seconds) {
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    return m > 0 ? '${m}m ${s}s' : '${s}s';
+  }
+
+  String _formatEta(int seconds) {
+    if (seconds <= 0) return '';
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    return m > 0 ? '~${m}m ${s}s remaining' : '~${s}s remaining';
   }
 
   @override
@@ -63,28 +94,62 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
                     child: PortraitorOrb(size: 110),
                   ),
                   const SizedBox(height: PortraitorTokens.space32),
-                  const Text(
-                    'Generating portrait...',
+                  Text(
+                    processing.statusMessage.isNotEmpty
+                        ? processing.statusMessage
+                        : 'Generating portrait...',
                     style: PortraitorTokens.titleLg,
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: PortraitorTokens.space8),
                   Text(
-                    '~1m 30s',
+                    _formatElapsed(_elapsedSeconds),
                     style: PortraitorTokens.bodyMd.copyWith(
                       color: PortraitorTokens.inkMuted,
                     ),
                   ),
+                  if (processing.estimatedSecondsRemaining > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        _formatEta(processing.estimatedSecondsRemaining),
+                        style: PortraitorTokens.bodySm.copyWith(
+                          color: PortraitorTokens.inkDim,
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: PortraitorTokens.space32),
                   _ProgressSection(
                     chunksCompleted: processing.chunksCompleted,
                     chunksTotal: processing.chunksTotal,
                     percentage: processing.percentage,
                   ),
+                  if (processing.status == ProcessingStatus.validating)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.mail_outline, size: 14, color: PortraitorTokens.inkMuted),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              'Your portrait will be delivered to your email',
+                              style: PortraitorTokens.bodySm.copyWith(
+                                color: PortraitorTokens.inkMuted,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   const SizedBox(height: PortraitorTokens.space24),
                   Expanded(
                     flex: 3,
-                    child: _ThinkingPanel(text: processing.thinkingText),
+                    child: _ThinkingPanel(
+                      text: processing.thinkingText,
+                      phaseLabel: processing.thinkingPhaseLabel,
+                    ),
                   ),
                   if (processing.status == ProcessingStatus.error)
                     Padding(
@@ -208,10 +273,13 @@ class _ProgressSection extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Chunk $chunksCompleted of $chunksTotal',
-              style: PortraitorTokens.bodySm,
-            ),
+            if (chunksTotal > 1)
+              Text(
+                'Chunk $chunksCompleted of $chunksTotal',
+                style: PortraitorTokens.bodySm,
+              )
+            else
+              const SizedBox.shrink(),
             Text(
               '${(percentage * 100).round()}%',
               style: PortraitorTokens.bodySm.copyWith(
@@ -230,11 +298,12 @@ class _ProgressSection extends StatelessWidget {
 
 class _ThinkingPanel extends StatelessWidget {
   final String text;
-  const _ThinkingPanel({required this.text});
+  final String phaseLabel;
+  const _ThinkingPanel({required this.text, this.phaseLabel = ''});
 
   @override
   Widget build(BuildContext context) {
-    if (text.isEmpty) return const SizedBox.shrink();
+    if (text.isEmpty && phaseLabel.isEmpty) return const SizedBox.shrink();
 
     return Container(
       width: double.infinity,
@@ -244,22 +313,53 @@ class _ThinkingPanel extends StatelessWidget {
         borderRadius: BorderRadius.circular(PortraitorTokens.radiusLg),
         border: Border.all(color: PortraitorTokens.borderSoft),
       ),
-      child: SingleChildScrollView(
-        reverse: true,
-        child: RichText(
-          text: TextSpan(
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 12,
-              height: 1.6,
-              color: PortraitorTokens.inkSoft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (phaseLabel.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: PortraitorTokens.brandPurple,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    phaseLabel,
+                    style: PortraitorTokens.labelSm.copyWith(
+                      color: PortraitorTokens.brandPurple,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            children: [
-              TextSpan(text: text),
-              const WidgetSpan(child: _BlinkingCursor()),
-            ],
+          Expanded(
+            child: SingleChildScrollView(
+              reverse: true,
+              child: RichText(
+                text: TextSpan(
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    height: 1.6,
+                    color: PortraitorTokens.inkSoft,
+                  ),
+                  children: [
+                    TextSpan(text: text),
+                    const WidgetSpan(child: _BlinkingCursor()),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

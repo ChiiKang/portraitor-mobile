@@ -53,3 +53,6 @@ app.*.map.json
 
 # Flutter web (mobile-only project)
 /web/
+
+# Design handover (reference only, not part of app)
+/web-payment-handover/
