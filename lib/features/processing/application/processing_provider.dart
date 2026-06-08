@@ -162,6 +162,10 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       thinkingText: '',
       resultMarkdown: '',
       percentage: 0,
+      // Reset chunk counters explicitly — otherwise the UI shows stale
+      // "X of Y" from a previous portrait while we're still in queue/setup.
+      chunksCompleted: 0,
+      chunksTotal: 1,
       emailSent: false,
       paymentCaptured: false,
       statusMessage: 'Loading latest processing settings...',
@@ -610,8 +614,12 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       }
 
       final position = pollResult['position'] as int? ?? 0;
+      // statusMessage is the field the processing screen renders. thinkingText
+      // is reserved for the streaming Gemini "thoughts" panel.
       state = state.copyWith(
-        thinkingText: 'Waiting in queue (position $position)...',
+        statusMessage: position > 0
+            ? 'Waiting in queue — position $position'
+            : 'Waiting in queue...',
       );
     }
 
