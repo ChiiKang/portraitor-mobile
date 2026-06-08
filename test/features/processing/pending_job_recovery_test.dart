@@ -327,6 +327,7 @@ void main() {
       var releaseCalled = false;
       var cancelPaymentCalled = false;
       String? capturedPaymentIntent;
+      String? capturedConvRef;
       fakeApi.onReleaseQueue = ({
         required clientConversationRef,
         required paymentSessionId,
@@ -335,9 +336,13 @@ void main() {
         releaseCalled = true;
         return {'status': 'ok'};
       };
-      fakeApi.onCancelPayment = ({required paymentIntentId}) async {
+      fakeApi.onCancelPayment = ({
+        required paymentIntentId,
+        clientConversationRef,
+      }) async {
         cancelPaymentCalled = true;
         capturedPaymentIntent = paymentIntentId;
+        capturedConvRef = clientConversationRef;
         return {'status': 'ok'};
       };
 
@@ -346,12 +351,22 @@ void main() {
       expect(releaseCalled, isTrue);
       expect(cancelPaymentCalled, isTrue);
       expect(capturedPaymentIntent, 'pi_conv_resumable');
+      // Critical: backend at payment.php:277 SELECTs by both
+      // stripe_session_id AND client_conversation_ref. Sending only the PI
+      // returns 404 and Stripe is NEVER cancelled — exactly the bug we
+      // shipped in the original Phase 3.
+      expect(capturedConvRef, 'conv_resumable',
+          reason: 'client_conversation_ref must be sent so backend can match '
+              'the payments row and call Stripe cancel.');
     });
 
     test('cancel still deletes locally when payment cancel network-fails',
         () async {
       await StorageService.instance.savePendingJobRecord(_resumableJob());
-      fakeApi.onCancelPayment = ({required paymentIntentId}) async {
+      fakeApi.onCancelPayment = ({
+        required paymentIntentId,
+        clientConversationRef,
+      }) async {
         throw ApiException('Payment service unavailable', statusCode: 500);
       };
 
@@ -370,7 +385,10 @@ void main() {
     test('cancel skips payment cancel for stale row without payment_session_id',
         () async {
       var cancelPaymentCalled = false;
-      fakeApi.onCancelPayment = ({required paymentIntentId}) async {
+      fakeApi.onCancelPayment = ({
+        required paymentIntentId,
+        clientConversationRef,
+      }) async {
         cancelPaymentCalled = true;
         return {'status': 'ok'};
       };

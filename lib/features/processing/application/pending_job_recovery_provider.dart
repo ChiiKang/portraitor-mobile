@@ -222,7 +222,10 @@ class PendingJobRecoveryNotifier
     // Stale rows might not.
     if (job.paymentSessionId.isNotEmpty) {
       try {
-        await _api.cancelPayment(paymentIntentId: job.paymentSessionId);
+        await _api.cancelPayment(
+          paymentIntentId: job.paymentSessionId,
+          clientConversationRef: job.clientConversationRef,
+        );
       } catch (e) {
         debugPrint('[Recovery] payment cancel failed (ignored): $e');
       }

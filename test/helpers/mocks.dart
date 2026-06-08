@@ -24,7 +24,10 @@ class FakeApiService extends Fake implements ApiService {
   Future<Map<String, dynamic>> Function({required String paymentIntentId})?
   onVerifyPayment;
 
-  Future<Map<String, dynamic>> Function({required String paymentIntentId})?
+  Future<Map<String, dynamic>> Function({
+    required String paymentIntentId,
+    String? clientConversationRef,
+  })?
   onCancelPayment;
 
   // Queue
@@ -126,9 +129,13 @@ class FakeApiService extends Fake implements ApiService {
   @override
   Future<Map<String, dynamic>> cancelPayment({
     required String paymentIntentId,
+    String? clientConversationRef,
   }) {
     if (onCancelPayment != null) {
-      return onCancelPayment!(paymentIntentId: paymentIntentId);
+      return onCancelPayment!(
+        paymentIntentId: paymentIntentId,
+        clientConversationRef: clientConversationRef,
+      );
     }
     return Future.value({'status': 'ok'});
   }

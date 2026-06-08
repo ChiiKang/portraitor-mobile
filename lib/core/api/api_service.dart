@@ -81,14 +81,25 @@ class ApiService {
     }
   }
 
-  /// DELETE /api/payment.php — cancel payment hold
+  /// DELETE /api/payment.php — cancel payment hold.
+  ///
+  /// Backend (payment.php:277) requires BOTH `payment_intent_id` and
+  /// `client_conversation_ref` to match an `authorized` row before Stripe
+  /// cancellation runs. Sending only the PI silently 404s and leaves the
+  /// authorization to either timeout-charge or get auto-released a week
+  /// later — exactly the bug the cancel flow is supposed to prevent.
   Future<Map<String, dynamic>> cancelPayment({
     required String paymentIntentId,
+    String? clientConversationRef,
   }) async {
     try {
       final response = await _dio.delete(
         '/api/payment.php',
-        data: jsonEncode({'payment_intent_id': paymentIntentId}),
+        data: jsonEncode({
+          'payment_intent_id': paymentIntentId,
+          if (clientConversationRef != null && clientConversationRef.isNotEmpty)
+            'client_conversation_ref': clientConversationRef,
+        }),
       );
       return _handleResponse(response);
     } on DioException catch (e) {
