@@ -1,8 +1,14 @@
 import 'dart:io';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/core/api/sse_service.dart';
+import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
+import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/features/processing/application/processing_provider.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+import '../helpers/mocks.dart';
 
 void main() {
   group('ProcessingState', () {
@@ -158,5 +164,181 @@ void main() {
         expect(source, contains("'rolling' : 'map-reduce'"));
       },
     );
+  });
+
+  group('Phase 2 pending job lifecycle (source contracts)', () {
+    late String source;
+
+    setUpAll(() {
+      source = File(
+        'lib/features/processing/application/processing_provider.dart',
+      ).readAsStringSync();
+    });
+
+    test('startProcessing saves the full PendingJob before queue acquisition',
+        () {
+      // Save must come before _acquireQueueLease so a kill during queue wait
+      // is still recoverable. Verified by ordering the SQL writes earlier than
+      // the API call in source.
+      final saveIndex = source.indexOf('savePendingJobRecord(');
+      final acquireIndex = source.indexOf('_acquireQueueLease(');
+      expect(saveIndex, greaterThan(0),
+          reason: 'savePendingJobRecord must be invoked in startProcessing');
+      expect(acquireIndex, greaterThan(0));
+      expect(saveIndex, lessThan(acquireIndex),
+          reason:
+              'Pending job must be persisted BEFORE acquiring queue lease so '
+              'a kill during queue wait is recoverable');
+    });
+
+    test('startProcessing seeds PendingJob with web parity recovery fields',
+        () {
+      expect(source, contains('inputText: normalizedText'));
+      expect(source, contains('paymentSessionId: paymentSessionId'));
+      expect(source, contains('chunkingMode: config.chunkingMode'));
+      expect(source, contains('tokenLimit: config.tokenLimit'));
+      expect(source, contains('chunkOverlapTokens: config.chunkOverlapTokens'));
+    });
+
+    test('chunk completion uses web-shape {index, content} record', () {
+      // Map-reduce chunk
+      expect(
+        source,
+        contains("{'index': i, 'content': chunkText}"),
+        reason: 'Map-reduce must append {index, content} matching '
+            'storageManager.js:539',
+      );
+      // Rolling chunk
+      expect(
+        source,
+        contains("{'index': i, 'content': rollingPortrait}"),
+        reason: 'Rolling must append {index, content} so resume can read '
+            'the latest portrait draft',
+      );
+    });
+
+    test('chunk completion uses appendPendingJobChunk, not updatePendingJob',
+        () {
+      // updatePendingJob is the old counter-only API; chunk completion must
+      // use the typed appendPendingJobChunk that stores actual content.
+      final mapReduceSection = source.substring(
+        source.indexOf('// Map phase'),
+        source.indexOf('// Reduce phase'),
+      );
+      expect(mapReduceSection, contains('appendPendingJobChunk'));
+      expect(mapReduceSection, isNot(contains('updatePendingJob(')));
+    });
+
+    test('processing error marks job failed before releasing queue', () {
+      // markPendingJobStatus('failed') must come BEFORE _tryReleaseQueue in
+      // the startProcessing catch block so the row exists for recovery even
+      // if release fails. Scope the search to the startProcessing body
+      // (other functions have their own catch blocks for different concerns).
+      final startProcessingIndex = source.indexOf('Future<void> startProcessing(');
+      expect(startProcessingIndex, greaterThan(0));
+      final markIndex = source.indexOf(
+        "markPendingJobStatus(",
+        startProcessingIndex,
+      );
+      final releaseIndex = source.indexOf(
+        '_tryReleaseQueue(',
+        startProcessingIndex,
+      );
+      expect(markIndex, greaterThan(0),
+          reason: 'startProcessing catch block must call markPendingJobStatus');
+      expect(releaseIndex, greaterThan(0));
+      expect(markIndex, lessThan(releaseIndex),
+          reason: 'failed status must be persisted before queue release');
+      // Confirm the literal 'failed' status string appears nearby.
+      final window = source.substring(markIndex, markIndex + 200);
+      expect(window, contains("'failed'"));
+    });
+
+    test('success path deletes pending job only after conversation save', () {
+      // deletePendingJob must come AFTER createConversation so the final
+      // result is durable before we drop the recovery row.
+      final createIndex = source.indexOf('createConversation(');
+      final deleteIndex = source.indexOf('deletePendingJob(conversationId)');
+      expect(createIndex, greaterThan(0));
+      expect(deleteIndex, greaterThan(0));
+      expect(createIndex, lessThan(deleteIndex),
+          reason:
+              'deletePendingJob must come after createConversation; '
+              'otherwise a crash between them loses the result');
+    });
+  });
+
+  group('Phase 2 pending job lifecycle (end-to-end with FFI db)', () {
+    late Database db;
+    late FakeApiService fakeApi;
+    late ProviderContainer container;
+    late ProcessingNotifier notifier;
+
+    setUpAll(() {
+      sqfliteFfiInit();
+    });
+
+    setUp(() async {
+      db = await databaseFactoryFfi.openDatabase(
+        inMemoryDatabasePath,
+        options: OpenDatabaseOptions(
+          version: StorageService.dbVersion,
+          onCreate: StorageService.onCreateSchema,
+          onUpgrade: StorageService.onUpgradeSchema,
+        ),
+      );
+      StorageService.instance.initForTesting(db: db, deviceId: 'device_test');
+
+      fakeApi = FakeApiService();
+      container = ProviderContainer(
+        overrides: [
+          processingApiProvider.overrideWithValue(fakeApi),
+          runtimeConfigProvider.overrideWith(
+            (ref) async => const RuntimeConfig(),
+          ),
+        ],
+      );
+      notifier = container.read(processingProvider.notifier);
+    });
+
+    tearDown(() async {
+      container.dispose();
+      await StorageService.instance.resetForTesting();
+    });
+
+    test('startProcessing persists the row before the queue call throws',
+        () async {
+      // Throw on enqueue so startProcessing fails after the save step.
+      fakeApi.onEnqueue = ({
+        required String paymentSessionId,
+        required String clientConversationRef,
+      }) async {
+        throw Exception('simulated queue failure');
+      };
+
+      await notifier.startProcessing(
+        conversationId: 'conv_save_before_queue',
+        paymentSessionId: 'pi_save_before_queue',
+        normalizedText: 'hello chat log',
+        targetName: 'Alice',
+        dateRange: 'Jan 2026',
+      );
+
+      final row = await StorageService.instance.getPendingJobById(
+        'conv_save_before_queue',
+      );
+      expect(row, isNotNull,
+          reason: 'pending row must exist even when the queue call failed '
+              'because the save happens BEFORE the queue acquisition');
+      expect(row!.inputText, 'hello chat log');
+      expect(row.paymentSessionId, 'pi_save_before_queue');
+      expect(row.targetName, 'Alice');
+      expect(row.dateRange, 'Jan 2026');
+      expect(row.chunkingMode, isNotNull);
+      expect(row.tokenLimit, isNotNull);
+      expect(row.chunkOverlapTokens, isNotNull);
+      expect(row.status, 'failed',
+          reason: 'catch block must have marked status=failed');
+    });
   });
 }

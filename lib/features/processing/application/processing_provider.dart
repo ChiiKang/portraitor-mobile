@@ -7,6 +7,7 @@ import 'package:portraitor_mobile/core/api/api_service.dart';
 import 'package:portraitor_mobile/core/errors/error_reporter.dart';
 import 'package:portraitor_mobile/features/processing/services/prompt_service.dart';
 import 'package:portraitor_mobile/core/api/sse_service.dart';
+import 'package:portraitor_mobile/core/storage/pending_job.dart';
 import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/features/import/services/token_calculator.dart';
 import 'package:portraitor_mobile/features/results/application/portraits_provider.dart';
@@ -177,6 +178,31 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
         chunkingMode: config.chunkingMode,
       );
 
+      // Save the pending job BEFORE joining the queue so a kill during the
+      // queue wait is still recoverable. Matches web savePendingJob at
+      // storageManager.js:477 (web writes the row before queue join).
+      final now = DateTime.now().toUtc();
+      await StorageService.instance.savePendingJobRecord(
+        PendingJob(
+          id: conversationId,
+          deviceId: StorageService.instance.deviceId,
+          clientConversationRef: conversationId,
+          inputText: normalizedText,
+          targetName: targetName,
+          dateRange: dateRange,
+          paymentSessionId: paymentSessionId,
+          status: 'processing',
+          chunksCompleted: 0,
+          chunksTotal: chunks.length,
+          chunkResults: const [],
+          chunkingMode: config.chunkingMode,
+          tokenLimit: config.tokenLimit,
+          chunkOverlapTokens: config.chunkOverlapTokens,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+
       state = state.copyWith(statusMessage: 'Waiting in queue...');
 
       // Step 1: Enqueue and wait for lease
@@ -199,13 +225,6 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
                 ? 'Analyzing conversation...'
                 : 'Processing ${chunks.length} chunks...',
         thinkingPhaseLabel: 'AI is reasoning',
-      );
-
-      await StorageService.instance.savePendingJob(
-        id: conversationId,
-        clientConversationRef: conversationId,
-        targetName: targetName,
-        chunksTotal: chunks.length,
       );
 
       // Step 3: Process chunks (map-reduce or single-shot) with retry
@@ -308,10 +327,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
         tokenLimit: config.tokenLimit,
       );
 
-      await StorageService.instance.updatePendingJob(
-        conversationId,
-        status: 'completed',
-      );
+      // Delete pending job only after final conversation save is durable.
       await StorageService.instance.deletePendingJob(conversationId);
 
       // Refresh portraits list so home screen shows the new portrait
@@ -329,6 +345,13 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       );
     } catch (e) {
       _stopHeartbeat();
+      // Mark the pending job failed so recovery can show the state on next
+      // launch. Error message stays in provider UI state — not persisted,
+      // matching web behavior.
+      await StorageService.instance.markPendingJobStatus(
+        conversationId,
+        'failed',
+      );
       _tryReleaseQueue(conversationId, paymentSessionId);
       state = state.copyWith(
         status: ProcessingStatus.error,
@@ -504,9 +527,12 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       );
 
       if (updatePendingJob) {
-        await StorageService.instance.updatePendingJob(
+        // Web parity: chunk record is {index, content} per
+        // storageManager.js:539. Mobile keeps the chunks_completed counter
+        // for UI plus the chunk_results JSON array for resume.
+        await StorageService.instance.appendPendingJobChunk(
           conversationId,
-          chunksCompleted: i + 1,
+          {'index': i, 'content': chunkText},
         );
       }
     }
@@ -656,9 +682,11 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       );
 
       if (updatePendingJob) {
-        await StorageService.instance.updatePendingJob(
+        // Web parity: rolling stores the latest portrait as the chunk content
+        // so resume can pick up the in-progress draft.
+        await StorageService.instance.appendPendingJobChunk(
           conversationId,
-          chunksCompleted: i + 1,
+          {'index': i, 'content': rollingPortrait},
         );
       }
     }
