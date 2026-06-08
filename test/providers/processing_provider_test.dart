@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/core/api/sse_service.dart';
 import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
+import 'package:portraitor_mobile/core/storage/pending_job.dart';
 import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/features/processing/application/processing_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -339,6 +340,233 @@ void main() {
       expect(row.chunkOverlapTokens, isNotNull);
       expect(row.status, 'failed',
           reason: 'catch block must have marked status=failed');
+    });
+  });
+
+  group('Phase 4 resume engine (source contracts)', () {
+    late String source;
+
+    setUpAll(() {
+      source = File(
+        'lib/features/processing/application/processing_provider.dart',
+      ).readAsStringSync();
+    });
+
+    test('resumeProcessing entrypoint exists with PendingJob param', () {
+      expect(source, contains('Future<void> resumeProcessing(PendingJob job)'));
+    });
+
+    test('resumeProcessing init sequence resets all notifier-local state', () {
+      // After app kill, the in-memory _leaseToken / _stopwatch / chunk timing
+      // are stale. Resume must zero them out, otherwise the chunk loop reads
+      // ghost durations and the lease assertions fail mid-flight.
+      final start = source.indexOf('Future<void> resumeProcessing(PendingJob job)');
+      expect(start, greaterThan(0));
+      final body = source.substring(start, start + 1200);
+      expect(body, contains('_stopwatch'));
+      expect(body, contains('_chunkDurations.clear()'));
+      expect(body, contains('_lastChunkStartMs = 0'));
+      expect(body, contains('_leaseToken = null'));
+    });
+
+    test('resumeProcessing uses job snapshot config, not latest runtime config, for split math',
+        () {
+      // Latest runtime config may have changed tokenLimit / chunkOverlap /
+      // chunkingMode between sessions. Using the snapshot guarantees the
+      // re-split produces the SAME chunk boundaries as the original session,
+      // which is required for set-based skip to be safe.
+      final start = source.indexOf('Future<void> resumeProcessing(PendingJob job)');
+      expect(start, greaterThan(0));
+      final nextMethod = source.indexOf(
+        RegExp(r'\n  (?:Future|void|String|@)'),
+        start + 100,
+      );
+      final body = source.substring(
+        start,
+        nextMethod > start ? nextMethod : source.length,
+      );
+      expect(body, contains('job.tokenLimit'));
+      expect(body, contains('job.chunkOverlapTokens'));
+      expect(body, contains('job.chunkingMode'));
+      // Latest config is still read but only for PDF flag / UI policy.
+      expect(body, contains('readLatestRuntimeConfig'));
+    });
+
+    test('resumeProcessing reacquires queue lease and starts heartbeat', () {
+      final start = source.indexOf('Future<void> resumeProcessing(PendingJob job)');
+      expect(start, greaterThan(0));
+      final body = source.substring(start, start + 2500);
+      expect(body, contains('_acquireQueueLease('));
+      expect(body, contains('_startHeartbeat('));
+    });
+
+    test('resumeProcessing dispatches to existing pipeline (no duplicated logic)',
+        () {
+      // The whole point of the refactor is reuse. Resume must call the same
+      // _processMapReduce / _processRolling / _processSingleShot methods,
+      // not duplicated copies. Scope: from resumeProcessing definition to the
+      // next top-level Future declaration.
+      final start = source.indexOf('Future<void> resumeProcessing(PendingJob job)');
+      expect(start, greaterThan(0));
+      // Find the start of the NEXT method declaration to bound the body.
+      final nextMethod = source.indexOf(
+        RegExp(r'\n  (?:Future|void|String|@)'),
+        start + 100,
+      );
+      final body = source.substring(
+        start,
+        nextMethod > start ? nextMethod : source.length,
+      );
+      expect(body, contains('_processMapReduce('));
+      expect(body, contains('_processRolling('));
+      expect(body, contains('_processSingleShot('));
+    });
+
+    test('_processMapReduce supports set-based skip via initialChunkResults param',
+        () {
+      // Web parity: analyzeMapReduce at geminiService.js:629-642.
+      expect(source, contains('Map<int, String>? initialChunkResults'));
+      expect(source,
+          contains('if (chunkResultsByIndex.containsKey(i))'),
+          reason: 'must skip already-stored chunk indices, not block on the '
+              'first gap.');
+    });
+
+    test('_processRolling supports startIndex + initialPortrait params for resume',
+        () {
+      // Web parity: analyzeRolling at geminiService.js:749-763 sets
+      // startIndex = sorted.length and uses the last completed portrait as
+      // the initial rolling state.
+      expect(source, contains('int initialChunkIndex = 0'));
+      expect(source, contains('String? initialPortrait'));
+      expect(source, contains('for (int i = initialChunkIndex;'));
+    });
+
+    test('resume catch path mirrors startProcessing — marks failed before queue release',
+        () {
+      final start = source.indexOf('Future<void> resumeProcessing(PendingJob job)');
+      final nextFn = source.indexOf('Future<', start + 100);
+      final body = source.substring(start, nextFn);
+      final catchBlock = body.indexOf('} catch (e) {');
+      expect(catchBlock, greaterThan(0));
+      final tail = body.substring(catchBlock);
+      final markIdx = tail.indexOf('markPendingJobStatus(');
+      final releaseIdx = tail.indexOf('_tryReleaseQueue(');
+      expect(markIdx, greaterThan(0));
+      expect(releaseIdx, greaterThan(0));
+      expect(markIdx, lessThan(releaseIdx),
+          reason: 'mark failed before release so the row stays visible to '
+              'recovery if release itself fails.');
+    });
+  });
+
+  group('Phase 4 resume engine (end-to-end with FFI db)', () {
+    late Database db;
+    late FakeApiService fakeApi;
+    late ProviderContainer container;
+    late ProcessingNotifier notifier;
+
+    setUp(() async {
+      db = await databaseFactoryFfi.openDatabase(
+        inMemoryDatabasePath,
+        options: OpenDatabaseOptions(
+          version: StorageService.dbVersion,
+          onCreate: StorageService.onCreateSchema,
+          onUpgrade: StorageService.onUpgradeSchema,
+        ),
+      );
+      StorageService.instance.initForTesting(db: db, deviceId: 'device_test');
+      fakeApi = FakeApiService();
+      container = ProviderContainer(
+        overrides: [
+          processingApiProvider.overrideWithValue(fakeApi),
+          runtimeConfigProvider.overrideWith(
+            (ref) async => const RuntimeConfig(),
+          ),
+        ],
+      );
+      notifier = container.read(processingProvider.notifier);
+    });
+
+    tearDown(() async {
+      container.dispose();
+      await StorageService.instance.resetForTesting();
+    });
+
+    Future<PendingJob> saveJob({
+      String id = 'conv_resume',
+      List<Map<String, dynamic>> chunkResults = const [],
+      String chunkingMode = 'map-reduce',
+    }) async {
+      final now = DateTime.utc(2026, 6, 8, 12);
+      final job = PendingJob(
+        id: id,
+        deviceId: 'device_test',
+        clientConversationRef: id,
+        inputText: 'short chat',
+        targetName: 'Alice',
+        dateRange: 'Jan 2026',
+        paymentSessionId: 'pi_$id',
+        status: 'processing',
+        chunksCompleted: chunkResults.length,
+        chunksTotal: 3,
+        chunkResults: chunkResults,
+        chunkingMode: chunkingMode,
+        tokenLimit: 250000,
+        chunkOverlapTokens: 250,
+        createdAt: now,
+        updatedAt: now,
+      );
+      await StorageService.instance.savePendingJobRecord(job);
+      return job;
+    }
+
+    test('resumeProcessing keeps row with status=failed when queue rejoin fails',
+        () async {
+      final job = await saveJob();
+      fakeApi.onEnqueue = ({
+        required String paymentSessionId,
+        required String clientConversationRef,
+      }) async {
+        throw Exception('queue down');
+      };
+
+      await notifier.resumeProcessing(job);
+
+      final row = await StorageService.instance.getPendingJobById('conv_resume');
+      expect(row, isNotNull,
+          reason: 'row must still exist for next-launch recovery');
+      expect(row!.status, 'failed');
+      // Existing chunk results are NOT lost on failure.
+      expect(row.inputText, 'short chat');
+      expect(row.paymentSessionId, 'pi_conv_resume');
+    });
+
+    test('resumeProcessing errors immediately when input_text is missing',
+        () async {
+      final now = DateTime.utc(2026, 6, 8);
+      final brokenJob = PendingJob(
+        id: 'conv_broken',
+        deviceId: 'device_test',
+        clientConversationRef: 'conv_broken',
+        inputText: '',
+        paymentSessionId: 'pi_broken',
+        status: 'processing',
+        chunksCompleted: 0,
+        chunksTotal: 0,
+        chunkResults: const [],
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      await notifier.resumeProcessing(brokenJob);
+
+      expect(container.read(processingProvider).status,
+          ProcessingStatus.error);
+      expect(
+        container.read(processingProvider).error,
+        contains('missing required fields'),
+      );
     });
   });
 }

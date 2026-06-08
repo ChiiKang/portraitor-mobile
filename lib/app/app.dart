@@ -93,6 +93,7 @@ final router = GoRouter(
           conversationId: extra['conversationId'] as String? ?? '',
           paymentIntentId: extra['paymentIntentId'] as String? ?? '',
           dateRange: extra['dateRange'] as String?,
+          isResume: extra['resume'] as bool? ?? false,
         );
       },
     ),

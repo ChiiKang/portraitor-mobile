@@ -360,6 +360,219 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     }
   }
 
+  /// Resume an unfinished portrait from a saved [PendingJob]. Mirrors web
+  /// `resumeJob` at `portraitor/public/assets/app.js:2814` but uses the
+  /// existing mobile pipeline ([_processMapReduce], [_processRolling],
+  /// [_processSingleShot]) with the seeded chunk state. The same payment
+  /// session is reused; the queue lease is reacquired because the prior
+  /// in-memory lease died with the app.
+  Future<void> resumeProcessing(PendingJob job) async {
+    // Init sequence matches startProcessing(:152-:189). All notifier-local
+    // state that startProcessing initialises must be reset here too, or the
+    // chunk loop reads stale durations and a stale lease.
+    _stopwatch
+      ..reset()
+      ..start();
+    _chunkDurations.clear();
+    _lastChunkStartMs = 0;
+    _leaseToken = null;
+
+    state = state.copyWith(
+      status: ProcessingStatus.queued,
+      conversationId: job.id,
+      error: null,
+      thinkingText: '',
+      resultMarkdown: '',
+      percentage: 0,
+      emailSent: false,
+      paymentCaptured: false,
+      chunksTotal: job.chunksTotal == 0 ? 1 : job.chunksTotal,
+      chunksCompleted: job.chunksCompleted,
+      statusMessage: 'Resuming portrait...',
+      thinkingPhaseLabel: '',
+      estimatedSecondsRemaining: -1,
+    );
+
+    if (job.inputText.isEmpty || job.paymentSessionId.isEmpty) {
+      state = state.copyWith(
+        status: ProcessingStatus.error,
+        error: 'Pending portrait is missing required fields',
+      );
+      return;
+    }
+
+    try {
+      // Use the job's config snapshot, NOT the latest runtime config, so
+      // split math matches the original session.
+      final tokenLimit = job.tokenLimit ?? 250000;
+      final chunkOverlap = job.chunkOverlapTokens ?? 250;
+      final chunkingMode = job.chunkingMode ?? 'map-reduce';
+
+      final chunks = TokenCalculator.splitForProcessing(
+        job.inputText,
+        tokenLimit: tokenLimit,
+        chunkOverlapTokens: chunkOverlap,
+        chunkingMode: chunkingMode,
+      );
+
+      // Seed from stored chunk results — already validated as {index, content}
+      // by PendingJob.fromDbMap.
+      final completedByIndex = <int, String>{
+        for (final r in job.chunkResults)
+          if (r['index'] is int && r['content'] is String)
+            r['index'] as int: r['content'] as String,
+      };
+
+      state = state.copyWith(statusMessage: 'Rejoining queue...');
+
+      _leaseToken = await _acquireQueueLease(
+        paymentSessionId: job.paymentSessionId,
+        clientConversationRef: job.id,
+      );
+      _startHeartbeat(job.id, job.paymentSessionId);
+      _lastChunkStartMs = _stopwatch.elapsedMilliseconds;
+
+      state = state.copyWith(
+        status: ProcessingStatus.processing,
+        chunksTotal: chunks.length,
+        chunksCompleted: completedByIndex.length,
+        statusMessage: chunks.length == 1
+            ? 'Resuming analysis...'
+            : 'Resuming: ${completedByIndex.length}/${chunks.length} chunks done',
+        thinkingPhaseLabel: 'AI is reasoning',
+      );
+
+      // Need latest runtime config only for PDF + UI policy. Split math
+      // comes from the job snapshot above.
+      final config = await readLatestRuntimeConfig(_ref);
+
+      String analysisResult;
+      if (chunks.length == 1) {
+        // No useful partial state for single-shot — just re-run.
+        analysisResult = await _callWithRetry(
+          (forceFallback) => _processSingleShot(
+            text: chunks[0],
+            targetName: job.targetName ?? '',
+            dateRange: job.dateRange,
+            paymentSessionId: job.paymentSessionId,
+            conversationId: job.id,
+            forceFallback: forceFallback,
+          ),
+          phase: 'single-shot-resume',
+          paymentSessionId: job.paymentSessionId,
+          conversationRef: job.id,
+        );
+      } else if (chunkingMode == 'rolling') {
+        // Rolling resume: web's analyzeRolling treats sorted.length as the
+        // start index and the last stored portrait as the initial state.
+        final sorted = [...job.chunkResults]..sort(
+          (a, b) => (a['index'] as int).compareTo(b['index'] as int),
+        );
+        final startIndex = sorted.length;
+        final initialPortrait =
+            sorted.isEmpty ? null : sorted.last['content'] as String?;
+        analysisResult = await _processRolling(
+          chunks: chunks,
+          targetName: job.targetName ?? '',
+          dateRange: job.dateRange,
+          paymentSessionId: job.paymentSessionId,
+          conversationId: job.id,
+          initialChunkIndex: startIndex,
+          initialPortrait: initialPortrait,
+        );
+      } else {
+        analysisResult = await _processMapReduce(
+          chunks: chunks,
+          targetName: job.targetName ?? '',
+          dateRange: job.dateRange,
+          paymentSessionId: job.paymentSessionId,
+          conversationId: job.id,
+          initialChunkResults: completedByIndex,
+        );
+      }
+
+      state = state.copyWith(
+        status: ProcessingStatus.validating,
+        statusMessage: 'Validating portrait...',
+        thinkingText: '',
+        thinkingPhaseLabel: 'AI is reasoning',
+        estimatedSecondsRemaining: -1,
+      );
+
+      final validatedResult = await _callWithRetry(
+        (forceFallback) => _runValidation(
+          text: analysisResult,
+          clientConversationRef: job.id,
+          paymentSessionId: job.paymentSessionId,
+          dateRange: job.dateRange,
+          forceFallback: forceFallback,
+        ),
+        phase: 'validation-resume',
+        paymentSessionId: job.paymentSessionId,
+        conversationRef: job.id,
+      );
+
+      _stopHeartbeat();
+
+      String? pdfPath;
+      if (config.pdfDownloadEnabled) {
+        state = state.copyWith(
+          statusMessage: 'Preparing PDF...',
+          percentage: 0.95,
+        );
+        try {
+          final pdfFile = await PortraitPdfService.saveBackendPortraitPdf(
+            targetName: job.targetName ?? '',
+            markdown: validatedResult,
+            conversationRef: job.id,
+            dateRange: job.dateRange,
+            paymentSessionId: job.paymentSessionId,
+          );
+          pdfPath = pdfFile.path;
+        } catch (e) {
+          debugPrint('[Resume] PDF pre-generation failed: $e');
+        }
+      }
+
+      await StorageService.instance.createConversation(
+        id: job.id,
+        targetName: job.targetName ?? '',
+        inputText: job.inputText,
+        clientConversationRef: job.id,
+        dateRange: job.dateRange,
+        paymentSessionId: job.paymentSessionId,
+        outputSummary: validatedResult,
+        pdfPath: pdfPath,
+        chunks: chunks,
+        mode:
+            chunks.length > 1 ? (chunkingMode == 'rolling' ? 'rolling' : 'map-reduce') : 'single',
+        tokenEstimate: TokenCalculator.estimateTokens(job.inputText),
+        tokenLimit: tokenLimit,
+      );
+
+      await StorageService.instance.deletePendingJob(job.id);
+      _ref.read(portraitsProvider.notifier).loadPortraits();
+      _stopwatch.stop();
+
+      state = state.copyWith(
+        status: ProcessingStatus.done,
+        percentage: 1.0,
+        resultMarkdown: validatedResult,
+        statusMessage: 'Complete!',
+        thinkingPhaseLabel: 'Done',
+        estimatedSecondsRemaining: 0,
+      );
+    } catch (e) {
+      _stopHeartbeat();
+      await StorageService.instance.markPendingJobStatus(job.id, 'failed');
+      _tryReleaseQueue(job.id, job.paymentSessionId);
+      state = state.copyWith(
+        status: ProcessingStatus.error,
+        error: e.toString(),
+      );
+    }
+  }
+
   /// Enqueue and poll until we get a lease token
   Future<String> _acquireQueueLease({
     required String paymentSessionId,
@@ -452,7 +665,12 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     return resultBuffer.toString();
   }
 
-  /// Map-reduce: extract per chunk, then merge
+  /// Map-reduce: extract per chunk, then merge.
+  ///
+  /// When [initialChunkResults] is provided (resume path), indices already
+  /// present in the map are skipped — matching web `analyzeMapReduce`
+  /// `geminiService.js:629-642` set-based skip. Final merge input is the
+  /// union of stored + newly-produced results, sorted by index.
   Future<String> _processMapReduce({
     required List<String> chunks,
     required String targetName,
@@ -461,12 +679,22 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     required String conversationId,
     bool forceFallback = false,
     bool updatePendingJob = true,
+    Map<int, String>? initialChunkResults,
   }) async {
-    final chunkResults = <String>[];
+    final chunkResultsByIndex = <int, String>{...?initialChunkResults};
     var anyChunkUsedFallback = forceFallback;
 
-    // Map phase: extract observations from each chunk
+    // Update UI to reflect already-completed chunks on resume.
+    if (chunkResultsByIndex.isNotEmpty) {
+      state = state.copyWith(chunksCompleted: chunkResultsByIndex.length);
+    }
+
+    // Map phase: extract observations from each chunk.
     for (int i = 0; i < chunks.length; i++) {
+      if (chunkResultsByIndex.containsKey(i)) {
+        // Resume parity: already-stored chunk, skip the API call.
+        continue;
+      }
       final prompt = PromptService.buildChunkExtractEnvelope(
         targetName: targetName,
         dateRange: dateRange,
@@ -507,7 +735,8 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
         conversationRef: conversationId,
       );
 
-      chunkResults.add(chunkText);
+      chunkResultsByIndex[i] = chunkText;
+      final completedCount = chunkResultsByIndex.length;
 
       // Track chunk duration for ETA
       final now = _stopwatch.elapsedMilliseconds;
@@ -515,14 +744,15 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       _lastChunkStartMs = now;
       final avgMs =
           _chunkDurations.reduce((a, b) => a + b) ~/ _chunkDurations.length;
-      final remaining = (chunks.length - (i + 1) + 1) * avgMs; // +1 for merge
+      final remaining =
+          (chunks.length - completedCount + 1) * avgMs; // +1 for merge
       final etaSeconds = (remaining / 1000).ceil();
       final roundedEta = ((etaSeconds + 4) ~/ 5) * 5;
 
       state = state.copyWith(
-        chunksCompleted: i + 1,
-        percentage: (i + 1) / (chunks.length + 1),
-        statusMessage: '${i + 1} of ${chunks.length} chunks completed',
+        chunksCompleted: completedCount,
+        percentage: completedCount / (chunks.length + 1),
+        statusMessage: '$completedCount of ${chunks.length} chunks completed',
         estimatedSecondsRemaining: roundedEta,
       );
 
@@ -536,6 +766,12 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
         );
       }
     }
+
+    // Sort by index for merge payload (set-based skip may have filled in
+    // results out of original chunking order on the resume path).
+    final chunkResults = [
+      for (int i = 0; i < chunks.length; i++) chunkResultsByIndex[i]!,
+    ];
 
     // Reduce phase: merge all chunk observations
     state = state.copyWith(
@@ -594,6 +830,11 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
   }
 
   /// Rolling: sequentially refine one portrait draft across chunks.
+  ///
+  /// When [initialChunkIndex] > 0 (resume path), the loop skips chunks 0..N-1
+  /// and uses [initialPortrait] as the starting rolling state — matching web
+  /// `analyzeRolling` at `geminiService.js:749-763` which sets
+  /// `startIndex = sortedResults.length`.
   Future<String> _processRolling({
     required List<String> chunks,
     required String targetName,
@@ -602,11 +843,18 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     required String conversationId,
     bool forceFallback = false,
     bool updatePendingJob = true,
+    int initialChunkIndex = 0,
+    String? initialPortrait,
   }) async {
-    String? rollingPortrait;
+    String? rollingPortrait = initialPortrait;
     var rollingFallback = forceFallback;
 
-    for (int i = 0; i < chunks.length; i++) {
+    // Update UI to reflect already-completed chunks on resume.
+    if (initialChunkIndex > 0) {
+      state = state.copyWith(chunksCompleted: initialChunkIndex);
+    }
+
+    for (int i = initialChunkIndex; i < chunks.length; i++) {
       final isFirst = i == 0;
       final isLast = i == chunks.length - 1;
       final prompt =

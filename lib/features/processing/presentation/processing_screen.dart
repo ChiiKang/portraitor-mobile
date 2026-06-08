@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/features/processing/application/processing_provider.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/shared/widgets/markdown_text.dart';
@@ -18,6 +19,12 @@ class ProcessingScreen extends ConsumerStatefulWidget {
   final String paymentIntentId;
   final String? dateRange;
 
+  /// When true, the screen looks up the saved [PendingJob] by
+  /// [conversationId] and calls `resumeProcessing` so already-completed
+  /// chunks are not redone. Wired in by the recovery sheet at
+  /// `pending_job_resume_sheet.dart` when the user taps Resume.
+  final bool isResume;
+
   const ProcessingScreen({
     super.key,
     required this.normalizedText,
@@ -25,6 +32,7 @@ class ProcessingScreen extends ConsumerStatefulWidget {
     required this.conversationId,
     required this.paymentIntentId,
     this.dateRange,
+    this.isResume = false,
   });
 
   @override
@@ -41,7 +49,30 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
     _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _elapsedSeconds++);
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (widget.isResume) {
+        // Resume path: load the saved PendingJob and continue from stored
+        // chunk results. The recovery sheet already validated it's
+        // resumable (input_text + payment_session_id present).
+        final job = await StorageService.instance.getPendingJobById(
+          widget.conversationId,
+        );
+        if (!mounted) return;
+        if (job == null) {
+          // Race: row was deleted between sheet display and this navigation.
+          // Fall through to a fresh start using the same payment session.
+          ref.read(processingProvider.notifier).startProcessing(
+                conversationId: widget.conversationId,
+                paymentSessionId: widget.paymentIntentId,
+                normalizedText: widget.normalizedText,
+                targetName: widget.targetName,
+                dateRange: widget.dateRange,
+              );
+          return;
+        }
+        ref.read(processingProvider.notifier).resumeProcessing(job);
+        return;
+      }
       ref
           .read(processingProvider.notifier)
           .startProcessing(
