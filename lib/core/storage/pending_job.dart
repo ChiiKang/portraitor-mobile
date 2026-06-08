@@ -1,0 +1,99 @@
+import 'dart:convert';
+
+class PendingJob {
+  const PendingJob({
+    required this.id,
+    required this.deviceId,
+    required this.clientConversationRef,
+    required this.inputText,
+    required this.paymentSessionId,
+    required this.chunksCompleted,
+    required this.chunksTotal,
+    required this.chunkResults,
+    required this.createdAt,
+    required this.updatedAt,
+    this.targetName,
+    this.dateRange,
+    this.status = 'processing',
+    this.chunkingMode,
+    this.tokenLimit,
+    this.chunkOverlapTokens,
+  });
+
+  final String id;
+  final String deviceId;
+  final String clientConversationRef;
+  final String inputText;
+  final String? targetName;
+  final String? dateRange;
+  final String paymentSessionId;
+  final String status;
+  final int chunksCompleted;
+  final int chunksTotal;
+  final List<Map<String, dynamic>> chunkResults;
+  final String? chunkingMode;
+  final int? tokenLimit;
+  final int? chunkOverlapTokens;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  bool get isResumable =>
+      inputText.trim().isNotEmpty &&
+      paymentSessionId.trim().isNotEmpty &&
+      clientConversationRef.trim().isNotEmpty &&
+      status != 'completed' &&
+      status != 'canceled' &&
+      status != 'stale';
+
+  Map<String, Object?> toDbMap() {
+    return {
+      'id': id,
+      'device_id': deviceId,
+      'client_conversation_ref': clientConversationRef,
+      'input_text': inputText,
+      'target_name': targetName,
+      'date_range': dateRange,
+      'payment_session_id': paymentSessionId,
+      'status': status,
+      'chunks_completed': chunksCompleted,
+      'chunks_total': chunksTotal,
+      'chunk_results': jsonEncode(chunkResults),
+      'chunking_mode': chunkingMode,
+      'token_limit': tokenLimit,
+      'chunk_overlap_tokens': chunkOverlapTokens,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+    };
+  }
+
+  static PendingJob fromDbMap(Map<String, Object?> row) {
+    final rawResults = row['chunk_results'] as String?;
+    final decoded = rawResults == null || rawResults.isEmpty
+        ? const <dynamic>[]
+        : jsonDecode(rawResults) as List<dynamic>;
+
+    return PendingJob(
+      id: row['id'] as String,
+      deviceId: row['device_id'] as String,
+      clientConversationRef: row['client_conversation_ref'] as String,
+      inputText: (row['input_text'] as String?) ?? '',
+      targetName: row['target_name'] as String?,
+      dateRange: row['date_range'] as String?,
+      paymentSessionId: (row['payment_session_id'] as String?) ?? '',
+      status: (row['status'] as String?) ?? 'processing',
+      chunksCompleted: (row['chunks_completed'] as int?) ?? 0,
+      chunksTotal: (row['chunks_total'] as int?) ?? 0,
+      chunkResults: decoded
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(growable: false),
+      chunkingMode: row['chunking_mode'] as String?,
+      tokenLimit: row['token_limit'] as int?,
+      chunkOverlapTokens: row['chunk_overlap_tokens'] as int?,
+      createdAt: DateTime.parse(row['created_at'] as String),
+      updatedAt: DateTime.parse(
+        (row['updated_at'] as String?) ?? row['created_at'] as String,
+      ),
+    );
+  }
+}

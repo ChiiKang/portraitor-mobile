@@ -1,9 +1,12 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
+
+import 'package:portraitor_mobile/core/storage/pending_job.dart';
 
 class StorageService {
   static final StorageService instance = StorageService._();
@@ -11,7 +14,7 @@ class StorageService {
 
   static const String _deviceIdKey = 'portraitor_device_id';
   static const int _maxConversations = 100;
-  static const int _dbVersion = 4;
+  static const int _dbVersion = 5;
 
   Database? _db;
   String? _deviceId;
@@ -33,6 +36,26 @@ class StorageService {
     return id;
   }
 
+  /// Schema version exposed for tests that need to assert against migrations.
+  @visibleForTesting
+  static int get dbVersion => _dbVersion;
+
+  /// Inject a pre-opened database (and matching device id) for unit tests.
+  /// Bypasses platform-dependent path_provider and shared_preferences.
+  @visibleForTesting
+  void initForTesting({required Database db, required String deviceId}) {
+    _db = db;
+    _deviceId = deviceId;
+  }
+
+  /// Reset internal state between tests.
+  @visibleForTesting
+  Future<void> resetForTesting() async {
+    await _db?.close();
+    _db = null;
+    _deviceId = null;
+  }
+
   Future<Database> _openDatabase() async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'portraitor.db');
@@ -40,7 +63,15 @@ class StorageService {
     return openDatabase(
       path,
       version: _dbVersion,
-      onCreate: (db, version) async {
+      onCreate: onCreateSchema,
+      onUpgrade: onUpgradeSchema,
+    );
+  }
+
+  /// Schema setup for a fresh database. Exposed so tests can wire it onto an
+  /// in-memory FFI database without recreating the SQL.
+  @visibleForTesting
+  static Future<void> onCreateSchema(Database db, int version) async {
         await db.execute('''
           CREATE TABLE conversations (
             id TEXT PRIMARY KEY,
@@ -73,18 +104,40 @@ class StorageService {
             id TEXT PRIMARY KEY,
             device_id TEXT NOT NULL,
             client_conversation_ref TEXT NOT NULL,
+            input_text TEXT,
             target_name TEXT,
+            date_range TEXT,
+            payment_session_id TEXT,
             status TEXT DEFAULT 'processing',
             chunks_completed INTEGER DEFAULT 0,
             chunks_total INTEGER DEFAULT 0,
-            created_at TEXT NOT NULL
+            chunk_results TEXT DEFAULT '[]',
+            chunking_mode TEXT,
+            token_limit INTEGER,
+            chunk_overlap_tokens INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
           )
         ''');
         await db.execute(
           'CREATE INDEX idx_pending_jobs_device ON pending_jobs(device_id)',
         );
-      },
-      onUpgrade: (db, oldVersion, newVersion) async {
+        await db.execute(
+          'CREATE INDEX idx_pending_jobs_device_status ON pending_jobs(device_id, status)',
+        );
+        await db.execute(
+          'CREATE INDEX idx_pending_jobs_updated ON pending_jobs(device_id, updated_at)',
+        );
+  }
+
+  /// Schema migrations. Exposed so tests can wire it onto an in-memory FFI
+  /// database without recreating the SQL.
+  @visibleForTesting
+  static Future<void> onUpgradeSchema(
+    Database db,
+    int oldVersion,
+    int newVersion,
+  ) async {
         if (oldVersion < 3) {
           await db.execute('''
             CREATE TABLE IF NOT EXISTS pending_jobs (
@@ -113,8 +166,51 @@ class StorageService {
           );
           await _addColumnIfMissing(db, 'conversations', 'pdf_path TEXT');
         }
-      },
-    );
+        if (oldVersion < 5) {
+          // Web-parity pending_jobs columns. All nullable on upgrade because
+          // SQLite cannot add NOT NULL columns to existing tables. Required
+          // fields are enforced in Dart via PendingJob.isResumable at read time.
+          await _addColumnIfMissing(db, 'pending_jobs', 'input_text TEXT');
+          await _addColumnIfMissing(db, 'pending_jobs', 'date_range TEXT');
+          await _addColumnIfMissing(db, 'pending_jobs', 'payment_session_id TEXT');
+          await _addColumnIfMissing(
+            db,
+            'pending_jobs',
+            "chunk_results TEXT DEFAULT '[]'",
+          );
+          await _addColumnIfMissing(db, 'pending_jobs', 'chunking_mode TEXT');
+          await _addColumnIfMissing(db, 'pending_jobs', 'token_limit INTEGER');
+          await _addColumnIfMissing(
+            db,
+            'pending_jobs',
+            'chunk_overlap_tokens INTEGER',
+          );
+          await _addColumnIfMissing(db, 'pending_jobs', 'updated_at TEXT');
+          await db.execute(
+            "UPDATE pending_jobs SET updated_at = created_at "
+            "WHERE updated_at IS NULL OR updated_at = ''",
+          );
+          await db.execute(
+            "UPDATE pending_jobs SET chunk_results = '[]' "
+            "WHERE chunk_results IS NULL OR chunk_results = ''",
+          );
+          // Legacy v4 rows lack input_text and payment_session_id, so they
+          // cannot be resumed safely. Mark them stale; the recovery UI will
+          // offer cancel-only for these.
+          await db.execute(
+            "UPDATE pending_jobs SET status = 'stale' "
+            "WHERE input_text IS NULL OR input_text = '' "
+            "OR payment_session_id IS NULL OR payment_session_id = ''",
+          );
+          await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_pending_jobs_device_status '
+            'ON pending_jobs(device_id, status)',
+          );
+          await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_pending_jobs_updated '
+            'ON pending_jobs(device_id, updated_at)',
+          );
+        }
   }
 
   static Future<void> _addColumnIfMissing(
@@ -338,6 +434,122 @@ class StorageService {
     if (db == null) return;
 
     await db.delete('pending_jobs', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ── Pending Jobs (typed, web-parity) ────────────────────────
+
+  Future<void> savePendingJobRecord(PendingJob job) async {
+    final db = _db;
+    if (db == null) return;
+    await db.insert(
+      'pending_jobs',
+      job.toDbMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Append a chunk result `{index, content}` to a pending job. Replaces an
+  /// existing entry with the same `index`. Updates `chunks_completed` to the
+  /// resulting list length and bumps `updated_at`. Sequential by contract;
+  /// wrap in a transaction if processing ever becomes concurrent.
+  Future<void> appendPendingJobChunk(
+    String id,
+    Map<String, dynamic> chunkResult,
+  ) async {
+    final db = _db;
+    if (db == null) return;
+
+    final rows = await db.query(
+      'pending_jobs',
+      columns: ['chunk_results'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return;
+
+    final raw = rows.first['chunk_results'] as String?;
+    final existing = <Map<String, dynamic>>[];
+    if (raw != null && raw.isNotEmpty) {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        for (final item in decoded) {
+          if (item is Map) {
+            existing.add(Map<String, dynamic>.from(item));
+          }
+        }
+      }
+    }
+
+    final idx = chunkResult['index'];
+    final existingIdx = existing.indexWhere((e) => e['index'] == idx);
+    if (existingIdx >= 0) {
+      existing[existingIdx] = chunkResult;
+    } else {
+      existing.add(chunkResult);
+    }
+
+    await db.update(
+      'pending_jobs',
+      {
+        'chunk_results': jsonEncode(existing),
+        'chunks_completed': existing.length,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> markPendingJobStatus(String id, String status) async {
+    final db = _db;
+    if (db == null) return;
+    await db.update(
+      'pending_jobs',
+      {
+        'status': status,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<List<PendingJob>> getResumablePendingJobs() async {
+    final db = _db;
+    if (db == null) return [];
+    final rows = await db.query(
+      'pending_jobs',
+      where: 'device_id = ? AND status NOT IN (?, ?, ?)',
+      whereArgs: [_deviceId, 'completed', 'canceled', 'stale'],
+      orderBy: 'created_at DESC',
+    );
+    return rows.map(PendingJob.fromDbMap).toList(growable: false);
+  }
+
+  Future<List<PendingJob>> getAllPendingJobsRaw() async {
+    final db = _db;
+    if (db == null) return [];
+    final rows = await db.query(
+      'pending_jobs',
+      where: 'device_id = ?',
+      whereArgs: [_deviceId],
+      orderBy: 'created_at DESC',
+    );
+    return rows.map(PendingJob.fromDbMap).toList(growable: false);
+  }
+
+  Future<PendingJob?> getPendingJobById(String id) async {
+    final db = _db;
+    if (db == null) return null;
+    final rows = await db.query(
+      'pending_jobs',
+      where: 'id = ? AND device_id = ?',
+      whereArgs: [id, _deviceId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return PendingJob.fromDbMap(rows.first);
   }
 
   // ── Helpers ─────────────────────────────────────────────────
