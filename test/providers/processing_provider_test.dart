@@ -568,5 +568,123 @@ void main() {
         contains('missing required fields'),
       );
     });
+
+    test(
+      'resumeProcessing happy path (single-shot) — drives processing + '
+      'validation through to a completed conversation and deletes the pending row',
+      () async {
+        // Single-shot path keeps the test fast and avoids depending on the
+        // production SSE event-prefix format. Resume for single-shot is a
+        // re-run with the same payment session (same as web behavior at
+        // app.js:2814) and exercises: lease reacquisition, heartbeat start,
+        // _processSingleShot, _runValidation, createConversation,
+        // deletePendingJob.
+        final now = DateTime.utc(2026, 6, 8, 17);
+        final job = PendingJob(
+          id: 'conv_resume_happy',
+          deviceId: 'device_test',
+          clientConversationRef: 'conv_resume_happy',
+          inputText: 'a short chat log for single-shot processing',
+          targetName: 'HappyPath',
+          dateRange: 'Jun 2026',
+          paymentSessionId: 'pi_resume_happy',
+          status: 'processing',
+          chunksCompleted: 0,
+          chunksTotal: 1,
+          chunkResults: const [],
+          chunkingMode: 'map-reduce',
+          tokenLimit: 250000,
+          chunkOverlapTokens: 250,
+          createdAt: now,
+          updatedAt: now,
+        );
+        await StorageService.instance.savePendingJobRecord(job);
+
+        // enqueue returns processing+lease immediately — no queue wait.
+        fakeApi.onEnqueue = ({
+          required String paymentSessionId,
+          required String clientConversationRef,
+        }) async =>
+            {'status': 'processing', 'lease_token': 'lease_test'};
+
+        // Heartbeat poll returns the current lease, keeping it alive.
+        fakeApi.onGetQueueStatus = ({
+          required String clientConversationRef,
+          required String paymentSessionId,
+          String? leaseToken,
+        }) async =>
+            {
+              'status': 'processing',
+              'lease_token': leaseToken ?? 'lease_test',
+            };
+
+        // SSE events must use the eventType\x00jsonData format the
+        // production SseParser.feedParsed reads (see sse_service.dart:132).
+        fakeApi.onStreamAnalysis = ({
+          required String promptTemplate,
+          required Map<String, dynamic> templateVars,
+          String? previousPortrait,
+          required String payload,
+          required String paymentSessionId,
+          required String clientConversationRef,
+          String? dateRange,
+          required Map<String, dynamic> metadata,
+          String? leaseToken,
+          bool forceFallback = false,
+        }) =>
+            Stream.fromIterable([
+              'response\x00{"text":"raw analysis result"}',
+              'done\x00{"text":"final analysis result"}',
+            ]);
+
+        fakeApi.onStreamValidation = ({
+          required String text,
+          required String clientConversationRef,
+          required String paymentSessionId,
+          String? leaseToken,
+          String? dateRange,
+          bool forceFallback = false,
+        }) =>
+            Stream.fromIterable([
+              'response\x00{"text":"raw validated"}',
+              'done\x00{"text":"final validated portrait","email_sent":true,"payment_action":"captured"}',
+            ]);
+
+        await notifier.resumeProcessing(job);
+
+        final state = container.read(processingProvider);
+
+        // Final processing state: done, not error.
+        expect(state.status, ProcessingStatus.done,
+            reason: 'resumeProcessing must reach the done state. error: '
+                '${state.error}');
+        expect(state.emailSent, isTrue,
+            reason: 'validation done event sets email_sent: true');
+        expect(state.paymentCaptured, isTrue,
+            reason: 'validation done event sets payment_action: captured');
+        expect(state.resultMarkdown, contains('final validated portrait'));
+
+        // Pending row deleted only AFTER the conversation save completes.
+        expect(
+          await StorageService.instance.getPendingJobById('conv_resume_happy'),
+          isNull,
+          reason: 'pending_jobs row must be cleaned up on success',
+        );
+
+        // Conversation row exists with the final portrait stored.
+        final conv = await StorageService.instance.getConversationById(
+          'conv_resume_happy',
+        );
+        expect(conv, isNotNull);
+        expect(conv!['status'], 'completed');
+        expect(
+          conv['output_summary'] as String,
+          contains('final validated portrait'),
+        );
+        expect(conv['payment_session_id'], 'pi_resume_happy');
+        expect(conv['client_conversation_ref'], 'conv_resume_happy');
+      },
+      timeout: const Timeout(Duration(seconds: 30)),
+    );
   });
 }
