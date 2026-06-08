@@ -30,7 +30,10 @@ void main() {
 
       // Page 2: How it works
       expect(find.text('How it works?'), findsOneWidget);
-      expect(find.text('Export a chat from WhatsApp or Telegram'), findsOneWidget);
+      expect(
+        find.text('Export a chat from WhatsApp or Telegram'),
+        findsOneWidget,
+      );
       expect(find.text('Share it with Portraitor'), findsOneWidget);
       expect(find.textContaining('personality portrait'), findsOneWidget);
       expect(find.text('Continue'), findsOneWidget);

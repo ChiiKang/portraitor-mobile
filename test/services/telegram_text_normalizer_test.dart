@@ -1,21 +1,26 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:portraitor_mobile/services/chat_normalizer.dart';
+import 'package:portraitor_mobile/features/import/services/chat_normalizer.dart';
 
 void main() {
   group('Telegram text format detection and normalization', () {
     late String telegramText;
 
     setUpAll(() {
-      telegramText = File(
-        '/Users/chiikang/Desktop/Nation/Project54/portraitor/docs/test_date_parser/messages1-11_ori.md',
-      ).readAsStringSync();
+      telegramText =
+          File(
+            '/Users/chiikang/Desktop/Nation/Project54/portraitor/docs/test_date_parser/messages1-11_ori.md',
+          ).readAsStringSync();
     });
 
     test('detects Telegram text format correctly', () {
       final format = ChatNormalizer.detectFormat(telegramText);
-      expect(format, ChatFormat.telegramText,
-          reason: 'Should detect Telegram text format from date headers + time + names');
+      expect(
+        format,
+        ChatFormat.telegramText,
+        reason:
+            'Should detect Telegram text format from date headers + time + names',
+      );
     });
 
     test('normalizes to WhatsApp-style lines', () {
@@ -28,10 +33,16 @@ void main() {
       expect(result.text, contains(':'));
 
       // Should have message lines like [06/01/2021, 15:35:00] Natalia: Heeeeey
-      final linePattern = RegExp(r'^\[\d{2}/\d{2}/\d{4}, \d{2}:\d{2}:\d{2}\] .+: .+', multiLine: true);
+      final linePattern = RegExp(
+        r'^\[\d{2}/\d{2}/\d{4}, \d{2}:\d{2}:\d{2}\] .+: .+',
+        multiLine: true,
+      );
       final matches = linePattern.allMatches(result.text);
-      expect(matches.length, greaterThan(5),
-          reason: 'Should have many normalized message lines');
+      expect(
+        matches.length,
+        greaterThan(5),
+        reason: 'Should have many normalized message lines',
+      );
     });
 
     test('detects correct names — Natalia and Michael, not garbage', () {
@@ -39,28 +50,49 @@ void main() {
       final names = result.detectedNames;
 
       expect(names, isNotEmpty, reason: 'Should detect at least one name');
-      expect(names.length, lessThanOrEqualTo(10), reason: 'Should not detect too many names');
+      expect(
+        names.length,
+        lessThanOrEqualTo(10),
+        reason: 'Should not detect too many names',
+      );
 
       // Must find the actual participants
       final hasNatalia = names.any((n) => n.contains('Natalia'));
       final hasMichael = names.any((n) => n.contains('Michael'));
-      expect(hasNatalia, isTrue, reason: 'Should detect Natalia as a participant');
-      expect(hasMichael, isTrue, reason: 'Should detect Michael as a participant');
+      expect(
+        hasNatalia,
+        isTrue,
+        reason: 'Should detect Natalia as a participant',
+      );
+      expect(
+        hasMichael,
+        isTrue,
+        reason: 'Should detect Michael as a participant',
+      );
 
       // Must NOT contain garbage like "here is the link"
       for (final name in names) {
         expect(name.length, lessThan(40), reason: 'Names should be short');
-        expect(name.toLowerCase().contains('here is the link'), isFalse,
-            reason: 'Should not detect message content as name: "$name"');
-        expect(name.toLowerCase().contains('http'), isFalse,
-            reason: 'URLs should not be names: "$name"');
+        expect(
+          name.toLowerCase().contains('here is the link'),
+          isFalse,
+          reason: 'Should not detect message content as name: "$name"',
+        );
+        expect(
+          name.toLowerCase().contains('http'),
+          isFalse,
+          reason: 'URLs should not be names: "$name"',
+        );
       }
     });
 
     test('message count is reasonable', () {
       final result = ChatNormalizer.normalize(telegramText);
-      expect(result.messageCount, greaterThan(10),
-          reason: 'Should have many messages');
+      expect(
+        result.messageCount,
+        greaterThan(10),
+        reason: 'Should have many messages',
+      );
     });
   });
 
@@ -155,14 +187,16 @@ A normal message''';
 
   group('WhatsApp name detection (3 strategies)', () {
     test('Strategy 1: bracketed [timestamp] Name: message', () {
-      const text = '[19/05/2024, 10:32:00] Alice Smith: hello\n[19/05/2024, 10:33:00] Bob Jones: hi';
+      const text =
+          '[19/05/2024, 10:32:00] Alice Smith: hello\n[19/05/2024, 10:33:00] Bob Jones: hi';
       final names = ChatNormalizer.detectNames(text);
       expect(names, contains('Alice Smith'));
       expect(names, contains('Bob Jones'));
     });
 
     test('Strategy 2: ISO 2022-04-25, 15:30 - Name: message', () {
-      const text = '2022-04-25, 15:30 - Alice: hello\n2022-04-25, 15:31 - Bob: hi';
+      const text =
+          '2022-04-25, 15:30 - Alice: hello\n2022-04-25, 15:31 - Bob: hi';
       final names = ChatNormalizer.detectNames(text);
       expect(names, contains('Alice'));
       expect(names, contains('Bob'));
@@ -176,16 +210,22 @@ A normal message''';
     });
 
     test('names sorted by frequency', () {
-      const text = '[01/01/2024, 10:00:00] Alice: msg1\n'
+      const text =
+          '[01/01/2024, 10:00:00] Alice: msg1\n'
           '[01/01/2024, 10:01:00] Alice: msg2\n'
           '[01/01/2024, 10:02:00] Alice: msg3\n'
           '[01/01/2024, 10:03:00] Bob: msg4\n';
       final names = ChatNormalizer.detectNames(text);
-      expect(names.first, 'Alice', reason: 'Alice has more messages so should be first');
+      expect(
+        names.first,
+        'Alice',
+        reason: 'Alice has more messages so should be first',
+      );
     });
 
     test('skips system messages', () {
-      const text = '[01/01/2024, 10:00:00] Alice: hello\n'
+      const text =
+          '[01/01/2024, 10:00:00] Alice: hello\n'
           '[01/01/2024, 10:01:00] You added Bob: \n';
       final names = ChatNormalizer.detectNames(text);
       expect(names, contains('Alice'));

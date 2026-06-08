@@ -8,16 +8,20 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   group('Setup Screen', () {
-    testWidgets('renders with detected names and step indicator', (tester) async {
-      await tester.pumpWidget(buildSetupTestApp(
-        normalizedText: sampleChat,
-        detectedNames: ['Alice', 'Bob'],
-        messageCount: 10,
-        dateRange: {
-          'start': DateTime(2024, 5, 19),
-          'end': DateTime(2024, 5, 21),
-        },
-      ));
+    testWidgets('renders with detected names and step indicator', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        buildSetupTestApp(
+          normalizedText: sampleChat,
+          detectedNames: ['Alice', 'Bob'],
+          messageCount: 10,
+          dateRange: {
+            'start': DateTime(2024, 5, 19),
+            'end': DateTime(2024, 5, 21),
+          },
+        ),
+      );
       await tester.pump(const Duration(seconds: 2));
 
       // Step indicator
@@ -37,16 +41,71 @@ void main() {
       expect(find.text('Date range'), findsOneWidget);
     });
 
+    testWidgets(
+      'shows generic conversation summary with complete month range',
+      (tester) async {
+        await tester.pumpWidget(
+          buildSetupTestApp(
+            normalizedText: sampleChat,
+            format: 'whatsapp',
+            detectedNames: ['Alice', 'Bob'],
+            messageCount: 10,
+            dateRange: {
+              'start': DateTime(2024, 1, 15),
+              'end': DateTime(2024, 5, 19),
+            },
+          ),
+        );
+        await tester.pump(const Duration(seconds: 2));
+
+        expect(find.text('Conversation imported'), findsOneWidget);
+        expect(find.text('Jan 2024 – May 2024'), findsOneWidget);
+        expect(find.text('View'), findsOneWidget);
+        expect(find.textContaining('WhatsApp chat imported'), findsNothing);
+        expect(find.text('10 messages'), findsNothing);
+        expect(find.textContaining('of 10 messages'), findsNothing);
+      },
+    );
+
+    testWidgets('view opens scrollable conversation dialog', (tester) async {
+      await tester.pumpWidget(
+        buildSetupTestApp(
+          normalizedText: sampleChat,
+          format: 'whatsapp',
+          detectedNames: ['Alice', 'Bob'],
+          messageCount: 10,
+          dateRange: {
+            'start': DateTime(2024, 1, 15),
+            'end': DateTime(2024, 5, 19),
+          },
+        ),
+      );
+      await tester.pump(const Duration(seconds: 2));
+
+      await tester.tap(find.text('View'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byIcon(Icons.close), findsOneWidget);
+      expect(find.text('Change'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+
     testWidgets('can select a detected name chip', (tester) async {
-      await tester.pumpWidget(buildSetupTestApp(
-        normalizedText: sampleChat,
-        detectedNames: ['Alice', 'Bob'],
-        messageCount: 10,
-        dateRange: {
-          'start': DateTime(2024, 5, 19),
-          'end': DateTime(2024, 5, 21),
-        },
-      ));
+      await tester.pumpWidget(
+        buildSetupTestApp(
+          normalizedText: sampleChat,
+          detectedNames: ['Alice', 'Bob'],
+          messageCount: 10,
+          dateRange: {
+            'start': DateTime(2024, 5, 19),
+            'end': DateTime(2024, 5, 21),
+          },
+        ),
+      );
       await tester.pump(const Duration(seconds: 2));
 
       // First name should be pre-selected — tap Bob
@@ -60,11 +119,13 @@ void main() {
     });
 
     testWidgets('can type a custom name', (tester) async {
-      await tester.pumpWidget(buildSetupTestApp(
-        normalizedText: sampleChat,
-        detectedNames: ['Alice', 'Bob'],
-        messageCount: 10,
-      ));
+      await tester.pumpWidget(
+        buildSetupTestApp(
+          normalizedText: sampleChat,
+          detectedNames: ['Alice', 'Bob'],
+          messageCount: 10,
+        ),
+      );
       await tester.pump(const Duration(seconds: 2));
 
       // Find the name text field and enter custom name
@@ -77,15 +138,17 @@ void main() {
     });
 
     testWidgets('date range dropdown shows options', (tester) async {
-      await tester.pumpWidget(buildSetupTestApp(
-        normalizedText: sampleChat,
-        detectedNames: ['Alice'],
-        messageCount: 10,
-        dateRange: {
-          'start': DateTime(2024, 5, 19),
-          'end': DateTime(2024, 5, 21),
-        },
-      ));
+      await tester.pumpWidget(
+        buildSetupTestApp(
+          normalizedText: sampleChat,
+          detectedNames: ['Alice'],
+          messageCount: 10,
+          dateRange: {
+            'start': DateTime(2024, 5, 19),
+            'end': DateTime(2024, 5, 21),
+          },
+        ),
+      );
       await tester.pump(const Duration(seconds: 2));
 
       // Default should be "Process all messages"
@@ -103,15 +166,17 @@ void main() {
     });
 
     testWidgets('selecting Custom range shows slider', (tester) async {
-      await tester.pumpWidget(buildSetupTestApp(
-        normalizedText: sampleChat,
-        detectedNames: ['Alice'],
-        messageCount: 10,
-        dateRange: {
-          'start': DateTime(2024, 5, 19),
-          'end': DateTime(2024, 5, 21),
-        },
-      ));
+      await tester.pumpWidget(
+        buildSetupTestApp(
+          normalizedText: sampleChat,
+          detectedNames: ['Alice'],
+          messageCount: 10,
+          dateRange: {
+            'start': DateTime(2024, 5, 19),
+            'end': DateTime(2024, 5, 21),
+          },
+        ),
+      );
       await tester.pump(const Duration(seconds: 2));
 
       // Open dropdown
@@ -129,11 +194,13 @@ void main() {
     });
 
     testWidgets('bottom bar shows token estimate and price', (tester) async {
-      await tester.pumpWidget(buildSetupTestApp(
-        normalizedText: sampleChat,
-        detectedNames: ['Alice'],
-        messageCount: 10,
-      ));
+      await tester.pumpWidget(
+        buildSetupTestApp(
+          normalizedText: sampleChat,
+          detectedNames: ['Alice'],
+          messageCount: 10,
+        ),
+      );
       await tester.pump(const Duration(seconds: 2));
 
       expect(find.text('TOKEN ESTIMATE'), findsOneWidget);
@@ -141,20 +208,25 @@ void main() {
     });
 
     testWidgets('Generate button navigates to payment', (tester) async {
-      await tester.pumpWidget(buildSetupTestApp(
-        normalizedText: sampleChat,
-        detectedNames: ['Alice', 'Bob'],
-        messageCount: 10,
-        dateRange: {
-          'start': DateTime(2024, 5, 19),
-          'end': DateTime(2024, 5, 21),
-        },
-      ));
+      await tester.pumpWidget(
+        buildSetupTestApp(
+          normalizedText: sampleChat,
+          detectedNames: ['Alice', 'Bob'],
+          messageCount: 10,
+          dateRange: {
+            'start': DateTime(2024, 5, 19),
+            'end': DateTime(2024, 5, 21),
+          },
+        ),
+      );
       await tester.pump(const Duration(seconds: 2));
 
       // A name should be pre-selected, so Generate button is active
       // Scroll down to find the button
-      await tester.drag(find.byType(SingleChildScrollView).first, const Offset(0, -200));
+      await tester.drag(
+        find.byType(SingleChildScrollView).first,
+        const Offset(0, -200),
+      );
       await tester.pump(const Duration(seconds: 2));
 
       final genButton = find.textContaining('Generate portrait');

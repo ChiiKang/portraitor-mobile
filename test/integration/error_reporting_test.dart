@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:portraitor_mobile/services/error_reporter.dart';
+import 'package:portraitor_mobile/core/errors/error_reporter.dart';
 
 void main() {
   group('ErrorReporter', () {
@@ -57,9 +57,10 @@ void main() {
       // We can't easily test the truncation against a real server,
       // but we can verify the truncation logic produces correct output
       final longError = 'x' * 2000;
-      final truncated = longError.length > 1200
-          ? '${longError.substring(0, 1200)}... [truncated]'
-          : longError;
+      final truncated =
+          longError.length > 1200
+              ? '${longError.substring(0, 1200)}... [truncated]'
+              : longError;
       expect(truncated.length, 1215); // 1200 + "... [truncated]" (15 chars)
       expect(truncated, endsWith('... [truncated]'));
     });

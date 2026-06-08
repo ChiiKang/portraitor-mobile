@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:mocktail/mocktail.dart';
 
-import 'package:portraitor_mobile/services/api_service.dart';
-import 'package:portraitor_mobile/services/stripe_service.dart';
+import 'package:portraitor_mobile/core/api/api_service.dart';
+import 'package:portraitor_mobile/features/payment/services/stripe_service.dart';
 
 // ── Mock classes ─────────────────────────────────────────────
 
@@ -18,35 +18,41 @@ class FakeApiService extends Fake implements ApiService {
     required String clientConversationRef,
     required String customerEmail,
     String? inputHash,
-  })? onCreatePayment;
+  })?
+  onCreatePayment;
 
   Future<Map<String, dynamic>> Function({required String paymentIntentId})?
-      onVerifyPayment;
+  onVerifyPayment;
 
   Future<Map<String, dynamic>> Function({required String paymentIntentId})?
-      onCancelPayment;
+  onCancelPayment;
 
   // Queue
   Future<Map<String, dynamic>> Function({
     required String paymentSessionId,
     required String clientConversationRef,
-  })? onEnqueue;
+  })?
+  onEnqueue;
 
   Future<Map<String, dynamic>> Function({
     required String clientConversationRef,
     required String paymentSessionId,
     String? leaseToken,
-  })? onGetQueueStatus;
+  })?
+  onGetQueueStatus;
 
   Future<Map<String, dynamic>> Function({
     required String clientConversationRef,
     required String paymentSessionId,
     String? leaseToken,
-  })? onReleaseQueue;
+  })?
+  onReleaseQueue;
 
   // Streams
   Stream<String> Function({
-    required String prompt,
+    required String promptTemplate,
+    required Map<String, dynamic> templateVars,
+    String? previousPortrait,
     required String payload,
     required String paymentSessionId,
     required String clientConversationRef,
@@ -54,7 +60,8 @@ class FakeApiService extends Fake implements ApiService {
     required Map<String, dynamic> metadata,
     String? leaseToken,
     bool forceFallback,
-  })? onStreamAnalysis;
+  })?
+  onStreamAnalysis;
 
   Stream<String> Function({
     required String text,
@@ -63,7 +70,8 @@ class FakeApiService extends Fake implements ApiService {
     String? leaseToken,
     String? dateRange,
     bool forceFallback,
-  })? onStreamValidation;
+  })?
+  onStreamValidation;
 
   // Staging
   Future<void> Function({
@@ -71,7 +79,8 @@ class FakeApiService extends Fake implements ApiService {
     required int index,
     required int total,
     required String chunk,
-  })? onStagePayload;
+  })?
+  onStagePayload;
 
   // Config
   Future<Map<String, dynamic>> Function()? onGetConfig;
@@ -98,7 +107,7 @@ class FakeApiService extends Fake implements ApiService {
         'client_secret': 'pi_test_secret_abc123',
         'payment_intent_id': 'pi_test_123',
         'publishable_key': 'pk_test_abc123456789012345',
-      }
+      },
     });
   }
 
@@ -110,7 +119,7 @@ class FakeApiService extends Fake implements ApiService {
       return onVerifyPayment!(paymentIntentId: paymentIntentId);
     }
     return Future.value({
-      'data': {'paid': true, 'status': 'requires_capture'}
+      'data': {'paid': true, 'status': 'requires_capture'},
     });
   }
 
@@ -178,7 +187,9 @@ class FakeApiService extends Fake implements ApiService {
 
   @override
   Stream<String> streamAnalysis({
-    required String prompt,
+    required String promptTemplate,
+    required Map<String, dynamic> templateVars,
+    String? previousPortrait,
     required String payload,
     required String paymentSessionId,
     required String clientConversationRef,
@@ -189,7 +200,9 @@ class FakeApiService extends Fake implements ApiService {
   }) {
     if (onStreamAnalysis != null) {
       return onStreamAnalysis!(
-        prompt: prompt,
+        promptTemplate: promptTemplate,
+        templateVars: templateVars,
+        previousPortrait: previousPortrait,
         payload: payload,
         paymentSessionId: paymentSessionId,
         clientConversationRef: clientConversationRef,
@@ -255,15 +268,24 @@ class FakeApiService extends Fake implements ApiService {
     return Future.value({
       'status': 'ok',
       'data': {
-        'effective': {
-          'price_cents': 500,
-          'gemini_model': 'gemini-2.5-flash',
-          'gemini_token_limit': 250000,
-          'gemini_chunk_overlap_tokens': 250,
-          'chunking_mode': 'map-reduce',
-          'payment_mode': 'live',
-        }
-      }
+        'configVersion': 'mock-default',
+        'payment': {
+          'priceCents': 500,
+          'currency': 'usd',
+          'amountDisplay': r'$5.00',
+          'available': true,
+        },
+        'processing': {
+          'chunkingMode': 'map-reduce',
+          'tokenLimit': 250000,
+          'chunkOverlapTokens': 250,
+        },
+        'ui': {
+          'thinkingDisplayMode': 'truncated',
+          'thinkingDisplayWordLimit': 40,
+          'pdfDownloadEnabled': true,
+        },
+      },
     });
   }
 
@@ -274,10 +296,7 @@ class FakeApiService extends Fake implements ApiService {
   }
 
   @override
-  Future<Map<String, dynamic>> gdpr({
-    required String action,
-    String? email,
-  }) {
+  Future<Map<String, dynamic>> gdpr({required String action, String? email}) {
     return Future.value({'status': 'ok'});
   }
 }

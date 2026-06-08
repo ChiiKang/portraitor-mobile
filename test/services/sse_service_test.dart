@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:portraitor_mobile/services/sse_service.dart';
+import 'package:portraitor_mobile/core/api/sse_service.dart';
 
 void main() {
   group('SseEvent.parse', () {
@@ -200,7 +200,9 @@ void main() {
     test('reset clears the buffer', () {
       parser.feed('data: partial');
       parser.reset();
-      final events = parser.feed('data: ${jsonEncode({'type': 'response', 'text': 'new'})}\n');
+      final events = parser.feed(
+        'data: ${jsonEncode({'type': 'response', 'text': 'new'})}\n',
+      );
       expect(events.length, 1);
       expect(events[0].text, 'new');
     });
@@ -243,13 +245,16 @@ void main() {
       expect(events[0].isFallbackSignal, isTrue);
     });
 
-    test('backward-compatible: still parses JSON type field when no event: line', () {
-      final json = jsonEncode({'type': 'response', 'text': 'legacy'});
-      final events = parser.feed('data: $json\n\n');
-      expect(events.length, 1);
-      expect(events[0].type, SseEventType.response);
-      expect(events[0].text, 'legacy');
-    });
+    test(
+      'backward-compatible: still parses JSON type field when no event: line',
+      () {
+        final json = jsonEncode({'type': 'response', 'text': 'legacy'});
+        final events = parser.feed('data: $json\n\n');
+        expect(events.length, 1);
+        expect(events[0].type, SseEventType.response);
+        expect(events[0].text, 'legacy');
+      },
+    );
 
     test('event: line overrides JSON type field', () {
       final json = jsonEncode({'type': 'thinking', 'text': 'override test'});
@@ -263,7 +268,8 @@ void main() {
       final json2 = jsonEncode({'type': 'response', 'text': 'legacy'});
       final json3 = jsonEncode({'text': 'done', 'email_sent': true});
 
-      final input = 'event: thought\ndata: $json1\n\n'
+      final input =
+          'event: thought\ndata: $json1\n\n'
           'data: $json2\n\n'
           'event: done\ndata: $json3\n\n';
 

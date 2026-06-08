@@ -54,7 +54,10 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
 
       // Scroll to find danger zone
-      await tester.drag(find.byType(SingleChildScrollView).first, const Offset(0, -300));
+      await tester.drag(
+        find.byType(SingleChildScrollView).first,
+        const Offset(0, -300),
+      );
       await tester.pump(const Duration(seconds: 2));
 
       final deleteButton = find.text('Delete all local data');

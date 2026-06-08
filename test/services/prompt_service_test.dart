@@ -1,110 +1,131 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:portraitor_mobile/services/prompt_service.dart';
+import 'package:portraitor_mobile/features/processing/services/prompt_service.dart';
 
 void main() {
-  group('PromptService.buildAnalysisPrompt', () {
-    test('replaces TARGET_NAME in system prompt section', () {
-      final prompt = PromptService.buildAnalysisPrompt(targetName: 'Alice');
-      expect(prompt, contains('Alice'));
-      // Note: TARGET_NAME still appears in the reportStructurePrompt template
-      // which is appended after replacement
-    });
-
-    test('includes report structure', () {
-      final prompt = PromptService.buildAnalysisPrompt(targetName: 'Alice');
-      expect(prompt, contains('REPORT STRUCTURE (ORDER OF SECTIONS)'));
-      expect(prompt, contains('Overview of the Material'));
-    });
-
-    test('includes date range when provided', () {
-      final prompt = PromptService.buildAnalysisPrompt(
+  group('PromptService single-shot envelope', () {
+    test('uses backend single-shot template with safe template vars', () {
+      final envelope = PromptService.buildSingleShotEnvelope(
         targetName: 'Alice',
         dateRange: 'Jan 2024 - Mar 2024',
       );
-      expect(prompt, contains('Jan 2024 - Mar 2024'));
-      expect(prompt, contains('filtered'));
+
+      expect(envelope.promptTemplate, 'single-shot');
+      expect(envelope.templateVars, {
+        'target_name': 'Alice',
+        'date_range': 'Jan 2024 - Mar 2024',
+      });
+      expect(envelope.previousPortrait, isNull);
     });
 
-    test('adds date filtering instruction when dateRange provided', () {
-      final prompt = PromptService.buildAnalysisPrompt(
-        targetName: 'Alice',
-        dateRange: 'Jan 2024 - Mar 2024',
+    test('omits empty optional vars', () {
+      final envelope = PromptService.buildSingleShotEnvelope(
+        targetName: '',
       );
-      expect(prompt, contains('limit your analysis to this period'));
-    });
 
-    test('includes merge instructions when requested', () {
-      final prompt = PromptService.buildAnalysisPrompt(
-        targetName: 'Alice',
-        includeMergeInstructions: true,
-      );
-      expect(prompt, contains('Synthesize ALL observations'));
-      expect(prompt, contains('MERGE the evidence'));
-    });
-
-    test('excludes merge instructions by default', () {
-      final prompt = PromptService.buildAnalysisPrompt(targetName: 'Alice');
-      expect(prompt, isNot(contains('Synthesize ALL observations')));
-    });
-
-    test('preserves TARGET_NAME when name is empty', () {
-      final prompt = PromptService.buildAnalysisPrompt(targetName: '');
-      expect(prompt, contains('TARGET_NAME'));
+      expect(envelope.promptTemplate, 'single-shot');
+      expect(envelope.templateVars, isEmpty);
     });
   });
 
-  group('PromptService.buildChunkPrompt', () {
-    test('includes chunk index info', () {
-      final prompt = PromptService.buildChunkPrompt(
+  group('PromptService chunk envelopes', () {
+    test('uses backend chunk-extract template with one-based chunk vars', () {
+      final envelope = PromptService.buildChunkExtractEnvelope(
         targetName: 'Bob',
         chunkIndex: 2,
         totalChunks: 5,
       );
-      expect(prompt, contains('chunk 3 of 5')); // 0-indexed → 1-indexed
+
+      expect(envelope.promptTemplate, 'chunk-extract');
+      expect(envelope.templateVars, {
+        'target_name': 'Bob',
+        'chunk_index': 3,
+        'chunk_total': 5,
+      });
+      expect(envelope.previousPortrait, isNull);
     });
 
-    test('replaces TARGET_NAME', () {
-      final prompt = PromptService.buildChunkPrompt(
+    test('uses backend chunk-merge template', () {
+      final envelope = PromptService.buildChunkMergeEnvelope(
         targetName: 'Bob',
-        chunkIndex: 0,
-        totalChunks: 3,
+        dateRange: 'May 2024',
       );
-      expect(prompt, contains('Bob'));
-      expect(prompt, isNot(contains('TARGET_NAME')));
-    });
 
-    test('includes chunk extraction instructions', () {
-      final prompt = PromptService.buildChunkPrompt(
-        targetName: 'Bob',
-        chunkIndex: 0,
-        totalChunks: 3,
-      );
-      expect(prompt, contains('raw observations'));
-      expect(prompt, contains('Language observations'));
+      expect(envelope.promptTemplate, 'chunk-merge');
+      expect(envelope.templateVars, {
+        'target_name': 'Bob',
+        'date_range': 'May 2024',
+      });
+      expect(envelope.previousPortrait, isNull);
     });
   });
 
-  group('PromptService.buildMergePayload', () {
-    test('formats chunk results with labels', () {
+  group('PromptService merge payload', () {
+    test('builds merge payload from chunk observation results only', () {
       final payload = PromptService.buildMergePayload([
-        'Observation from chunk 1',
-        'Observation from chunk 2',
+        'first observations',
+        'second observations',
       ]);
+
       expect(payload, contains('Observation Extract 1:'));
+      expect(payload, contains('first observations'));
       expect(payload, contains('Observation Extract 2:'));
-      expect(payload, contains('Observation from chunk 1'));
-      expect(payload, contains('Observation from chunk 2'));
+      expect(payload, contains('second observations'));
+      expect(payload, isNot(contains('SYSTEM / MASTER PROMPT')));
+    });
+  });
+
+  group('PromptService rolling envelopes', () {
+    test('uses backend rolling-first template without chunk_index', () {
+      final envelope = PromptService.buildRollingFirstEnvelope(
+        targetName: 'Alice',
+        dateRange: 'May 2024',
+        totalChunks: 3,
+      );
+
+      expect(envelope.promptTemplate, 'rolling-first');
+      expect(envelope.templateVars, {
+        'target_name': 'Alice',
+        'chunk_total': 3,
+      });
+      expect(envelope.templateVars.containsKey('chunk_index'), isFalse);
+      expect(envelope.templateVars.containsKey('date_range'), isFalse);
+      expect(envelope.previousPortrait, isNull);
     });
 
-    test('handles single chunk result', () {
-      final payload = PromptService.buildMergePayload(['Only one chunk']);
-      expect(payload, contains('Observation Extract 1:'));
-      expect(payload, contains('Only one chunk'));
+    test('uses backend rolling-refine template with previous portrait', () {
+      final envelope = PromptService.buildRollingRefineEnvelope(
+        targetName: 'Alice',
+        chunkIndex: 1,
+        totalChunks: 3,
+        previousPortrait: 'draft after chunk 1',
+      );
+
+      expect(envelope.promptTemplate, 'rolling-refine');
+      expect(envelope.templateVars, {
+        'target_name': 'Alice',
+        'chunk_index': 2,
+        'chunk_total': 3,
+      });
+      expect(envelope.previousPortrait, 'draft after chunk 1');
     });
 
-    test('handles empty list', () {
-      final payload = PromptService.buildMergePayload([]);
-      expect(payload, isEmpty);
+    test('uses backend rolling-final template with date range and previous portrait', () {
+      final envelope = PromptService.buildRollingFinalEnvelope(
+        targetName: 'Alice',
+        dateRange: 'May 2024',
+        chunkIndex: 2,
+        totalChunks: 3,
+        previousPortrait: 'draft after chunk 2',
+      );
+
+      expect(envelope.promptTemplate, 'rolling-final');
+      expect(envelope.templateVars, {
+        'target_name': 'Alice',
+        'date_range': 'May 2024',
+        'chunk_index': 3,
+        'chunk_total': 3,
+      });
+      expect(envelope.previousPortrait, 'draft after chunk 2');
     });
   });
 }

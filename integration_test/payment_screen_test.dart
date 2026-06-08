@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:portraitor_mobile/screens/payment_screen.dart';
-import 'package:portraitor_mobile/theme/theme.dart';
+import 'package:portraitor_mobile/features/payment/presentation/payment_screen.dart';
+import 'package:portraitor_mobile/core/theme/theme.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -15,26 +15,26 @@ void main() {
       routes: [
         GoRoute(
           path: '/payment',
-          builder: (_, __) => const PaymentScreen(
-            normalizedText: 'test chat data',
-            targetName: 'Alice',
-            tokenEstimate: 5000,
-            conversationId: 'test-conv-123',
-            dateRange: 'May 2024',
-          ),
+          builder:
+              (_, __) => const PaymentScreen(
+                normalizedText: 'test chat data',
+                targetName: 'Alice',
+                tokenEstimate: 5000,
+                conversationId: 'test-conv-123',
+                dateRange: 'May 2024',
+              ),
         ),
         GoRoute(
           path: '/processing',
-          builder: (_, __) => const Scaffold(body: Center(child: Text('Processing'))),
+          builder:
+              (_, __) =>
+                  const Scaffold(body: Center(child: Text('Processing'))),
         ),
       ],
     );
 
     return ProviderScope(
-      child: MaterialApp.router(
-        theme: portraitorTheme,
-        routerConfig: router,
-      ),
+      child: MaterialApp.router(theme: portraitorTheme, routerConfig: router),
     );
   }
 
@@ -49,8 +49,11 @@ void main() {
       // Review heading
       expect(find.textContaining('Review'), findsWidgets);
 
-      // Target name
-      expect(find.text('Alice'), findsWidgets);
+      // Receipt summary
+      expect(find.text('Psychological Portrait'), findsOneWidget);
+      expect(find.textContaining('WhatsApp'), findsNothing);
+      expect(find.textContaining('messages'), findsNothing);
+      expect(find.text('5 - 15 minutes'), findsOneWidget);
 
       // Email field
       expect(find.text('EMAIL · REQUIRED'), findsOneWidget);
@@ -107,12 +110,11 @@ void main() {
       expect(find.textContaining('valid email'), findsOneWidget);
     });
 
-    testWidgets('shows accepted card logos', (tester) async {
+    testWidgets('shows secure payment note', (tester) async {
       await tester.pumpWidget(buildPaymentApp());
       await tester.pump(const Duration(seconds: 2));
 
-      // Trust badges
-      expect(find.textContaining('ACCEPT'), findsWidgets);
+      expect(find.textContaining('secure payment page'), findsOneWidget);
     });
 
     testWidgets('back button works', (tester) async {

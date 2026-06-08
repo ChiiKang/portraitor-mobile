@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:portraitor_mobile/providers/payment_provider.dart';
+import 'package:portraitor_mobile/features/payment/application/payment_provider.dart';
 
 void main() {
   group('PaymentState', () {

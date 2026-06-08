@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:portraitor_mobile/providers/processing_provider.dart';
+import 'package:portraitor_mobile/core/api/sse_service.dart';
+import 'package:portraitor_mobile/features/processing/application/processing_provider.dart';
 
 void main() {
   group('ProcessingState', () {
@@ -53,10 +56,7 @@ void main() {
 
     test('copyWith updates email and payment flags', () {
       const state = ProcessingState();
-      final updated = state.copyWith(
-        emailSent: true,
-        paymentCaptured: true,
-      );
+      final updated = state.copyWith(emailSent: true, paymentCaptured: true);
       expect(updated.emailSent, isTrue);
       expect(updated.paymentCaptured, isTrue);
     });
@@ -120,9 +120,43 @@ void main() {
       state = state.copyWith(thinkingText: 'Analyzing patterns...');
       expect(state.thinkingText, 'Analyzing patterns...');
 
-      state = state.copyWith(thinkingText: '${state.thinkingText} Identifying traits...');
+      state = state.copyWith(
+        thinkingText: '${state.thinkingText} Identifying traits...',
+      );
       expect(state.thinkingText, contains('Analyzing'));
       expect(state.thinkingText, contains('Identifying'));
     });
+  });
+
+  group('validation stream thoughts', () {
+    test('uses streamed validator thought text instead of static copy', () {
+      final event = SseEvent.parse(
+        '{"text":"Reviewing final report formatting and section order..."}',
+        sseEventType: 'thought',
+      );
+
+      expect(
+        validationThinkingTextForEvent(event),
+        'Reviewing final report formatting and section order...',
+      );
+    });
+  });
+
+  group('PDF pre-generation contract', () {
+    test(
+      'processing prepares backend PDF before marking portrait complete',
+      () {
+        final source =
+            File(
+              'lib/features/processing/application/processing_provider.dart',
+            ).readAsStringSync();
+
+        expect(source, contains('config.pdfDownloadEnabled'));
+        expect(source, contains('Preparing PDF'));
+        expect(source, contains('PortraitPdfService.saveBackendPortraitPdf'));
+        expect(source, contains('pdfPath: pdfPath'));
+        expect(source, contains("'rolling' : 'map-reduce'"));
+      },
+    );
   });
 }

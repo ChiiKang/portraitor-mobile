@@ -16,13 +16,17 @@ void main() {
     test('Google Pay is disabled on iOS', () {
       // Google Pay should only be enabled on Android
       // On iOS, setting Google Pay config causes the payment sheet to hang
-      final isIOS = Platform.isIOS || Platform.isMacOS; // macOS for test environment
+      final isIOS =
+          Platform.isIOS || Platform.isMacOS; // macOS for test environment
       if (isIOS) {
         // Verify the logic: googlePay should be null on iOS
         const googlePayEnabled = true;
         final shouldUseGooglePay = googlePayEnabled && Platform.isAndroid;
-        expect(shouldUseGooglePay, isFalse,
-            reason: 'Google Pay must be disabled on iOS/macOS');
+        expect(
+          shouldUseGooglePay,
+          isFalse,
+          reason: 'Google Pay must be disabled on iOS/macOS',
+        );
       }
     });
 
@@ -32,8 +36,11 @@ void main() {
       const String? merchantIdentifier = null;
       final shouldUseApplePay =
           applePayEnabled && merchantIdentifier != null && Platform.isIOS;
-      expect(shouldUseApplePay, isFalse,
-          reason: 'Apple Pay requires merchantIdentifier');
+      expect(
+        shouldUseApplePay,
+        isFalse,
+        reason: 'Apple Pay requires merchantIdentifier',
+      );
     });
 
     test('Apple Pay works with merchant identifier on iOS', () {
@@ -55,8 +62,10 @@ void main() {
     });
 
     test('timeout future throws on expiry', () async {
-      final future = Future.delayed(const Duration(seconds: 10), () => 'done')
-          .timeout(
+      final future = Future.delayed(
+        const Duration(seconds: 10),
+        () => 'done',
+      ).timeout(
         const Duration(milliseconds: 50),
         onTimeout: () => throw Exception('Timed out'),
       );
@@ -68,7 +77,8 @@ void main() {
   group('Stripe payment flow contract', () {
     test('client_secret format is valid Stripe format', () {
       // Stripe client secrets follow a specific format
-      const clientSecret = 'pi_3TbvpBCm2WJ8XizK07QrrO1a_secret_hBoi35uZffdK32uBXq193VJdn';
+      const clientSecret =
+          'pi_3TbvpBCm2WJ8XizK07QrrO1a_secret_hBoi35uZffdK32uBXq193VJdn';
       expect(clientSecret, contains('_secret_'));
       expect(clientSecret, startsWith('pi_'));
     });
@@ -100,15 +110,19 @@ void main() {
       expect(RegExp(r'^[a-f0-9]{16}$').hasMatch(validHash), isTrue);
 
       // Full SHA-256 (64 chars) would be rejected
-      const invalidHash = 'b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9';
+      const invalidHash =
+          'b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9';
       expect(RegExp(r'^[a-f0-9]{16}$').hasMatch(invalidHash), isFalse);
     });
 
     test('source must be production, e2e-test, or manual-test', () {
       const allowedSources = ['production', 'e2e-test', 'manual-test'];
       expect(allowedSources.contains('production'), isTrue);
-      expect(allowedSources.contains('mobile'), isFalse,
-          reason: '"mobile" is not a valid source value');
+      expect(
+        allowedSources.contains('mobile'),
+        isFalse,
+        reason: '"mobile" is not a valid source value',
+      );
     });
 
     test('customer_email must be valid email format', () {

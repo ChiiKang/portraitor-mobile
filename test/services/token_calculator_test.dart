@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:portraitor_mobile/services/token_calculator.dart';
+import 'package:portraitor_mobile/features/import/services/token_calculator.dart';
 
 void main() {
   group('TokenCalculator.estimateTokens (word-based)', () {
@@ -20,7 +20,12 @@ void main() {
     });
 
     test('10 words → ceil(10 * 1.2) = 12 tokens', () {
-      expect(TokenCalculator.estimateTokens('one two three four five six seven eight nine ten'), 12);
+      expect(
+        TokenCalculator.estimateTokens(
+          'one two three four five six seven eight nine ten',
+        ),
+        12,
+      );
     });
 
     test('collapses multiple whitespace into single spaces', () {
@@ -38,7 +43,8 @@ void main() {
     });
 
     test('realistic chat line gives reasonable estimate', () {
-      const chatLine = '[19/05/2024, 10:32] Alice: Hey, how are you doing today?';
+      const chatLine =
+          '[19/05/2024, 10:32] Alice: Hey, how are you doing today?';
       final tokens = TokenCalculator.estimateTokens(chatLine);
       // 9 words → ceil(9 * 1.2) = 11
       expect(tokens, greaterThan(0));
@@ -49,25 +55,32 @@ void main() {
   group('TokenCalculator.splitIntoChunks', () {
     test('returns single chunk when text fits within limit', () {
       const text = 'Short text';
-      final chunks = TokenCalculator.splitIntoChunks(text, maxTokensPerChunk: 30000);
+      final chunks = TokenCalculator.splitIntoChunks(
+        text,
+        maxTokensPerChunk: 30000,
+      );
       expect(chunks.length, 1);
       expect(chunks[0], text);
     });
 
     test('splits text into multiple chunks when exceeding limit', () {
       // Generate lines to exceed a small token limit
-      final lines = List.generate(40, (i) => 'Line $i contains several words for testing');
+      final lines = List.generate(
+        40,
+        (i) => 'Line $i contains several words for testing',
+      );
       final text = lines.join('\n');
 
       // Each line ≈ 8 words → ceil(8*1.2) = 10 tokens. Limit 25 → ~2 lines/chunk
-      final chunks = TokenCalculator.splitIntoChunks(text, maxTokensPerChunk: 25);
+      final chunks = TokenCalculator.splitIntoChunks(
+        text,
+        maxTokensPerChunk: 25,
+      );
       expect(chunks.length, greaterThan(1));
 
-      // All lines preserved across chunks
-      final reassembled = chunks.join('\n');
-      for (final line in lines) {
-        expect(reassembled, contains(line));
-      }
+      final originalSegments = text.trim().split(RegExp(r'\s+'));
+      final reassembledSegments = chunks.join(' ').trim().split(RegExp(r'\s+'));
+      expect(reassembledSegments, originalSegments);
     });
 
     test('respects promptTokens parameter', () {
@@ -75,7 +88,10 @@ void main() {
       final text = lines.join('\n');
 
       // Without promptTokens: fits in fewer chunks
-      final chunksNormal = TokenCalculator.splitIntoChunks(text, maxTokensPerChunk: 30);
+      final chunksNormal = TokenCalculator.splitIntoChunks(
+        text,
+        maxTokensPerChunk: 30,
+      );
 
       // With promptTokens eating capacity: more chunks
       final chunksWithPrompt = TokenCalculator.splitIntoChunks(
@@ -88,31 +104,83 @@ void main() {
 
     test('handles text with empty lines', () {
       const text = 'line1\n\nline2\n\nline3';
-      final chunks = TokenCalculator.splitIntoChunks(text, maxTokensPerChunk: 30000);
+      final chunks = TokenCalculator.splitIntoChunks(
+        text,
+        maxTokensPerChunk: 30000,
+      );
       expect(chunks.length, 1);
     });
 
     test('no content lost across chunks', () {
-      final lines = List.generate(50, (i) => 'Message_$i from sender with content');
+      final lines = List.generate(
+        50,
+        (i) => 'Message_$i from sender with content',
+      );
       final text = lines.join('\n');
-      final chunks = TokenCalculator.splitIntoChunks(text, maxTokensPerChunk: 20);
+      final chunks = TokenCalculator.splitIntoChunks(
+        text,
+        maxTokensPerChunk: 20,
+      );
 
-      // Reassemble and verify all lines present
-      final reassembled = chunks.join('\n');
-      for (final line in lines) {
-        expect(reassembled, contains(line), reason: 'Missing: $line');
-      }
+      final originalSegments = text.trim().split(RegExp(r'\s+'));
+      final reassembledSegments = chunks.join(' ').trim().split(RegExp(r'\s+'));
+      expect(reassembledSegments, originalSegments);
     });
 
-    test('returns original text when promptTokens makes effectiveMax <= 0', () {
+    test('clamps capacity when promptTokens exceeds maxTokens', () {
       const text = 'some text here';
       final chunks = TokenCalculator.splitIntoChunks(
         text,
         maxTokensPerChunk: 10,
         promptTokens: 20,
       );
-      expect(chunks.length, 1);
-      expect(chunks[0], text);
+      expect(chunks, ['some', 'text', 'here']);
+    });
+  });
+
+  group('TokenCalculator web chunking parity', () {
+    test('splits on whitespace segments like web tokenCalculator.js', () {
+      final chunks = TokenCalculator.splitIntoChunks(
+        'one two three four five six',
+        maxTokensPerChunk: 4,
+      );
+
+      expect(chunks, ['one two', 'three four', 'five six']);
+    });
+
+    test('deducts prompt token reserve from chunk capacity', () {
+      final chunks = TokenCalculator.splitIntoChunks(
+        'one two three four five six',
+        maxTokensPerChunk: 10,
+        promptTokens: 4,
+      );
+
+      expect(chunks, ['one two three', 'four five six']);
+    });
+
+    test('map-reduce processing chunks use token limit minus overlap minus prompt reserve', () {
+      final chunks = TokenCalculator.splitForProcessing(
+        'one two three four five six seven eight nine ten',
+        tokenLimit: 14,
+        chunkOverlapTokens: 2,
+        chunkingMode: 'map-reduce',
+        promptTokenReserve: 4,
+      );
+
+      expect(chunks, ['one two three four', 'five six seven eight', 'nine ten']);
+    });
+
+    test('rolling processing chunks also reserve rolling context tokens', () {
+      final chunks = TokenCalculator.splitForProcessing(
+        'one two three four five six seven eight nine ten eleven',
+        tokenLimit: 16,
+        chunkOverlapTokens: 2,
+        chunkingMode: 'rolling',
+        promptTokenReserve: 4,
+        rollingContextReserve: 4,
+      );
+
+      expect(chunks, ['one two three', 'four five six', 'seven eight nine', 'ten eleven']);
     });
   });
 

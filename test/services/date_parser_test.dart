@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:portraitor_mobile/services/date_parser.dart';
+import 'package:portraitor_mobile/features/import/services/date_parser.dart';
 
 void main() {
   group('DateParser.parseDate', () {

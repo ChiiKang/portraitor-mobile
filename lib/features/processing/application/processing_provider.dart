@@ -1,0 +1,903 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:portraitor_mobile/core/api/api_service.dart';
+import 'package:portraitor_mobile/core/errors/error_reporter.dart';
+import 'package:portraitor_mobile/features/processing/services/prompt_service.dart';
+import 'package:portraitor_mobile/core/api/sse_service.dart';
+import 'package:portraitor_mobile/core/storage/storage_service.dart';
+import 'package:portraitor_mobile/features/import/services/token_calculator.dart';
+import 'package:portraitor_mobile/features/results/application/portraits_provider.dart';
+import 'package:portraitor_mobile/features/results/services/portrait_pdf_service.dart';
+import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
+
+enum ProcessingStatus { idle, queued, processing, validating, done, error }
+
+String validationThinkingTextForEvent(SseEvent event) => event.text ?? '';
+
+class ProcessingState {
+  final ProcessingStatus status;
+  final int chunksCompleted;
+  final int chunksTotal;
+  final double percentage;
+  final String thinkingText;
+  final String resultMarkdown;
+  final String? conversationId;
+  final String? error;
+  final bool emailSent;
+  final bool paymentCaptured;
+  final String statusMessage;
+  final String thinkingPhaseLabel;
+  final int estimatedSecondsRemaining;
+
+  const ProcessingState({
+    this.status = ProcessingStatus.idle,
+    this.chunksCompleted = 0,
+    this.chunksTotal = 1,
+    this.percentage = 0,
+    this.thinkingText = '',
+    this.resultMarkdown = '',
+    this.conversationId,
+    this.error,
+    this.emailSent = false,
+    this.paymentCaptured = false,
+    this.statusMessage = '',
+    this.thinkingPhaseLabel = '',
+    this.estimatedSecondsRemaining = -1,
+  });
+
+  ProcessingState copyWith({
+    ProcessingStatus? status,
+    int? chunksCompleted,
+    int? chunksTotal,
+    double? percentage,
+    String? thinkingText,
+    String? resultMarkdown,
+    String? conversationId,
+    String? error,
+    bool? emailSent,
+    bool? paymentCaptured,
+    String? statusMessage,
+    String? thinkingPhaseLabel,
+    int? estimatedSecondsRemaining,
+  }) {
+    return ProcessingState(
+      status: status ?? this.status,
+      chunksCompleted: chunksCompleted ?? this.chunksCompleted,
+      chunksTotal: chunksTotal ?? this.chunksTotal,
+      percentage: percentage ?? this.percentage,
+      thinkingText: thinkingText ?? this.thinkingText,
+      resultMarkdown: resultMarkdown ?? this.resultMarkdown,
+      conversationId: conversationId ?? this.conversationId,
+      error: error,
+      emailSent: emailSent ?? this.emailSent,
+      paymentCaptured: paymentCaptured ?? this.paymentCaptured,
+      statusMessage: statusMessage ?? this.statusMessage,
+      thinkingPhaseLabel: thinkingPhaseLabel ?? this.thinkingPhaseLabel,
+      estimatedSecondsRemaining:
+          estimatedSecondsRemaining ?? this.estimatedSecondsRemaining,
+    );
+  }
+}
+
+final processingProvider =
+    StateNotifierProvider<ProcessingNotifier, ProcessingState>((ref) {
+      return ProcessingNotifier(ref, api: ref.read(processingApiProvider));
+    });
+
+final processingApiProvider = Provider<ApiService>(
+  (ref) => ApiService.instance,
+);
+
+class ProcessingNotifier extends StateNotifier<ProcessingState> {
+  final Ref _ref;
+  final ApiService _api;
+  String? _leaseToken;
+  Timer? _heartbeatTimer;
+  final Stopwatch _stopwatch = Stopwatch();
+  final List<int> _chunkDurations = [];
+  int _lastChunkStartMs = 0;
+
+  static const _heartbeatInterval = Duration(seconds: 10);
+
+  ProcessingNotifier(this._ref, {ApiService? api})
+    : _api = api ?? ApiService.instance,
+      super(const ProcessingState());
+
+  @visibleForTesting
+  Future<String> processMapReduceForTesting({
+    required List<String> chunks,
+    required String targetName,
+    String? dateRange,
+    required String paymentSessionId,
+    required String conversationId,
+  }) {
+    return _processMapReduce(
+      chunks: chunks,
+      targetName: targetName,
+      dateRange: dateRange,
+      paymentSessionId: paymentSessionId,
+      conversationId: conversationId,
+      updatePendingJob: false,
+    );
+  }
+
+  @visibleForTesting
+  Future<String> processRollingForTesting({
+    required List<String> chunks,
+    required String targetName,
+    String? dateRange,
+    required String paymentSessionId,
+    required String conversationId,
+  }) {
+    return _processRolling(
+      chunks: chunks,
+      targetName: targetName,
+      dateRange: dateRange,
+      paymentSessionId: paymentSessionId,
+      conversationId: conversationId,
+      updatePendingJob: false,
+    );
+  }
+
+  Future<void> startProcessing({
+    required String conversationId,
+    required String paymentSessionId,
+    required String normalizedText,
+    required String targetName,
+    String? dateRange,
+  }) async {
+    _stopwatch.reset();
+    _stopwatch.start();
+    _chunkDurations.clear();
+    _lastChunkStartMs = 0;
+
+    state = state.copyWith(
+      status: ProcessingStatus.queued,
+      conversationId: conversationId,
+      error: null,
+      thinkingText: '',
+      resultMarkdown: '',
+      percentage: 0,
+      emailSent: false,
+      paymentCaptured: false,
+      statusMessage: 'Loading latest processing settings...',
+      thinkingPhaseLabel: '',
+      estimatedSecondsRemaining: -1,
+    );
+
+    try {
+      final config = await readLatestRuntimeConfig(_ref);
+      final chunks = TokenCalculator.splitForProcessing(
+        normalizedText,
+        tokenLimit: config.tokenLimit,
+        chunkOverlapTokens: config.chunkOverlapTokens,
+        chunkingMode: config.chunkingMode,
+      );
+
+      state = state.copyWith(statusMessage: 'Waiting in queue...');
+
+      // Step 1: Enqueue and wait for lease
+      _leaseToken = await _acquireQueueLease(
+        paymentSessionId: paymentSessionId,
+        clientConversationRef: conversationId,
+      );
+
+      // Start heartbeat to keep lease alive during processing
+      _startHeartbeat(conversationId, paymentSessionId);
+
+      _lastChunkStartMs = _stopwatch.elapsedMilliseconds;
+
+      state = state.copyWith(
+        status: ProcessingStatus.processing,
+        chunksTotal: chunks.length,
+        chunksCompleted: 0,
+        statusMessage:
+            chunks.length == 1
+                ? 'Analyzing conversation...'
+                : 'Processing ${chunks.length} chunks...',
+        thinkingPhaseLabel: 'AI is reasoning',
+      );
+
+      await StorageService.instance.savePendingJob(
+        id: conversationId,
+        clientConversationRef: conversationId,
+        targetName: targetName,
+        chunksTotal: chunks.length,
+      );
+
+      // Step 3: Process chunks (map-reduce or single-shot) with retry
+      String analysisResult;
+      if (chunks.length == 1) {
+        analysisResult = await _callWithRetry(
+          (forceFallback) => _processSingleShot(
+            text: chunks[0],
+            targetName: targetName,
+            dateRange: dateRange,
+            paymentSessionId: paymentSessionId,
+            conversationId: conversationId,
+            forceFallback: forceFallback,
+          ),
+          phase: 'single-shot',
+          paymentSessionId: paymentSessionId,
+          conversationRef: conversationId,
+        );
+      } else if (config.chunkingMode == 'rolling') {
+        analysisResult = await _processRolling(
+          chunks: chunks,
+          targetName: targetName,
+          dateRange: dateRange,
+          paymentSessionId: paymentSessionId,
+          conversationId: conversationId,
+        );
+      } else {
+        analysisResult = await _processMapReduce(
+          chunks: chunks,
+          targetName: targetName,
+          dateRange: dateRange,
+          paymentSessionId: paymentSessionId,
+          conversationId: conversationId,
+        );
+      }
+
+      // Step 4: Validation pass (server handles email + capture) with retry
+      state = state.copyWith(
+        status: ProcessingStatus.validating,
+        statusMessage: 'Validating portrait...',
+        thinkingText: '',
+        thinkingPhaseLabel: 'AI is reasoning',
+        estimatedSecondsRemaining: -1,
+      );
+
+      final validatedResult = await _callWithRetry(
+        (forceFallback) => _runValidation(
+          text: analysisResult,
+          clientConversationRef: conversationId,
+          paymentSessionId: paymentSessionId,
+          dateRange: dateRange,
+          forceFallback: forceFallback,
+        ),
+        phase: 'validation',
+        paymentSessionId: paymentSessionId,
+        conversationRef: conversationId,
+      );
+
+      // Server-side processing is done after validation. Stop the queue lease
+      // before local PDF preparation so the backend slot is released promptly.
+      _stopHeartbeat();
+
+      // Step 5: Prepare the local PDF while the user is still in processing.
+      String? pdfPath;
+      if (config.pdfDownloadEnabled) {
+        state = state.copyWith(
+          statusMessage: 'Preparing PDF...',
+          percentage: 0.95,
+        );
+        try {
+          final pdfFile = await PortraitPdfService.saveBackendPortraitPdf(
+            targetName: targetName,
+            markdown: validatedResult,
+            conversationRef: conversationId,
+            dateRange: dateRange,
+            paymentSessionId: paymentSessionId,
+          );
+          pdfPath = pdfFile.path;
+        } catch (e) {
+          debugPrint('[Processing] PDF pre-generation failed: $e');
+        }
+      }
+
+      // Step 6: Save locally
+      await StorageService.instance.createConversation(
+        id: conversationId,
+        targetName: targetName,
+        inputText: normalizedText,
+        clientConversationRef: conversationId,
+        dateRange: dateRange,
+        paymentSessionId: paymentSessionId,
+        outputSummary: validatedResult,
+        pdfPath: pdfPath,
+        chunks: chunks,
+        mode:
+            chunks.length > 1
+                ? (config.chunkingMode == 'rolling' ? 'rolling' : 'map-reduce')
+                : 'single',
+        tokenEstimate: TokenCalculator.estimateTokens(normalizedText),
+        tokenLimit: config.tokenLimit,
+      );
+
+      await StorageService.instance.updatePendingJob(
+        conversationId,
+        status: 'completed',
+      );
+      await StorageService.instance.deletePendingJob(conversationId);
+
+      // Refresh portraits list so home screen shows the new portrait
+      _ref.read(portraitsProvider.notifier).loadPortraits();
+
+      _stopwatch.stop();
+
+      state = state.copyWith(
+        status: ProcessingStatus.done,
+        percentage: 1.0,
+        resultMarkdown: validatedResult,
+        statusMessage: 'Complete!',
+        thinkingPhaseLabel: 'Done',
+        estimatedSecondsRemaining: 0,
+      );
+    } catch (e) {
+      _stopHeartbeat();
+      _tryReleaseQueue(conversationId, paymentSessionId);
+      state = state.copyWith(
+        status: ProcessingStatus.error,
+        error: e.toString(),
+      );
+    }
+  }
+
+  /// Enqueue and poll until we get a lease token
+  Future<String> _acquireQueueLease({
+    required String paymentSessionId,
+    required String clientConversationRef,
+  }) async {
+    final enqueueResult = await _api.enqueue(
+      paymentSessionId: paymentSessionId,
+      clientConversationRef: clientConversationRef,
+    );
+
+    var status = enqueueResult['status'] as String?;
+    var leaseToken = enqueueResult['lease_token'] as String?;
+
+    if (status == 'processing' && leaseToken != null) {
+      return leaseToken;
+    }
+
+    // Poll until processing
+    for (int i = 0; i < 60; i++) {
+      await Future.delayed(const Duration(seconds: 5));
+
+      if (!mounted) throw Exception('Cancelled');
+
+      final pollResult = await _api.getQueueStatus(
+        clientConversationRef: clientConversationRef,
+        paymentSessionId: paymentSessionId,
+        leaseToken: leaseToken,
+      );
+
+      status = pollResult['status'] as String?;
+      leaseToken = pollResult['lease_token'] as String?;
+
+      if (status == 'processing' && leaseToken != null) {
+        return leaseToken;
+      }
+
+      final position = pollResult['position'] as int? ?? 0;
+      state = state.copyWith(
+        thinkingText: 'Waiting in queue (position $position)...',
+      );
+    }
+
+    throw Exception('Queue timeout — could not acquire processing slot');
+  }
+
+  /// Single-shot analysis (no chunking needed)
+  Future<String> _processSingleShot({
+    required String text,
+    required String targetName,
+    String? dateRange,
+    required String paymentSessionId,
+    required String conversationId,
+    bool forceFallback = false,
+  }) async {
+    final prompt = PromptService.buildSingleShotEnvelope(
+      targetName: targetName,
+      dateRange: dateRange,
+    );
+
+    final resultBuffer = StringBuffer();
+
+    final stream = _api.streamAnalysis(
+      promptTemplate: prompt.promptTemplate,
+      templateVars: prompt.templateVars,
+      previousPortrait: prompt.previousPortrait,
+      payload: text,
+      paymentSessionId: paymentSessionId,
+      clientConversationRef: conversationId,
+      dateRange: dateRange,
+      leaseToken: _leaseToken,
+      forceFallback: forceFallback,
+      metadata: {
+        'phase': 'single',
+        'chunk': {'index': 1, 'total': 1},
+        'include_thoughts': true,
+        'conversation_ref': conversationId,
+        if (_leaseToken != null) 'lease_token': _leaseToken,
+      },
+    );
+
+    await _consumeStream(stream, resultBuffer, 0, 1);
+
+    state = state.copyWith(
+      chunksCompleted: 1,
+      percentage: 0.9,
+      statusMessage: 'Analysis complete',
+      thinkingPhaseLabel: 'Reasoning complete',
+    );
+
+    return resultBuffer.toString();
+  }
+
+  /// Map-reduce: extract per chunk, then merge
+  Future<String> _processMapReduce({
+    required List<String> chunks,
+    required String targetName,
+    String? dateRange,
+    required String paymentSessionId,
+    required String conversationId,
+    bool forceFallback = false,
+    bool updatePendingJob = true,
+  }) async {
+    final chunkResults = <String>[];
+    var anyChunkUsedFallback = forceFallback;
+
+    // Map phase: extract observations from each chunk
+    for (int i = 0; i < chunks.length; i++) {
+      final prompt = PromptService.buildChunkExtractEnvelope(
+        targetName: targetName,
+        dateRange: dateRange,
+        chunkIndex: i,
+        totalChunks: chunks.length,
+      );
+
+      final chunkText = await _callWithRetry(
+        (retryForceFallback) async {
+          if (retryForceFallback) {
+            anyChunkUsedFallback = true;
+          }
+
+          final chunkBuffer = StringBuffer();
+          final stream = _api.streamAnalysis(
+            promptTemplate: prompt.promptTemplate,
+            templateVars: prompt.templateVars,
+            previousPortrait: prompt.previousPortrait,
+            payload: chunks[i],
+            paymentSessionId: paymentSessionId,
+            clientConversationRef: conversationId,
+            leaseToken: _leaseToken,
+            forceFallback: forceFallback || retryForceFallback,
+            metadata: {
+              'phase': 'chunk',
+              'chunk': {'index': i + 1, 'total': chunks.length},
+              'include_thoughts': i == 0,
+              'conversation_ref': conversationId,
+              if (_leaseToken != null) 'lease_token': _leaseToken,
+            },
+          );
+
+          await _consumeStream(stream, chunkBuffer, i, chunks.length + 1);
+          return chunkBuffer.toString();
+        },
+        phase: 'chunk ${i + 1}/${chunks.length}',
+        paymentSessionId: paymentSessionId,
+        conversationRef: conversationId,
+      );
+
+      chunkResults.add(chunkText);
+
+      // Track chunk duration for ETA
+      final now = _stopwatch.elapsedMilliseconds;
+      _chunkDurations.add(now - _lastChunkStartMs);
+      _lastChunkStartMs = now;
+      final avgMs =
+          _chunkDurations.reduce((a, b) => a + b) ~/ _chunkDurations.length;
+      final remaining = (chunks.length - (i + 1) + 1) * avgMs; // +1 for merge
+      final etaSeconds = (remaining / 1000).ceil();
+      final roundedEta = ((etaSeconds + 4) ~/ 5) * 5;
+
+      state = state.copyWith(
+        chunksCompleted: i + 1,
+        percentage: (i + 1) / (chunks.length + 1),
+        statusMessage: '${i + 1} of ${chunks.length} chunks completed',
+        estimatedSecondsRemaining: roundedEta,
+      );
+
+      if (updatePendingJob) {
+        await StorageService.instance.updatePendingJob(
+          conversationId,
+          chunksCompleted: i + 1,
+        );
+      }
+    }
+
+    // Reduce phase: merge all chunk observations
+    state = state.copyWith(
+      thinkingText: 'Synthesizing observations...',
+      statusMessage: 'Merging chunk insights...',
+      thinkingPhaseLabel: 'Merging insights',
+      estimatedSecondsRemaining: -1,
+    );
+
+    final mergePrompt = PromptService.buildChunkMergeEnvelope(
+      targetName: targetName,
+      dateRange: dateRange,
+    );
+
+    final mergePayload = PromptService.buildMergePayload(chunkResults);
+    final mergeText = await _callWithRetry(
+      (retryForceFallback) async {
+        final mergeBuffer = StringBuffer();
+        final mergeStream = _api.streamAnalysis(
+          promptTemplate: mergePrompt.promptTemplate,
+          templateVars: mergePrompt.templateVars,
+          previousPortrait: mergePrompt.previousPortrait,
+          payload: mergePayload,
+          paymentSessionId: paymentSessionId,
+          clientConversationRef: conversationId,
+          dateRange: dateRange,
+          leaseToken: _leaseToken,
+          forceFallback:
+              forceFallback || anyChunkUsedFallback || retryForceFallback,
+          metadata: {
+            'phase': 'merge',
+            'is_merge': true,
+            'chunk': {'index': chunks.length + 1, 'total': chunks.length + 1},
+            'include_thoughts': true,
+            'conversation_ref': conversationId,
+            if (_leaseToken != null) 'lease_token': _leaseToken,
+          },
+        );
+
+        await _consumeStream(
+          mergeStream,
+          mergeBuffer,
+          chunks.length,
+          chunks.length + 1,
+        );
+        return mergeBuffer.toString();
+      },
+      phase: 'merge',
+      paymentSessionId: paymentSessionId,
+      conversationRef: conversationId,
+    );
+
+    state = state.copyWith(percentage: 0.9);
+
+    return mergeText;
+  }
+
+  /// Rolling: sequentially refine one portrait draft across chunks.
+  Future<String> _processRolling({
+    required List<String> chunks,
+    required String targetName,
+    String? dateRange,
+    required String paymentSessionId,
+    required String conversationId,
+    bool forceFallback = false,
+    bool updatePendingJob = true,
+  }) async {
+    String? rollingPortrait;
+    var rollingFallback = forceFallback;
+
+    for (int i = 0; i < chunks.length; i++) {
+      final isFirst = i == 0;
+      final isLast = i == chunks.length - 1;
+      final prompt =
+          isFirst
+              ? PromptService.buildRollingFirstEnvelope(
+                targetName: targetName,
+                totalChunks: chunks.length,
+              )
+              : isLast
+              ? PromptService.buildRollingFinalEnvelope(
+                targetName: targetName,
+                dateRange: dateRange,
+                chunkIndex: i,
+                totalChunks: chunks.length,
+                previousPortrait: rollingPortrait ?? '',
+              )
+              : PromptService.buildRollingRefineEnvelope(
+                targetName: targetName,
+                chunkIndex: i,
+                totalChunks: chunks.length,
+                previousPortrait: rollingPortrait ?? '',
+              );
+
+      state = state.copyWith(
+        thinkingPhaseLabel: 'Analyzing section ${i + 1}/${chunks.length}',
+        statusMessage: 'Refining portrait section ${i + 1}/${chunks.length}...',
+        estimatedSecondsRemaining: -1,
+      );
+
+      final sectionText = await _callWithRetry(
+        (retryForceFallback) async {
+          if (retryForceFallback) {
+            rollingFallback = true;
+          }
+
+          final sectionBuffer = StringBuffer();
+          final stream = _api.streamAnalysis(
+            promptTemplate: prompt.promptTemplate,
+            templateVars: prompt.templateVars,
+            previousPortrait: prompt.previousPortrait,
+            payload: chunks[i],
+            paymentSessionId: paymentSessionId,
+            clientConversationRef: conversationId,
+            dateRange: isLast ? dateRange : null,
+            leaseToken: _leaseToken,
+            forceFallback: rollingFallback || retryForceFallback,
+            metadata: {
+              'phase': 'rolling',
+              'chunking_mode': 'rolling',
+              'chunk': {'index': i + 1, 'total': chunks.length},
+              'include_thoughts': true,
+              'conversation_ref': conversationId,
+              if (isLast) 'is_final': true,
+              if (_leaseToken != null) 'lease_token': _leaseToken,
+            },
+          );
+
+          await _consumeStream(stream, sectionBuffer, i, chunks.length);
+          return sectionBuffer.toString();
+        },
+        phase: 'rolling section ${i + 1}',
+        paymentSessionId: paymentSessionId,
+        conversationRef: conversationId,
+      );
+
+      rollingPortrait = sectionText;
+
+      final percent = 0.05 + ((i + 1) / chunks.length) * 0.85;
+      state = state.copyWith(
+        percentage: percent.clamp(0.05, 0.9).toDouble(),
+        chunksCompleted: i + 1,
+        statusMessage: 'Refined portrait section ${i + 1}/${chunks.length}',
+      );
+
+      if (updatePendingJob) {
+        await StorageService.instance.updatePendingJob(
+          conversationId,
+          chunksCompleted: i + 1,
+        );
+      }
+    }
+
+    state = state.copyWith(percentage: 0.9);
+    return rollingPortrait ?? '';
+  }
+
+  /// Run validation stream (server handles email + payment capture)
+  Future<String> _runValidation({
+    required String text,
+    required String clientConversationRef,
+    required String paymentSessionId,
+    String? dateRange,
+    bool forceFallback = false,
+  }) async {
+    final resultBuffer = StringBuffer();
+    final parser = SseParser();
+
+    final stream = _api.streamValidation(
+      text: text,
+      clientConversationRef: clientConversationRef,
+      paymentSessionId: paymentSessionId,
+      leaseToken: _leaseToken,
+      dateRange: dateRange,
+      forceFallback: forceFallback,
+    );
+
+    await for (final rawData in stream) {
+      final events = parser.feedParsed(rawData);
+      for (final event in events) {
+        switch (event.type) {
+          case SseEventType.thinking:
+            state = state.copyWith(
+              thinkingText: validationThinkingTextForEvent(event),
+            );
+            break;
+          case SseEventType.response:
+            final eventText = event.text ?? '';
+            resultBuffer.write(eventText);
+            state = state.copyWith(resultMarkdown: resultBuffer.toString());
+            break;
+          case SseEventType.done:
+            final doneText = event.json?['text'] as String?;
+            if (doneText != null && doneText.isNotEmpty) {
+              resultBuffer.clear();
+              resultBuffer.write(doneText);
+              state = state.copyWith(resultMarkdown: doneText);
+            }
+            final emailSent = event.json?['email_sent'] == true;
+            final paymentAction = event.json?['payment_action'] as String?;
+            state = state.copyWith(
+              emailSent: emailSent,
+              paymentCaptured: paymentAction == 'captured',
+              percentage: 1.0,
+            );
+            break;
+          case SseEventType.error:
+            throw Exception(event.errorMessage ?? 'Validation error');
+          case SseEventType.progress:
+          case SseEventType.log:
+          case SseEventType.heartbeat:
+          case SseEventType.unknown:
+            break;
+        }
+      }
+    }
+
+    return resultBuffer.toString().isNotEmpty ? resultBuffer.toString() : text;
+  }
+
+  /// Consume an SSE stream, writing response text to buffer and updating UI.
+  /// rawData from _parseSSEStream may contain \x00 separator for event type.
+  Future<void> _consumeStream(
+    Stream<String> stream,
+    StringBuffer buffer,
+    int currentChunkIndex,
+    int totalSteps,
+  ) async {
+    final parser = SseParser();
+
+    await for (final rawData in stream) {
+      final events = parser.feedParsed(rawData);
+      for (final event in events) {
+        switch (event.type) {
+          case SseEventType.thinking:
+            state = state.copyWith(thinkingText: event.text ?? '');
+            break;
+          case SseEventType.response:
+            final text = event.text ?? '';
+            buffer.write(text);
+            state = state.copyWith(resultMarkdown: buffer.toString());
+            break;
+          case SseEventType.done:
+            final doneText = event.json?['text'] as String?;
+            if (doneText != null && doneText.isNotEmpty) {
+              buffer.clear();
+              buffer.write(doneText);
+              state = state.copyWith(resultMarkdown: buffer.toString());
+            }
+            break;
+          case SseEventType.error:
+            throw Exception(event.errorMessage ?? 'Stream error');
+          case SseEventType.progress:
+            final pct = event.percentage;
+            if (pct != null) {
+              final overallProgress = (currentChunkIndex + pct) / totalSteps;
+              state = state.copyWith(percentage: overallProgress);
+            }
+            break;
+          case SseEventType.log:
+          case SseEventType.heartbeat:
+          case SseEventType.unknown:
+            break;
+        }
+      }
+    }
+  }
+
+  /// Retry wrapper matching web's callWithRetry behavior.
+  /// 3 attempts, exponential backoff (3s/8s/15s), forceFallback on retry >= 2.
+  static const _retryDelays = [
+    Duration(seconds: 3),
+    Duration(seconds: 8),
+    Duration(seconds: 15),
+  ];
+
+  Future<T> _callWithRetry<T>(
+    Future<T> Function(bool forceFallback) callFn, {
+    int maxAttempts = 3,
+    String phase = 'unknown',
+    String? paymentSessionId,
+    String? conversationRef,
+  }) async {
+    final errors = <String>[];
+
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        final forceFallback = attempt > 1;
+        return await callFn(forceFallback);
+      } catch (e) {
+        errors.add('Attempt $attempt: $e');
+        debugPrint('[Retry] Attempt $attempt/$maxAttempts failed: $e');
+
+        // Don't retry on non-retryable errors (payment failures, auth errors)
+        if (e is ApiException && _isNonRetryable(e)) {
+          debugPrint('[Retry] Non-retryable error, giving up immediately');
+          break;
+        }
+
+        if (attempt < maxAttempts) {
+          final delay = _retryDelays[attempt - 1];
+          debugPrint('[Retry] Waiting ${delay.inSeconds}s before retry...');
+          await Future.delayed(delay);
+        }
+      }
+    }
+
+    // All retries exhausted — report to backend
+    ErrorReporter.reportFinalError(
+      errors: errors,
+      paymentSessionId: paymentSessionId,
+      phase: phase,
+      conversationRef: conversationRef,
+    );
+
+    throw Exception(
+      'All $maxAttempts attempts failed for $phase: ${errors.last}',
+    );
+  }
+
+  static bool _isNonRetryable(ApiException e) {
+    final code = e.statusCode;
+    if (code == null) return false;
+    // 402 Payment Required, 401 Unauthorized, 403 Forbidden
+    return code == 402 || code == 401 || code == 403;
+  }
+
+  /// Start periodic heartbeat to keep the queue lease alive during processing.
+  void _startHeartbeat(String conversationId, String paymentSessionId) {
+    _stopHeartbeat();
+    _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) async {
+      if (_leaseToken == null || !mounted) {
+        _stopHeartbeat();
+        return;
+      }
+      try {
+        final result = await _api.getQueueStatus(
+          clientConversationRef: conversationId,
+          paymentSessionId: paymentSessionId,
+          leaseToken: _leaseToken,
+        );
+        // Refresh lease token if the server provides a new one
+        final newToken = result['lease_token'] as String?;
+        if (newToken != null) {
+          _leaseToken = newToken;
+        }
+        debugPrint('[Heartbeat] Lease refreshed');
+      } catch (e) {
+        debugPrint('[Heartbeat] Failed: $e');
+      }
+    });
+  }
+
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
+  /// Best-effort release of queue slot on error/cancel
+  void _tryReleaseQueue(String conversationId, String paymentSessionId) {
+    _stopHeartbeat();
+    if (_leaseToken != null) {
+      _api
+          .releaseQueue(
+            clientConversationRef: conversationId,
+            paymentSessionId: paymentSessionId,
+            leaseToken: _leaseToken,
+          )
+          .ignore();
+    }
+  }
+
+  void cancel() {
+    _stopHeartbeat();
+    state = state.copyWith(status: ProcessingStatus.error, error: 'Cancelled');
+  }
+
+  void reset() {
+    _stopHeartbeat();
+    _stopwatch.reset();
+    _chunkDurations.clear();
+    _leaseToken = null;
+    state = const ProcessingState();
+  }
+
+  @override
+  void dispose() {
+    _stopHeartbeat();
+    super.dispose();
+  }
+}

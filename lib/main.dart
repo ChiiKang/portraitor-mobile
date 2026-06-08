@@ -3,11 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:portraitor_mobile/app/app.dart';
+import 'package:portraitor_mobile/core/storage/storage_service.dart';
+import 'package:portraitor_mobile/features/import/application/import_provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
-
-import 'app.dart';
-import 'providers/import_provider.dart';
-import 'services/storage_service.dart';
 
 /// Holds the initial shared files detected at cold start (before widget tree).
 /// ShareIntentHandler consumes this once and then processes the files.
@@ -35,7 +34,9 @@ void main() async {
       if (initialFiles.isNotEmpty) {
         _pendingInitialFiles = initialFiles;
         shareIntentPending.value = true;
-        debugPrint('[ShareIntent] Cold start detected ${initialFiles.length} files');
+        debugPrint(
+          '[ShareIntent] Cold start detected ${initialFiles.length} files',
+        );
         for (final f in initialFiles) {
           debugPrint('[ShareIntent]   path=${f.path}, type=${f.type}');
         }
@@ -93,14 +94,18 @@ class _ShareIntentHandlerState extends ConsumerState<ShareIntentHandler> {
       if (_pendingInitialFiles != null && _pendingInitialFiles!.isNotEmpty) {
         final files = _pendingInitialFiles!;
         _pendingInitialFiles = null;
-        debugPrint('[ShareIntent] Processing ${files.length} pre-captured files');
+        debugPrint(
+          '[ShareIntent] Processing ${files.length} pre-captured files',
+        );
         _handleIncomingShare(files);
       } else {
         // Fallback: try getInitialMedia in case the main() check missed it
         ReceiveSharingIntent.instance.getInitialMedia().then((files) {
           if (!mounted) return;
           if (files.isNotEmpty) {
-            debugPrint('[ShareIntent] getInitialMedia returned ${files.length} files');
+            debugPrint(
+              '[ShareIntent] getInitialMedia returned ${files.length} files',
+            );
             _handleIncomingShare(files);
           }
         });
@@ -137,23 +142,34 @@ class _ShareIntentHandlerState extends ConsumerState<ShareIntentHandler> {
 
   void _navigateToSetupIfReady([int attempts = 0]) {
     final state = ref.read(importProvider);
-    debugPrint('[ShareIntent] Poll #$attempts: isLoading=${state.isLoading}, '
-        'normalized=${state.normalized != null}, error=${state.error}');
+    debugPrint(
+      '[ShareIntent] Poll #$attempts: isLoading=${state.isLoading}, '
+      'normalized=${state.normalized != null}, error=${state.error}',
+    );
 
     if (state.normalized != null) {
-      debugPrint('[ShareIntent] Success! Navigating to /setup with '
-          '${state.normalized!.detectedNames.length} names, '
-          '${state.normalized!.messageCount} messages');
+      debugPrint(
+        '[ShareIntent] Success! Navigating to /setup with '
+        '${state.normalized!.detectedNames.length} names, '
+        '${state.normalized!.messageCount} messages',
+      );
       shareIntentPending.value = false;
-      router.go('/setup', extra: {
-        'normalizedText': state.normalized!.text,
-        'format': state.normalized!.format.name,
-        'detectedNames': state.normalized!.detectedNames,
-        'messageCount': state.normalized!.messageCount,
-        'dateRange': state.dateRange != null
-            ? {'start': state.dateRange!.start, 'end': state.dateRange!.end}
-            : null,
-      });
+      router.go(
+        '/setup',
+        extra: {
+          'normalizedText': state.normalized!.text,
+          'format': state.normalized!.format.name,
+          'detectedNames': state.normalized!.detectedNames,
+          'messageCount': state.normalized!.messageCount,
+          'dateRange':
+              state.dateRange != null
+                  ? {
+                    'start': state.dateRange!.start,
+                    'end': state.dateRange!.end,
+                  }
+                  : null,
+        },
+      );
     } else if (state.isLoading) {
       _pollAndNavigate(attempts + 1);
     } else if (state.error != null) {

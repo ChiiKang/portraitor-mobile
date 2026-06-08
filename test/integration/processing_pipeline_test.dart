@@ -1,8 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:portraitor_mobile/services/api_service.dart';
-import 'package:portraitor_mobile/services/sse_service.dart';
+import 'package:portraitor_mobile/core/api/api_service.dart';
+import 'package:portraitor_mobile/core/api/sse_service.dart';
+import 'package:portraitor_mobile/features/processing/application/processing_provider.dart';
+
+import '../helpers/mocks.dart';
 
 /// Tests for the retry logic, heartbeat, and processing pipeline.
 /// Since ProcessingNotifier depends on Riverpod + StorageService (SQLite),
@@ -90,6 +95,283 @@ void main() {
           expect(forceFallback, isTrue);
         }
       }
+    });
+  });
+
+  group('Map-reduce retry granularity', () {
+    test('map-reduce is not retried as one whole long operation', () {
+      final source =
+          File(
+            'lib/features/processing/application/processing_provider.dart',
+          ).readAsStringSync();
+      final start = source.indexOf('analysisResult = await _processMapReduce(');
+      final legacyStart = source.indexOf(
+        'analysisResult = await _callWithRetry(\n'
+        '          (forceFallback) => _processMapReduce(',
+      );
+
+      expect(start, isNot(-1));
+      expect(legacyStart, -1);
+    });
+
+    test('each map chunk stream has its own retry wrapper', () {
+      final source =
+          File(
+            'lib/features/processing/application/processing_provider.dart',
+          ).readAsStringSync();
+      final mapReduceStart = source.indexOf('Future<String> _processMapReduce');
+      final mergeStart = source.indexOf('// Reduce phase', mapReduceStart);
+      final mapPhase = source.substring(mapReduceStart, mergeStart);
+
+      expect(mapPhase, contains("phase: 'chunk "));
+      expect(mapPhase, contains('_callWithRetry'));
+      expect(mapPhase, contains('_consumeStream'));
+    });
+
+    test('merge stream has its own retry wrapper', () {
+      final source =
+          File(
+            'lib/features/processing/application/processing_provider.dart',
+          ).readAsStringSync();
+      final mergeStart = source.indexOf('// Reduce phase');
+      final mergePhase = source.substring(mergeStart);
+
+      expect(mergePhase, contains("phase: 'merge'"));
+      expect(mergePhase, contains('_callWithRetry'));
+      expect(mergePhase, contains('_consumeStream'));
+    });
+
+    test('dropped chunk stream retries only that chunk', () async {
+      final fakeApi = FakeApiService();
+      final streamCalls = <String, int>{};
+      final templates = <String>[];
+
+      fakeApi.onStreamAnalysis = ({
+        required promptTemplate,
+        required templateVars,
+        previousPortrait,
+        required payload,
+        required paymentSessionId,
+        required clientConversationRef,
+        dateRange,
+        required metadata,
+        leaseToken,
+        forceFallback = false,
+      }) {
+        final phase = metadata['phase'] as String;
+        final chunk = metadata['chunk'] as Map<String, dynamic>?;
+        final chunkIndex = chunk?['index'] as int?;
+        final key = phase == 'chunk' ? 'chunk-$chunkIndex' : phase;
+        streamCalls[key] = (streamCalls[key] ?? 0) + 1;
+        templates.add(promptTemplate);
+
+        if (key == 'chunk-3' && streamCalls[key] == 1) {
+          return Stream<String>.error(
+            const HttpException('Connection closed while receiving data'),
+          );
+        }
+
+        final text = phase == 'merge' ? 'merged result' : '$key result';
+        return Stream.fromIterable([
+          '{"type":"response","text":"$text"}',
+          '{"type":"done","text":"$text"}',
+        ]);
+      };
+
+      final container = ProviderContainer(
+        overrides: [processingApiProvider.overrideWithValue(fakeApi)],
+      );
+      addTearDown(container.dispose);
+
+      final result = await container
+          .read(processingProvider.notifier)
+          .processMapReduceForTesting(
+            chunks: const ['chunk one', 'chunk two', 'chunk three'],
+            targetName: 'Natalia',
+            paymentSessionId: 'pi_test',
+            conversationId: 'conversation-test',
+          );
+
+      expect(result, 'merged result');
+      expect(streamCalls['chunk-1'], 1);
+      expect(streamCalls['chunk-2'], 1);
+      expect(streamCalls['chunk-3'], 2);
+      expect(streamCalls['merge'], 1);
+      expect(templates, [
+        'chunk-extract',
+        'chunk-extract',
+        'chunk-extract',
+        'chunk-extract',
+        'chunk-merge',
+      ]);
+    });
+
+    test('map-reduce sends prompt envelopes without raw prompt text', () async {
+      final fakeApi = FakeApiService();
+      final calls = <Map<String, dynamic>>[];
+
+      fakeApi.onStreamAnalysis = ({
+        required promptTemplate,
+        required templateVars,
+        previousPortrait,
+        required payload,
+        required paymentSessionId,
+        required clientConversationRef,
+        dateRange,
+        required metadata,
+        leaseToken,
+        forceFallback = false,
+      }) {
+        calls.add({
+          'promptTemplate': promptTemplate,
+          'templateVars': templateVars,
+          'previousPortrait': previousPortrait,
+          'payload': payload,
+          'metadata': metadata,
+        });
+        final phase = metadata['phase'] as String;
+        final text = phase == 'merge' ? 'merged result' : '$phase result';
+        return Stream.fromIterable([
+          '{"type":"response","text":"$text"}',
+          '{"type":"done","text":"$text"}',
+        ]);
+      };
+
+      final container = ProviderContainer(
+        overrides: [processingApiProvider.overrideWithValue(fakeApi)],
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(processingProvider.notifier)
+          .processMapReduceForTesting(
+            chunks: const ['chunk one', 'chunk two'],
+            targetName: 'Natalia',
+            dateRange: 'May 2024',
+            paymentSessionId: 'pi_test',
+            conversationId: 'conversation-test',
+          );
+
+      expect(calls.map((c) => c['promptTemplate']), [
+        'chunk-extract',
+        'chunk-extract',
+        'chunk-merge',
+      ]);
+      expect(calls.first['templateVars'], {
+        'target_name': 'Natalia',
+        'date_range': 'May 2024',
+        'chunk_index': 1,
+        'chunk_total': 2,
+      });
+      expect(calls.last['templateVars'], {
+        'target_name': 'Natalia',
+        'date_range': 'May 2024',
+      });
+      expect(calls.every((c) => c.containsKey('prompt')), isFalse);
+    });
+  });
+
+  group('Rolling chunk orchestration', () {
+    test('startProcessing branches to rolling when runtime config says rolling', () {
+      final source =
+          File(
+            'lib/features/processing/application/processing_provider.dart',
+          ).readAsStringSync();
+
+      expect(source, contains("config.chunkingMode == 'rolling'"));
+      expect(source, contains('_processRolling'));
+    });
+
+    test('rolling sends first, refine, and final envelopes sequentially', () async {
+      final fakeApi = FakeApiService();
+      final calls = <Map<String, dynamic>>[];
+
+      fakeApi.onStreamAnalysis = ({
+        required promptTemplate,
+        required templateVars,
+        previousPortrait,
+        required payload,
+        required paymentSessionId,
+        required clientConversationRef,
+        dateRange,
+        required metadata,
+        leaseToken,
+        forceFallback = false,
+      }) {
+        calls.add({
+          'promptTemplate': promptTemplate,
+          'templateVars': templateVars,
+          'previousPortrait': previousPortrait,
+          'payload': payload,
+          'dateRange': dateRange,
+          'metadata': metadata,
+          'forceFallback': forceFallback,
+        });
+        final text = 'portrait after ${calls.length}';
+        return Stream.fromIterable([
+          '{"type":"response","text":"$text"}',
+          '{"type":"done","text":"$text"}',
+        ]);
+      };
+
+      final container = ProviderContainer(
+        overrides: [processingApiProvider.overrideWithValue(fakeApi)],
+      );
+      addTearDown(container.dispose);
+
+      final result = await container
+          .read(processingProvider.notifier)
+          .processRollingForTesting(
+            chunks: const ['chunk one', 'chunk two', 'chunk three'],
+            targetName: 'Natalia',
+            dateRange: 'May 2024',
+            paymentSessionId: 'pi_test',
+            conversationId: 'conversation-test',
+          );
+
+      expect(result, 'portrait after 3');
+      expect(calls.map((c) => c['promptTemplate']), [
+        'rolling-first',
+        'rolling-refine',
+        'rolling-final',
+      ]);
+      expect(calls.map((c) => c['previousPortrait']), [
+        null,
+        'portrait after 1',
+        'portrait after 2',
+      ]);
+      expect(calls.map((c) => c['payload']), [
+        'chunk one',
+        'chunk two',
+        'chunk three',
+      ]);
+      expect(calls.first['templateVars'], {
+        'target_name': 'Natalia',
+        'chunk_total': 3,
+      });
+      expect(calls[1]['templateVars'], {
+        'target_name': 'Natalia',
+        'chunk_index': 2,
+        'chunk_total': 3,
+      });
+      expect(calls.last['templateVars'], {
+        'target_name': 'Natalia',
+        'date_range': 'May 2024',
+        'chunk_index': 3,
+        'chunk_total': 3,
+      });
+      expect(calls.first['dateRange'], isNull);
+      expect(calls[1]['dateRange'], isNull);
+      expect(calls.last['dateRange'], 'May 2024');
+      expect((calls.last['metadata'] as Map<String, dynamic>)['is_final'], isTrue);
+      expect(
+        calls.every(
+          (c) =>
+              (c['metadata'] as Map<String, dynamic>)['chunking_mode'] ==
+              'rolling',
+        ),
+        isTrue,
+      );
     });
   });
 

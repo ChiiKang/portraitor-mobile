@@ -53,7 +53,11 @@ class SseFixtures {
     return [
       thinkingEvent(thinkingText),
       responseEvent(responseText),
-      doneEvent(text: finalText, emailSent: emailSent, paymentAction: 'captured'),
+      doneEvent(
+        text: finalText,
+        emailSent: emailSent,
+        paymentAction: 'captured',
+      ),
     ];
   }
 
@@ -90,10 +94,7 @@ class SseFixtures {
 
   /// A stream that fails with an error event
   static List<String> errorSequence(String errorMessage) {
-    return [
-      thinkingEvent('Starting...'),
-      errorEvent(errorMessage),
-    ];
+    return [thinkingEvent('Starting...'), errorEvent(errorMessage)];
   }
 
   // ── Raw SSE byte-stream helpers (for testing _parseSSEStream) ──
