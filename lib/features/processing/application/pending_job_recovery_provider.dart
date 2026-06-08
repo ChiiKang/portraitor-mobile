@@ -1,0 +1,254 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:portraitor_mobile/core/api/api_service.dart';
+import 'package:portraitor_mobile/core/storage/pending_job.dart';
+import 'package:portraitor_mobile/core/storage/storage_service.dart';
+
+/// Where each unfinished pending job stands relative to the backend.
+///
+/// Mirrors web's `checkForPendingJobs` classification at
+/// `portraitor/public/assets/app.js:2670-2691`.
+enum RecoveryStatus {
+  /// Local row is recoverable AND the server still thinks the job is mid-flight.
+  resumable,
+
+  /// Server is actively delivering the portrait (payment captured, email not
+  /// yet sent). Show a wait sheet with no Resume button.
+  serverFinalizing,
+
+  /// Server already finished and emailed. Delete the local row silently;
+  /// nothing for the user to do.
+  serverCompleted,
+
+  /// Local row is missing input_text or payment_session_id, OR the server
+  /// has no record of this job (404). Cannot be resumed; offer Clear only.
+  cancelOnly,
+}
+
+class RecoveryClassification {
+  const RecoveryClassification({required this.job, required this.status});
+  final PendingJob job;
+  final RecoveryStatus status;
+}
+
+class PendingJobRecoveryState {
+  const PendingJobRecoveryState({
+    this.isLoading = false,
+    this.classifications = const [],
+    this.hasShownSheet = false,
+  });
+
+  final bool isLoading;
+  final List<RecoveryClassification> classifications;
+  final bool hasShownSheet;
+
+  PendingJobRecoveryState copyWith({
+    bool? isLoading,
+    List<RecoveryClassification>? classifications,
+    bool? hasShownSheet,
+  }) {
+    return PendingJobRecoveryState(
+      isLoading: isLoading ?? this.isLoading,
+      classifications: classifications ?? this.classifications,
+      hasShownSheet: hasShownSheet ?? this.hasShownSheet,
+    );
+  }
+
+  /// The single classification to display on this launch, picked by
+  /// priority (resumable > serverFinalizing > cancelOnly, newest first
+  /// within each bucket). `null` means nothing to show.
+  RecoveryClassification? get nextToShow {
+    if (classifications.isEmpty) return null;
+    // serverCompleted entries are auto-deleted in refresh() so they should
+    // never appear here; defensively filter them out anyway.
+    final candidates = classifications
+        .where((c) => c.status != RecoveryStatus.serverCompleted)
+        .toList();
+    if (candidates.isEmpty) return null;
+    candidates.sort((a, b) {
+      final priorityCompare = _priority(a.status).compareTo(_priority(b.status));
+      if (priorityCompare != 0) return priorityCompare;
+      return b.job.createdAt.compareTo(a.job.createdAt);
+    });
+    return candidates.first;
+  }
+
+  static int _priority(RecoveryStatus status) {
+    switch (status) {
+      case RecoveryStatus.resumable:
+        return 0;
+      case RecoveryStatus.serverFinalizing:
+        return 1;
+      case RecoveryStatus.cancelOnly:
+        return 2;
+      case RecoveryStatus.serverCompleted:
+        return 3;
+    }
+  }
+}
+
+class PendingJobRecoveryNotifier
+    extends StateNotifier<PendingJobRecoveryState> {
+  PendingJobRecoveryNotifier({
+    required ApiService api,
+    StorageService? storage,
+  })  : _api = api,
+        _storage = storage ?? StorageService.instance,
+        super(const PendingJobRecoveryState());
+
+  final ApiService _api;
+  final StorageService _storage;
+
+  /// Load all device-scoped resumable pending jobs, probe the server for each,
+  /// auto-delete jobs the server says are done, and store the rest in state
+  /// for the recovery sheet to display.
+  Future<void> refresh() async {
+    state = state.copyWith(isLoading: true);
+
+    final localJobs = await _storage.getAllPendingJobsRaw();
+    final classifications = <RecoveryClassification>[];
+
+    for (final job in localJobs) {
+      // Stale rows (legacy v4 or missing required fields) cannot be probed
+      // meaningfully and are offered as cancel-only.
+      if (job.status == 'stale' || !job.isResumable) {
+        classifications.add(
+          RecoveryClassification(job: job, status: RecoveryStatus.cancelOnly),
+        );
+        continue;
+      }
+
+      final probe = await _probeServer(job.clientConversationRef);
+      switch (probe) {
+        case _ProbeResult.serverCompleted:
+          await _storage.deletePendingJob(job.id);
+          // Drop from list — nothing for user to do.
+          break;
+        case _ProbeResult.serverFinalizing:
+          classifications.add(
+            RecoveryClassification(
+              job: job,
+              status: RecoveryStatus.serverFinalizing,
+            ),
+          );
+          break;
+        case _ProbeResult.serverNotFound:
+          classifications.add(
+            RecoveryClassification(job: job, status: RecoveryStatus.cancelOnly),
+          );
+          break;
+        case _ProbeResult.resumable:
+        case _ProbeResult.probeFailed:
+          // Fail-open on network/5xx: trust the local fields and let the user
+          // try to resume. Worst case the resume call itself surfaces the
+          // error.
+          classifications.add(
+            RecoveryClassification(job: job, status: RecoveryStatus.resumable),
+          );
+          break;
+      }
+    }
+
+    state = state.copyWith(
+      isLoading: false,
+      classifications: classifications,
+    );
+  }
+
+  Future<_ProbeResult> _probeServer(String clientConversationRef) async {
+    try {
+      final response = await _api.getJobStatus(clientConversationRef);
+      final data = response['data'];
+      if (data is! Map) return _ProbeResult.resumable;
+      final paymentStatus = data['payment_status'] as String?;
+      final emailSent = data['email_sent'] == true;
+      if (paymentStatus == 'completed' && emailSent) {
+        return _ProbeResult.serverCompleted;
+      }
+      if (paymentStatus == 'completed' && !emailSent) {
+        return _ProbeResult.serverFinalizing;
+      }
+      return _ProbeResult.resumable;
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) {
+        return _ProbeResult.serverNotFound;
+      }
+      debugPrint('[Recovery] probe failed: $e');
+      return _ProbeResult.probeFailed;
+    } catch (e) {
+      debugPrint('[Recovery] probe error: $e');
+      return _ProbeResult.probeFailed;
+    }
+  }
+
+  /// Mark the sheet as shown for this app launch so home_screen does not
+  /// re-show it after user dismisses.
+  void markSheetShown() {
+    state = state.copyWith(hasShownSheet: true);
+  }
+
+  /// Drop a single classification after the user finishes interacting with it
+  /// (resume started or cancel completed). The next launch (or next refresh)
+  /// repopulates state.
+  void dropClassification(String jobId) {
+    state = state.copyWith(
+      classifications: state.classifications
+          .where((c) => c.job.id != jobId)
+          .toList(growable: false),
+      hasShownSheet: false,
+    );
+  }
+
+  /// Cancel a pending job. Mirrors web `dismissJob` at `app.js:2976-3030`.
+  /// Best-effort: queue release first, then payment cancel, then local delete.
+  /// Any network failure is swallowed — local cleanup proceeds regardless,
+  /// matching web behavior (offline cancel deletes local but leaves server
+  /// payment uncaptured; documented sharp edge).
+  Future<void> cancel(PendingJob job) async {
+    // Best-effort queue release. The job's in-memory lease died with the app;
+    // a fresh release call without lease_token is still useful because the
+    // backend can clean up the slot keyed by payment_session_id.
+    try {
+      await _api.releaseQueue(
+        clientConversationRef: job.clientConversationRef,
+        paymentSessionId: job.paymentSessionId,
+      );
+    } catch (e) {
+      debugPrint('[Recovery] queue release failed (ignored): $e');
+    }
+
+    // Best-effort payment cancel — only attempt if we have a payment session.
+    // Stale rows might not.
+    if (job.paymentSessionId.isNotEmpty) {
+      try {
+        await _api.cancelPayment(paymentIntentId: job.paymentSessionId);
+      } catch (e) {
+        debugPrint('[Recovery] payment cancel failed (ignored): $e');
+      }
+    }
+
+    await _storage.deletePendingJob(job.id);
+
+    // Also drop the placeholder conversation row if it is still 'processing'.
+    final conv = await _storage.getConversationById(job.id);
+    if (conv != null && (conv['status'] as String?) == 'processing') {
+      await _storage.deleteConversation(job.id);
+    }
+
+    dropClassification(job.id);
+  }
+}
+
+enum _ProbeResult {
+  resumable,
+  serverFinalizing,
+  serverCompleted,
+  serverNotFound,
+  probeFailed,
+}
+
+final pendingJobRecoveryProvider = StateNotifierProvider<
+    PendingJobRecoveryNotifier, PendingJobRecoveryState>((ref) {
+  return PendingJobRecoveryNotifier(api: ApiService.instance);
+});

@@ -4,7 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import 'package:portraitor_mobile/features/import/application/import_provider.dart';
 import 'package:portraitor_mobile/features/results/application/portraits_provider.dart';
+import 'package:portraitor_mobile/features/processing/application/pending_job_recovery_provider.dart';
 import 'package:portraitor_mobile/features/processing/application/processing_provider.dart';
+import 'package:portraitor_mobile/features/processing/presentation/pending_job_resume_sheet.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/shared/widgets/gradient_avatar.dart';
 import 'package:portraitor_mobile/shared/widgets/gradient_background.dart';
@@ -27,6 +29,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(importProvider.notifier).checkClipboard();
+      // Check for unfinished portrait processing from a prior session and
+      // surface the recovery prompt if needed. The provider does its own
+      // server-status probe; build() listens to the resulting state and shows
+      // the sheet once per launch.
+      ref.read(pendingJobRecoveryProvider.notifier).refresh();
     });
   }
 
@@ -58,6 +65,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           next.status == ProcessingStatus.done) {
         ref.read(portraitsProvider.notifier).loadPortraits();
       }
+    });
+
+    // Show the unfinished portrait sheet once per launch when the recovery
+    // provider settles with something to show.
+    ref.listen(pendingJobRecoveryProvider, (prev, next) {
+      if (next.isLoading) return;
+      if (next.hasShownSheet) return;
+      final classification = next.nextToShow;
+      if (classification == null) return;
+
+      ref.read(pendingJobRecoveryProvider.notifier).markSheetShown();
+      // Defer the showModalBottomSheet call so it runs after the current
+      // listen callback finishes — avoids nested build/setState issues.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        showPendingJobResumeSheet(context, classification: classification);
+      });
     });
 
     return Scaffold(
