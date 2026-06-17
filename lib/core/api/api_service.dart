@@ -459,7 +459,10 @@ class ApiService {
       data: jsonEncode(data),
       options: Options(
         responseType: ResponseType.stream,
-        headers: {'Accept': 'text/event-stream'},
+        // Advertise identity so the CDN/proxy can't gzip-buffer the SSE stream
+        // (browsers don't offer gzip for EventSource; dart:io defaults to gzip,
+        // which makes the CDN buffer the whole stream and deliver it at the end).
+        headers: {'Accept': 'text/event-stream', 'Accept-Encoding': 'identity'},
         receiveTimeout: const Duration(minutes: 5),
       ),
     );
