@@ -36,6 +36,14 @@ ios/Flutter/flutter_export_environment.sh
 ios/build/
 /coverage/
 
+# Generated native build output
+/rust/target/
+/rust_builder/.dart_tool/
+/rust_builder/cargokit/build_tool/.dart_tool/
+/rust_builder/android/.gradle/
+/rust_builder/android/build/
+/rust_builder/pubspec.lock
+
 # Symbolication related
 app.*.symbols
 
