@@ -1,0 +1,208 @@
+/* =============================================================================
+   Portraitor — Design Tokens
+   -----------------------------------------------------------------------------
+   Extracted from the prototype's inline styles into one documented source of
+   truth. Paste the :root block at the TOP of your existing styles.css, then
+   migrate hard-coded values to var(--token) as you port each section.
+
+   The component patterns at the bottom replace the repeated inline-style blobs
+   in the prototype. They are namespaced `pp-` so they will not collide with the
+   3,891 lines already in styles.css. Adopt them incrementally — nothing here
+   forces a big-bang rewrite.
+   ============================================================================= */
+
+:root {
+  /* ---- Brand purple -------------------------------------------------------- */
+  --pp-purple:            #7C5CFF;   /* primary actions, accents              */
+  --pp-purple-hover:      #6B4AF0;   /* hover for purple buttons / links      */
+  --pp-purple-deep:       #4F36C9;   /* pressed / strong link hover           */
+  --pp-purple-ink:        #6B4AF0;   /* purple used as text on light bg       */
+  --pp-purple-100:        #F2EFFA;   /* chip / pill background                 */
+  --pp-purple-50:         rgba(124,92,255,.10); /* faint tint fills            */
+  --pp-purple-border:     rgba(124,92,255,.22);
+  --pp-purple-grad-a:     #9B86E8;   /* gradient stops (logo, fills)          */
+  --pp-purple-grad-b:     #7C5CFF;
+
+  /* ---- Peach accent (secondary CTA, warm highlights) ----------------------- */
+  --pp-peach:             #F4B8A0;
+  --pp-peach-text:        #C2703F;   /* peach used as text (warnings/eyebrows) */
+  --pp-peach-icon:        #D08A63;
+  --pp-peach-50:          #FBF1EC;   /* peach tint background                  */
+
+  /* ---- Sage (privacy / success / "safe" signals) --------------------------- */
+  --pp-sage:              #7FB89E;
+  --pp-sage-deep:         #5E7A6C;
+  --pp-sage-50:           rgba(127,184,158,.16);
+
+  /* ---- Ink / text ramp ----------------------------------------------------- */
+  --pp-ink:               #211A37;   /* headings, primary text                 */
+  --pp-ink-2:             #3D3656;   /* body copy in cards                     */
+  --pp-ink-3:             #544C6B;   /* secondary body                         */
+  --pp-muted:             #6B6480;   /* supporting text                        */
+  --pp-muted-2:           #8C86A0;   /* captions, labels                       */
+  --pp-faint:             #A8A2BC;   /* hints, placeholders                    */
+  --pp-on-dark:           #EDEAF7;   /* text on dark surfaces                  */
+  --pp-on-dark-2:         #C9C2E2;   /* secondary text on dark surfaces        */
+
+  /* ---- Surfaces ------------------------------------------------------------ */
+  --pp-bg:                #FBFAFF;   /* app/page background                    */
+  --pp-surface:           #ffffff;   /* cards                                  */
+  --pp-surface-tint:      #F7F3FF;   /* featured card top (gradient)           */
+  --pp-section-tint:      #F4F1FF;   /* alt section background                 */
+  --pp-dark:              #211A37;   /* dark panels (gradient start)           */
+  --pp-dark-2:            #37305a;   /* dark panels (gradient end)             */
+  --pp-dark-3:            #3A2F63;   /* hero/guarantee gradient end            */
+
+  /* ---- Hairlines / borders (all on ink, varying alpha) --------------------- */
+  --pp-line:              rgba(33,26,55,.08);
+  --pp-line-soft:         rgba(33,26,55,.06);
+  --pp-line-strong:       rgba(33,26,55,.12);
+  --pp-line-input:        rgba(33,26,55,.16);
+
+  /* ---- Typography ---------------------------------------------------------- */
+  --pp-font-display: 'Space Grotesk', system-ui, sans-serif; /* headings, UI labels, prices */
+  --pp-font-body:    'Inter', system-ui, sans-serif;         /* body copy                   */
+
+  --pp-text-h1:           54px;  /* hero (clamp on mobile — see note)          */
+  --pp-text-h2:           34px;  /* section titles                            */
+  --pp-text-h3:           19px;  /* card titles                               */
+  --pp-text-lead:         18.5px;/* hero sub                                  */
+  --pp-text-body:         15px;
+  --pp-text-sm:           13.5px;
+  --pp-text-xs:           12.5px;
+  --pp-text-2xs:          11.5px; /* eyebrow / fine print                      */
+  --pp-eyebrow-tracking:  .1em;   /* uppercase section eyebrows                */
+
+  /* ---- Radius -------------------------------------------------------------- */
+  --pp-r-pill:            999px;
+  --pp-r-xl:              22px;  /* hero card, big panels                      */
+  --pp-r-lg:              20px;  /* cards, payment panel                       */
+  --pp-r-md:              14px;  /* inputs container, callouts                 */
+  --pp-r-sm:              12px;  /* inputs, buttons                           */
+  --pp-r-xs:              10px;  /* small buttons, chips                       */
+
+  /* ---- Shadows ------------------------------------------------------------- */
+  --pp-shadow-card:       0 18px 50px -32px rgba(33,26,55,.28);
+  --pp-shadow-raised:     0 24px 60px -24px rgba(33,26,55,.28);
+  --pp-shadow-pop:        0 30px 70px -34px rgba(33,26,55,.30);
+  --pp-shadow-btn:        0 8px 22px rgba(124,92,255,.34);
+  --pp-shadow-btn-sm:     0 4px 14px rgba(124,92,255,.32);
+  --pp-shadow-modal:      0 40px 90px -30px rgba(33,26,55,.50);
+
+  /* ---- Layout / spacing ---------------------------------------------------- */
+  --pp-maxw-marketing:    1180px; /* hero, how-it-works, testimonials, footer  */
+  --pp-maxw-readable:     820px;  /* legal docs                                */
+  --pp-maxw-narrow:       760px;  /* sample card, legal column                 */
+  --pp-section-pad-y:     104px;  /* top padding of each full-screen section   */
+  --pp-section-pad-x:     24px;
+  --pp-gap:               18px;   /* default grid/flex gap                     */
+
+  /* ---- Card-brand marks (payment) ----------------------------------------- */
+  --pp-visa:              #1A1F71;
+  --pp-mc-red:            #EB001B;
+  --pp-mc-yellow:         #F79E1B;
+  --pp-amex:              #1F72CD;
+}
+
+/* =============================================================================
+   Base
+   ============================================================================= */
+body {
+  background: var(--pp-bg);
+  color: var(--pp-ink);
+  font-family: var(--pp-font-body);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: rgba(124,92,255,.22); }
+
+/* =============================================================================
+   Component patterns
+   These replace the repeated inline-style blobs in the prototype. Each maps to
+   a recurring element so the markup in your partials stays lean:
+     <div class="pp-eyebrow">How it works</div>
+     <h2 class="pp-h2">…</h2>
+     <button class="pp-btn pp-btn--primary">Make my Portrait</button>
+   ============================================================================= */
+
+/* Section eyebrow — the uppercase purple kicker above every section title */
+.pp-eyebrow {
+  font-family: var(--pp-font-display);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: var(--pp-eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--pp-purple);
+}
+
+/* Headings */
+.pp-h1 { font-family: var(--pp-font-display); font-weight: 700; font-size: var(--pp-text-h1);
+         line-height: 1.04; letter-spacing: -.03em; text-wrap: balance; }
+.pp-h2 { font-family: var(--pp-font-display); font-weight: 700; font-size: var(--pp-text-h2);
+         line-height: 1.1;  letter-spacing: -.02em; }
+.pp-h3 { font-family: var(--pp-font-display); font-weight: 600; font-size: var(--pp-text-h3); }
+
+/* Cards */
+.pp-card {
+  background: var(--pp-surface);
+  border: 1px solid var(--pp-line);
+  border-radius: var(--pp-r-lg);
+  box-shadow: var(--pp-shadow-card);
+}
+
+/* Pill / chip */
+.pp-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: var(--pp-text-2xs); font-weight: 600;
+  color: var(--pp-purple-ink); background: var(--pp-purple-50);
+  padding: 6px 12px; border-radius: var(--pp-r-pill);
+}
+
+/* Buttons — shared base + variants */
+.pp-btn {
+  font-family: var(--pp-font-display); font-weight: 600; font-size: 15px;
+  padding: 13px 24px; border-radius: var(--pp-r-sm);
+  cursor: pointer; border: none; display: inline-flex;
+  align-items: center; justify-content: center; gap: 9px;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.pp-btn--primary   { background: var(--pp-purple); color: #fff; box-shadow: var(--pp-shadow-btn); }
+.pp-btn--primary:hover { background: var(--pp-purple-hover); }
+.pp-btn--secondary { background: #fff; color: var(--pp-ink); border: 1px solid var(--pp-line-strong); }
+.pp-btn--secondary:hover { border-color: var(--pp-purple); color: var(--pp-purple-ink); }
+.pp-btn--peach     { background: var(--pp-peach); color: var(--pp-ink); }
+.pp-btn--peach:hover { background: #fff; }
+
+/* Inputs */
+.pp-input {
+  width: 100%; padding: 13px 14px;
+  border: 1px solid var(--pp-line-input); border-radius: var(--pp-r-sm);
+  font-size: 15px; font-family: var(--pp-font-body);
+}
+.pp-input:focus { outline: none; border-color: var(--pp-purple); }
+
+/* Full-screen marketing section shell (the prototype's panel-N pattern) */
+.pp-section {
+  min-height: 100vh; box-sizing: border-box;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: var(--pp-section-pad-y) var(--pp-section-pad-x) 92px;
+  position: relative;
+}
+.pp-section__inner { max-width: var(--pp-maxw-marketing); margin: 0 auto; width: 100%; }
+
+/* Callout — the dark privacy strip */
+.pp-callout-dark {
+  background: linear-gradient(120deg, var(--pp-dark), var(--pp-dark-2));
+  color: var(--pp-on-dark); border-radius: 18px; padding: 24px 28px;
+}
+
+/* =============================================================================
+   Notes for the rebuild
+   -----------------------------------------------------------------------------
+   • MOBILE: --pp-text-h1 (54px) and the 3-column grids need a responsive pass.
+     Suggested: h1 -> clamp(34px, 8vw, 54px); collapse .pp-section__inner grids
+     to 1 column under ~880px (the prototype already does this via media query).
+   • FONTS: load Space Grotesk (400/500/600/700) + Inter (400/500/600).
+   • The side dot-nav and scroll-snap behaviour are app.js concerns, not tokens.
+   • Keep the Gemini key server-side; none of these tokens touch logic.
+   ============================================================================= */
