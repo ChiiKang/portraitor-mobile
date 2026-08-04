@@ -25,6 +25,44 @@ class PortraitorTokens {
   static const Color brandSoft = Color(0x1FA855F7);
   static const Color brandGlow = Color(0x33A855F7);
 
+  // ── ONBOARDING HANDOVER PALETTE ────────────────────────────
+  // Kept separate from the legacy app palette so screens outside onboarding
+  // retain their existing appearance.
+  static const Color onboardingBlue = Color(0xFF5B8CFF);
+  static const Color onboardingPrimary = Color(0xFF7C5CFF);
+  static const Color onboardingPrimaryDeep = Color(0xFF6B4AF0);
+  static const Color onboardingInk = Color(0xFF211A37);
+  static const Color onboardingInkSoft = Color(0xFF4C4666);
+  static const Color onboardingMuted = Color(0xFF8C86A0);
+  static const Color onboardingMutedLight = Color(0xFFB4AEC4);
+  static const Color onboardingSurface = Color(0xFFFBFAFF);
+  static const Color sageCheck = Color(0xFF5E7A6C);
+  static const Color sageCheckBackground = Color(0x387FB89E);
+
+  static const Gradient onboardingBrandGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [onboardingBlue, brandPurple, brandPink],
+  );
+
+  static const Gradient iconGradientViolet = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
+  );
+
+  static const Gradient iconGradientVioletPeach = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFC084FC), Color(0xFFF0A48A)],
+  );
+
+  static const Gradient iconGradientPeachCoral = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFF0A48A), Color(0xFFE8837A)],
+  );
+
   static const Color pageBackground = Color(0xFFF8F6FF);
 
   // ── INK (text colors) ────────────────────────────────────────
