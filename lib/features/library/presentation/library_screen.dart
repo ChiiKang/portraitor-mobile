@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:portraitor_mobile/core/navigation/back_navigation.dart';
 
 import 'package:portraitor_mobile/features/results/application/portraits_provider.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
@@ -56,7 +57,7 @@ class LibraryScreen extends ConsumerWidget {
         children: [
           IconButton(
             icon: const Icon(Icons.arrow_back),
-            onPressed: () => context.pop(),
+            onPressed: () => popOrGoHome(context),
           ),
           const SizedBox(width: 8),
           const Text('Library', style: PortraitorTokens.titleMd),
