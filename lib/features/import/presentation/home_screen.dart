@@ -5,12 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:portraitor_mobile/features/import/application/import_provider.dart';
 import 'package:portraitor_mobile/features/processing/application/pending_job_recovery_provider.dart';
 import 'package:portraitor_mobile/features/processing/application/processing_provider.dart';
 import 'package:portraitor_mobile/features/processing/presentation/pending_job_resume_sheet.dart';
 import 'package:portraitor_mobile/features/results/application/portraits_provider.dart';
-import 'import_sheet.dart';
 
 /// Screen 04 from the approved mobile handover.
 class HomeScreen extends ConsumerStatefulWidget {
@@ -20,37 +18,20 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen>
-    with WidgetsBindingObserver {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(importProvider.notifier).checkClipboard();
       ref.read(pendingJobRecoveryProvider.notifier).refresh();
     });
   }
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      ref.read(importProvider.notifier).checkClipboard();
-    }
-  }
-
-  void _openImportSheet() => showImportSheet(context, ref);
+  void _openAddConversation() => context.push('/funnel/add');
 
   @override
   Widget build(BuildContext context) {
     final portraits = ref.watch(portraitsProvider);
-    final importState = ref.watch(importProvider);
 
     ref.listen(processingProvider, (previous, next) {
       if (previous?.status != ProcessingStatus.done &&
@@ -90,39 +71,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   children: [
                     _HomeHeader(onSettings: () => context.push('/settings')),
                     const SizedBox(height: 14),
-                    _PassChip(onManage: () => context.push('/settings')),
+                    _PassChip(onManage: () => context.push('/profile')),
                     const SizedBox(height: 14),
-                    _NewPortraitCard(onStart: _openImportSheet),
-                    if (importState.clipboardDetected) ...[
-                      const SizedBox(height: 16),
-                      _ClipboardBanner(
-                        preview: importState.clipboardPreview ?? '',
-                        onImport: () async {
-                          await ref
-                              .read(importProvider.notifier)
-                              .importFromClipboard();
-                          if (!context.mounted) return;
-                          final state = ref.read(importProvider);
-                          if (state.normalized == null) return;
-                          context.push(
-                            '/setup',
-                            extra: {
-                              'normalizedText': state.normalized!.text,
-                              'format': state.normalized!.format.name,
-                              'detectedNames': state.normalized!.detectedNames,
-                              'messageCount': state.normalized!.messageCount,
-                              'dateRange':
-                                  state.dateRange == null
-                                      ? null
-                                      : {
-                                        'start': state.dateRange!.start,
-                                        'end': state.dateRange!.end,
-                                      },
-                            },
-                          );
-                        },
-                      ),
-                    ],
+                    _NewPortraitCard(onStart: _openAddConversation),
                     const SizedBox(height: 26),
                     _RecentPortraits(
                       portraits: portraits.portraits,
@@ -136,7 +87,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               _HomeTabBar(
                 onHome: () => context.go('/home'),
                 onPortraits: () => context.push('/library'),
-                onProfile: () => context.push('/settings'),
+                onProfile: () => context.push('/profile'),
               ),
             ],
           ),
@@ -155,19 +106,22 @@ class _HomeHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF5B8CFF), Color(0xFFA855F7), Color(0xFFEC4899)],
-            ),
+        ClipOval(
+          child: Image.asset(
+            'assets/brand/portraitor-logo.png',
+            width: 28,
+            height: 28,
+            fit: BoxFit.cover,
+            errorBuilder:
+                (_, __, ___) => Container(
+                  width: 28,
+                  height: 28,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFF7C5CFF),
+                  ),
+                ),
           ),
-          alignment: Alignment.center,
-          child: SvgPicture.string(_chatMarkSvg, width: 16, height: 16),
         ),
         const SizedBox(width: 8),
         const Text(
@@ -630,49 +584,6 @@ class _PortraitPreviewRow extends StatelessWidget {
   }
 }
 
-class _ClipboardBanner extends StatelessWidget {
-  const _ClipboardBanner({required this.preview, required this.onImport});
-
-  final String preview;
-  final VoidCallback onImport;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onImport,
-        borderRadius: BorderRadius.circular(15),
-        child: Ink(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF4F0FF),
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: const Color(0x247C5CFF)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.content_paste, color: Color(0xFF7C5CFF)),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  preview.isEmpty ? 'Chat found in clipboard' : preview,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF514B64),
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _HomeTabBar extends StatelessWidget {
   const _HomeTabBar({
     required this.onHome,
@@ -788,8 +699,6 @@ const _momGradient = LinearGradient(
   colors: [Color(0xFF6D52FF), Color(0xFFA855F7)],
 );
 
-const _chatMarkSvg =
-    '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H9l-4 4v-4H6.5A2.5 2.5 0 0 1 4 13.5v-8Z" fill="#fff"/><circle cx="9.5" cy="9.5" r="1.3" fill="#A855F7"/><circle cx="14.5" cy="9.5" r="1.3" fill="#A855F7"/></svg>''';
 const _passSvg =
     '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h11A2.5 2.5 0 0 1 20 8.5v7A2.5 2.5 0 0 1 17.5 18h-11A2.5 2.5 0 0 1 4 15.5v-7Z" stroke="#96712A" stroke-width="1.8"/><path d="M4 10h16" stroke="#96712A" stroke-width="1.8"/></svg>''';
 const _chevronSvg =

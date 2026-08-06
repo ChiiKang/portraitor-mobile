@@ -57,6 +57,7 @@ flutter:
         - asset: assets/fonts/Inter-Variable.ttf
   assets:
     - assets/images/
+    - assets/brand/portraitor-logo.png
     - docs/handover_mobile_01-04/assets/01-welcome-bg.png
     - docs/handover_mobile_01-04/assets/02-howitworks-bg.png
     - docs/handover_mobile_01-04/assets/03-privacy-bg.png
