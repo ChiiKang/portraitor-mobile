@@ -7,7 +7,7 @@ import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provi
 import 'package:portraitor_mobile/shared/widgets/funnel_chrome.dart';
 
 /// Step 2/4 — Who is this portrait for?
-/// Packs + inline Pass drawer. Partner / Family / Pass CTAs gated until backend ready.
+/// Visual parity with Open Design prototype plan cards + Pass accordion.
 class PlanScreen extends ConsumerStatefulWidget {
   const PlanScreen({super.key});
 
@@ -27,20 +27,36 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
       step: 2,
       title: 'Who is this portrait for?',
       lead: 'Choose a bundle. Each is a one-time payment.',
+      lockBodyScroll: !_passOpen,
       ctaLabel: _ctaLabel(selected, _passOpen),
-      ctaEnabled: !_passOpen && selected.isEnabledInV1,
+      showCtaArrow: !_passOpen,
+      ctaEnabled: !_passOpen,
       onCta: () {
         if (_passOpen) {
-          _showGated(context, FunnelTier.pass);
-          return;
-        }
-        if (!selected.isEnabledInV1) {
-          _showGated(context, selected);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Pass needs StoreKit + quota API. Use a one-time pack for now.',
+              ),
+            ),
+          );
           return;
         }
         context.push('/funnel/configure');
       },
+      bottomExtra:
+          _passOpen
+              ? Text(
+                'Billed through the App Store · Terms',
+                textAlign: TextAlign.center,
+                style: PortraitorTokens.bodySm.copyWith(
+                  color: const Color(0xFF8A7348),
+                  fontSize: 12,
+                ),
+              )
+              : null,
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           AnimatedSize(
             duration: const Duration(milliseconds: 280),
@@ -51,32 +67,27 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                     ? const SizedBox.shrink()
                     : Column(
                       children: [
-                        _TierCard(
+                        _PlanTierCard(
                           tier: FunnelTier.you,
-                          subtitle: 'One person in the chat',
                           selected: selected == FunnelTier.you,
                           onTap:
                               () => ref
                                   .read(funnelDraftProvider.notifier)
                                   .selectTier(FunnelTier.you),
                         ),
-                        const SizedBox(height: 10),
-                        _TierCard(
+                        const SizedBox(height: 8),
+                        _PlanTierCard(
                           tier: FunnelTier.partner,
-                          subtitle: 'Two people — coming soon',
                           selected: selected == FunnelTier.partner,
-                          gated: true,
                           onTap:
                               () => ref
                                   .read(funnelDraftProvider.notifier)
                                   .selectTier(FunnelTier.partner),
                         ),
-                        const SizedBox(height: 10),
-                        _TierCard(
+                        const SizedBox(height: 8),
+                        _PlanTierCard(
                           tier: FunnelTier.family,
-                          subtitle: 'Up to five people — coming soon',
                           selected: selected == FunnelTier.family,
-                          gated: true,
                           onTap:
                               () => ref
                                   .read(funnelDraftProvider.notifier)
@@ -113,43 +124,185 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
               });
             },
           ),
-          if (!_passOpen && !selected.isEnabledInV1) ...[
-            const SizedBox(height: 16),
-            Text(
-              '${selected.label} isn’t available yet. Choose You to continue.',
-              style: PortraitorTokens.bodySm.copyWith(
-                color: PortraitorTokens.onboardingMuted,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-          if (_passOpen) ...[
-            const SizedBox(height: 16),
-            Text(
-              'Pass needs StoreKit + quota API. Use a one-time pack for now.',
-              style: PortraitorTokens.bodySm.copyWith(
-                color: PortraitorTokens.onboardingMuted,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
         ],
       ),
     );
   }
 
   String _ctaLabel(FunnelTier tier, bool passOpen) {
-    if (passOpen || tier == FunnelTier.pass) return 'Subscribe — coming soon';
-    if (!tier.isEnabledInV1) return 'Continue — coming soon';
-    return 'Continue — ${tier.priceLabel}';
+    if (passOpen || tier == FunnelTier.pass) return 'Subscribe';
+    return 'Continue with ${tier.label}';
+  }
+}
+
+class _PlanTierCard extends StatelessWidget {
+  const _PlanTierCard({
+    required this.tier,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final FunnelTier tier;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(18),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              constraints: const BoxConstraints(minHeight: 72),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color:
+                      selected
+                          ? PortraitorTokens.onboardingPrimary
+                          : PortraitorTokens.borderSoft,
+                  width: 1.5,
+                ),
+                boxShadow:
+                    selected
+                        ? [
+                          BoxShadow(
+                            color: PortraitorTokens.onboardingPrimary
+                                .withValues(alpha: 0.35),
+                            blurRadius: 0,
+                            spreadRadius: 1,
+                          ),
+                        ]
+                        : null,
+              ),
+              child: Row(
+                children: [
+                  _PlanIcon(tier: tier),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          tier.label,
+                          style: PortraitorTokens.titleSm.copyWith(
+                            color: PortraitorTokens.onboardingInk,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.16,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          tier.planSubtitle,
+                          style: PortraitorTokens.bodySm.copyWith(
+                            color: PortraitorTokens.onboardingMuted,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    tier.priceLabel,
+                    style: PortraitorTokens.titleMd.copyWith(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.17,
+                      color:
+                          selected
+                              ? PortraitorTokens.onboardingPrimaryDeep
+                              : PortraitorTokens.onboardingInk,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (selected)
+          Positioned(
+            top: -7,
+            right: -7,
+            child: Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: PortraitorTokens.onboardingPrimary,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: PortraitorTokens.onboardingPrimary.withValues(
+                      alpha: 0.35,
+                    ),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.check_rounded, size: 14, color: Colors.white),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _PlanIcon extends StatelessWidget {
+  const _PlanIcon({required this.tier});
+
+  final FunnelTier tier;
+
+  @override
+  Widget build(BuildContext context) {
+    final decoration = switch (tier) {
+      FunnelTier.you => const BoxDecoration(
+        color: PortraitorTokens.onboardingPrimary,
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+      ),
+      FunnelTier.partner => const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFEC4899), Color(0xFFF97316)],
+        ),
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+      ),
+      FunnelTier.family => const BoxDecoration(
+        color: Color(0xFFF59E0B),
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+      ),
+      FunnelTier.pass => const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFC9A227), Color(0xFFA17E26)],
+        ),
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+      ),
+    };
+
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: decoration,
+      child: Icon(_iconFor(tier), color: Colors.white, size: 22),
+    );
   }
 
-  void _showGated(BuildContext context, FunnelTier tier) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${tier.label} needs backend support. Use You for now.'),
-      ),
-    );
+  IconData _iconFor(FunnelTier tier) {
+    return switch (tier) {
+      FunnelTier.you => Icons.person_outline_rounded,
+      FunnelTier.partner => Icons.people_outline_rounded,
+      FunnelTier.family => Icons.groups_outlined,
+      FunnelTier.pass => Icons.credit_card_rounded,
+    };
   }
 }
 
@@ -166,84 +319,132 @@ class _PassDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeInOutCubic,
+    return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F1E4),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: open ? const Color(0xFFC1A354) : const Color(0x33C1A354),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFFBF5E9), Color(0xFFF6ECD6)],
         ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x52B8912F), width: 1.5),
       ),
+      clipBehavior: Clip.none,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          InkWell(
-            onTap: onToggle,
-            borderRadius: BorderRadius.circular(18),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                'Want more than one bundle?',
-                                style: PortraitorTokens.titleSm.copyWith(
-                                  color: const Color(0xFF5C4A28),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            const _SoonPill(),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Portraitor Pass — monthly',
-                          style: PortraitorTokens.bodySm.copyWith(
-                            color: const Color(0xFF8A7348),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              InkWell(
+                onTap: onToggle,
+                borderRadius: BorderRadius.circular(18),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 18, 12, 16),
+                  child: Row(
                     children: [
-                      Text(
-                        '\$50',
-                        style: PortraitorTokens.titleMd.copyWith(
-                          color: const Color(0xFFC1A354),
-                          fontWeight: FontWeight.w700,
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFFC9A227), Color(0xFFA17E26)],
+                          ),
+                          borderRadius: BorderRadius.all(Radius.circular(12)),
+                        ),
+                        child: const Icon(
+                          Icons.credit_card_rounded,
+                          color: Colors.white,
+                          size: 20,
                         ),
                       ),
-                      Text(
-                        '/month',
-                        style: PortraitorTokens.bodySm.copyWith(
-                          color: const Color(0xFF8A7348),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Want more than one bundle?',
+                              style: PortraitorTokens.titleSm.copyWith(
+                                color: const Color(0xFF5C4A28),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '10 portraits a month with the Pass.',
+                              style: PortraitorTokens.bodySm.copyWith(
+                                color: const Color(0xFF8A6A1E),
+                                height: 1.4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '\$50',
+                            style: PortraitorTokens.titleMd.copyWith(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.4,
+                              color: const Color(0xFFA8893F),
+                              height: 1.05,
+                            ),
+                          ),
+                          Text(
+                            '/month',
+                            style: PortraitorTokens.bodySm.copyWith(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: const Color(0xFF8A6A1E),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 4),
+                      AnimatedRotation(
+                        turns: open ? 0.5 : 0,
+                        duration: const Duration(milliseconds: 220),
+                        child: const Icon(
+                          Icons.expand_more_rounded,
+                          color: Color(0xFF8A6A1E),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(width: 4),
-                  AnimatedRotation(
-                    turns: open ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 220),
-                    child: const Icon(
-                      Icons.expand_more,
-                      color: Color(0xFFC1A354),
+                ),
+              ),
+              Positioned(
+                top: -10,
+                left: 14,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFC9A227),
+                    borderRadius: BorderRadius.circular(
+                      PortraitorTokens.radiusPill,
                     ),
                   ),
-                ],
+                  child: Text(
+                    'RECOMMENDED',
+                    style: PortraitorTokens.labelSm.copyWith(
+                      color: Colors.white,
+                      fontSize: 10,
+                      letterSpacing: 0.08,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
           AnimatedCrossFade(
             firstChild: const SizedBox(width: double.infinity),
@@ -254,31 +455,54 @@ class _PassDrawer extends StatelessWidget {
                 children: [
                   const Divider(height: 1, color: Color(0x33C1A354)),
                   const SizedBox(height: 14),
-                  Text(
-                    'Monthly',
-                    style: PortraitorTokens.labelMd.copyWith(
-                      color: const Color(0xFF8A7348),
-                      letterSpacing: 0.06,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '\$50/mo · 10 portraits',
-                    style: PortraitorTokens.titleMd.copyWith(
-                      color: const Color(0xFF5C4A28),
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Monthly',
+                        style: PortraitorTokens.bodySm.copyWith(
+                          color: const Color(0xFF8A7348),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '\$50',
+                            style: PortraitorTokens.titleMd.copyWith(
+                              color: const Color(0xFF5C4A28),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2, left: 2),
+                            child: Text(
+                              '/month',
+                              style: PortraitorTokens.bodySm.copyWith(
+                                color: const Color(0xFF8A7348),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
-                  const _PassFeature(text: '10 portraits every billing cycle'),
-                  const _PassFeature(text: 'Any mix of You, Partner, Family'),
-                  const _PassFeature(text: 'Share Pass with someone you trust'),
-                  const SizedBox(height: 12),
+                  const _PassFeature(
+                    text: 'All tiers included — You, Partner & Family',
+                  ),
+                  const _PassFeature(
+                    text: 'Priority processing & PDF export',
+                  ),
+                  const _PassFeature(text: 'Cancel anytime — no lock-in'),
+                  const SizedBox(height: 8),
                   TextButton(
                     onPressed: onShowPacks,
                     child: Text(
                       'Show one-time packs',
                       style: PortraitorTokens.bodyMd.copyWith(
-                        color: const Color(0xFF8A7348),
+                        color: const Color(0xFFA17E26),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -309,7 +533,16 @@ class _PassFeature extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.check_circle, size: 18, color: Color(0xFFC1A354)),
+          Container(
+            width: 20,
+            height: 20,
+            margin: const EdgeInsets.only(top: 1),
+            decoration: const BoxDecoration(
+              color: Color(0xFFB89540),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.check_rounded, size: 12, color: Colors.white),
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -321,103 +554,6 @@ class _PassFeature extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _TierCard extends StatelessWidget {
-  const _TierCard({
-    required this.tier,
-    required this.subtitle,
-    required this.selected,
-    required this.onTap,
-    this.gated = false,
-  });
-
-  final FunnelTier tier;
-  final String subtitle;
-  final bool selected;
-  final VoidCallback onTap;
-  final bool gated;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white.withValues(alpha: selected ? 0.95 : 0.78),
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color:
-                  selected
-                      ? PortraitorTokens.onboardingPrimary.withValues(
-                        alpha: 0.45,
-                      )
-                      : PortraitorTokens.borderSoft,
-              width: selected ? 1.5 : 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          tier.label,
-                          style: PortraitorTokens.titleMd.copyWith(
-                            color: PortraitorTokens.onboardingInk,
-                          ),
-                        ),
-                        if (gated) ...[const SizedBox(width: 8), const _SoonPill()],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(subtitle, style: PortraitorTokens.bodySm),
-                  ],
-                ),
-              ),
-              Text(
-                tier.priceLabel,
-                style: PortraitorTokens.titleMd.copyWith(
-                  color: PortraitorTokens.onboardingInk,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SoonPill extends StatelessWidget {
-  const _SoonPill();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: PortraitorTokens.surfaceMuted,
-        borderRadius: BorderRadius.circular(PortraitorTokens.radiusPill),
-      ),
-      child: Text(
-        'Soon',
-        style: PortraitorTokens.labelSm.copyWith(
-          color: PortraitorTokens.onboardingMuted,
-          letterSpacing: 0.06,
-          fontSize: 10,
-        ),
       ),
     );
   }

@@ -1,38 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'package:portraitor_mobile/core/theme/tokens.dart';
+import 'package:portraitor_mobile/shared/widgets/main_tab_shell.dart';
 
-/// My Profile / Pass manage — UI from prototype.
-/// Quota + Share Pass are chrome until Pass API + StoreKit land.
+/// My Profile / Pass manage — UI from prototype (tab root, no back).
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
   static const _passId = 'PORT-53PH-66F3-QV4S';
   static const _used = 1;
   static const _total = 10;
+  static const _passLink =
+      'https://staging.portraitor.ai/#PORT-53PH-66F3-QV4S';
 
   @override
   Widget build(BuildContext context) {
     final remaining = _total - _used;
+    final bottomPad = mainTabContentBottomInset(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFBFAFF),
+      backgroundColor: PortraitorTokens.onboardingSurface,
       body: DecoratedBox(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFE8DFFF), Color(0xFFFBFAFF), Color(0xFFFCEFF5)],
-            stops: [0.0, 0.4, 1.0],
-          ),
+          gradient: PortraitorTokens.tabPageGradient,
         ),
         child: SafeArea(
+          bottom: false,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+            padding: EdgeInsets.fromLTRB(20, 12, 20, bottomPad),
             children: [
-              Text('My Profile', style: PortraitorTokens.displaySm),
+              const Text(
+                'My Profile',
+                style: TextStyle(
+                  fontFamily: PortraitorTokens.fontFamily,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.56,
+                  color: PortraitorTokens.onboardingInk,
+                ),
+              ),
               const SizedBox(height: 6),
               Text(
                 'Pass ID $_passId',
@@ -64,7 +73,7 @@ class ProfileScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.9),
+                  color: Colors.white.withValues(alpha: 0.92),
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: PortraitorTokens.borderSoft),
                 ),
@@ -90,9 +99,16 @@ class ProfileScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '\$50/mo',
+                      '\$50',
                       style: PortraitorTokens.titleMd.copyWith(
                         color: PortraitorTokens.onboardingInk,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      '/month',
+                      style: PortraitorTokens.bodySm.copyWith(
+                        color: PortraitorTokens.onboardingMuted,
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -168,6 +184,7 @@ class ProfileScreen extends StatelessWidget {
                     child: FilledButton(
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFFC1A354),
+                        foregroundColor: Colors.white,
                       ),
                       onPressed: () => _sharePass(context),
                       child: const Text('Share'),
@@ -176,25 +193,19 @@ class ProfileScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 24),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.settings_outlined),
-                title: const Text('Settings'),
-                trailing: const Icon(Icons.chevron_right),
+              _LinkTile(
+                icon: Icons.settings_outlined,
+                title: 'Settings',
                 onTap: () => context.push('/settings'),
               ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.help_outline),
-                title: const Text('FAQ'),
-                trailing: const Icon(Icons.chevron_right),
+              _LinkTile(
+                icon: Icons.help_outline,
+                title: 'FAQ',
                 onTap: () => context.push('/settings/faq'),
               ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.privacy_tip_outlined),
-                title: const Text('Data & Privacy'),
-                trailing: const Icon(Icons.chevron_right),
+              _LinkTile(
+                icon: Icons.privacy_tip_outlined,
+                title: 'Data & Privacy',
                 onTap: () => context.push('/settings/gdpr'),
               ),
             ],
@@ -204,130 +215,47 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  void _sharePass(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          margin: const EdgeInsets.all(10),
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 36,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFC7C7CC),
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text('Share Pass', style: PortraitorTokens.titleMd),
-              const SizedBox(height: 8),
-              Text(
-                'They can generate with your Pass. They can’t see your portraits.',
-                style: PortraitorTokens.bodySm.copyWith(
-                  color: PortraitorTokens.onboardingMuted,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 18,
-                runSpacing: 12,
-                alignment: WrapAlignment.center,
-                children: [
-                  _ShareApp(
-                    label: 'WhatsApp',
-                    onTap: () {
-                      Clipboard.setData(
-                        const ClipboardData(
-                          text:
-                              'Join my Portraitor Pass: $_passId\nhttps://portraitor.app/pass/$_passId',
-                        ),
-                      );
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Share text copied — open WhatsApp to send'),
-                        ),
-                      );
-                    },
-                  ),
-                  _ShareApp(
-                    label: 'Telegram',
-                    onTap: () {
-                      Clipboard.setData(
-                        const ClipboardData(
-                          text:
-                              'Join my Portraitor Pass: $_passId\nhttps://portraitor.app/pass/$_passId',
-                        ),
-                      );
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Share text copied')),
-                      );
-                    },
-                  ),
-                  _ShareApp(
-                    label: 'Copy link',
-                    onTap: () {
-                      Clipboard.setData(
-                        const ClipboardData(
-                          text: 'https://portraitor.app/pass/$_passId',
-                        ),
-                      );
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Link copied')),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ],
-          ),
+  Future<void> _sharePass(BuildContext context) async {
+    final text =
+        'Join my Portraitor Pass: $_passId\n$_passLink';
+    try {
+      await Share.share(text, subject: 'Portraitor Pass');
+    } catch (_) {
+      await Clipboard.setData(ClipboardData(text: text));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Share text copied')),
         );
-      },
-    );
+      }
+    }
   }
 }
 
-class _ShareApp extends StatelessWidget {
-  const _ShareApp({required this.label, required this.onTap});
+class _LinkTile extends StatelessWidget {
+  const _LinkTile({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+  });
 
-  final String label;
+  final IconData icon;
+  final String title;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: SizedBox(
-        width: 72,
-        child: Column(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: PortraitorTokens.surfaceMuted,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(Icons.ios_share),
-            ),
-            const SizedBox(height: 6),
-            Text(label, style: PortraitorTokens.labelSm, textAlign: TextAlign.center),
-          ],
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icon, color: PortraitorTokens.onboardingInkSoft),
+      title: Text(
+        title,
+        style: PortraitorTokens.titleSm.copyWith(
+          color: PortraitorTokens.onboardingInk,
+          fontWeight: FontWeight.w600,
         ),
       ),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
     );
   }
 }

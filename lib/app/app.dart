@@ -21,6 +21,7 @@ import 'package:portraitor_mobile/features/settings/presentation/profile_screen.
 import 'package:portraitor_mobile/features/settings/presentation/settings_screen.dart';
 import 'package:portraitor_mobile/features/setup/presentation/setup_screen.dart';
 import 'package:portraitor_mobile/main.dart';
+import 'package:portraitor_mobile/shared/widgets/main_tab_shell.dart';
 
 // ─── Router ──────────────────────────────────────────────────────────────────
 
@@ -44,10 +45,25 @@ final router = GoRouter(
       name: 'onboarding',
       builder: (context, state) => const OnboardingFlow(),
     ),
-    GoRoute(
-      path: '/home',
-      name: 'home',
-      builder: (context, state) => const HomeScreen(),
+    ShellRoute(
+      builder: (context, state, child) => MainTabShell(child: child),
+      routes: [
+        GoRoute(
+          path: '/home',
+          name: 'home',
+          builder: (context, state) => const HomeScreen(),
+        ),
+        GoRoute(
+          path: '/library',
+          name: 'library',
+          builder: (context, state) => const LibraryScreen(),
+        ),
+        GoRoute(
+          path: '/profile',
+          name: 'profile',
+          builder: (context, state) => const ProfileScreen(),
+        ),
+      ],
     ),
     GoRoute(
       path: '/funnel/add',
@@ -129,16 +145,6 @@ final router = GoRouter(
         final id = state.pathParameters['id']!;
         return ResultScreen(conversationId: id);
       },
-    ),
-    GoRoute(
-      path: '/library',
-      name: 'library',
-      builder: (context, state) => const LibraryScreen(),
-    ),
-    GoRoute(
-      path: '/profile',
-      name: 'profile',
-      builder: (context, state) => const ProfileScreen(),
     ),
     GoRoute(
       path: '/settings',

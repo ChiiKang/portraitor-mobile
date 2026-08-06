@@ -1,16 +1,18 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/features/processing/application/pending_job_recovery_provider.dart';
 import 'package:portraitor_mobile/features/processing/application/processing_provider.dart';
 import 'package:portraitor_mobile/features/processing/presentation/pending_job_resume_sheet.dart';
 import 'package:portraitor_mobile/features/results/application/portraits_provider.dart';
+import 'package:portraitor_mobile/shared/models/portrait_session.dart';
+import 'package:portraitor_mobile/shared/widgets/main_tab_shell.dart';
+import 'package:portraitor_mobile/shared/widgets/session_card.dart';
 
-/// Screen 04 from the approved mobile handover.
+/// Home tab — matches Open Design prototype (logo, Pass chip, hero, compact Recent).
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -32,6 +34,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final portraits = ref.watch(portraitsProvider);
+    final sessions =
+        portraits.portraits.isEmpty
+            ? PortraitSession.demoSessions()
+            : PortraitSession.fromPortraits(portraits.portraits);
+    final bottomPad = mainTabContentBottomInset(context);
 
     ref.listen(processingProvider, (previous, next) {
       if (previous?.status != ProcessingStatus.done &&
@@ -52,42 +59,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFBFAFF),
+      backgroundColor: PortraitorTokens.onboardingSurface,
       body: DecoratedBox(
         decoration: const BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment.topCenter,
-            radius: 1.25,
-            colors: [Color(0xFFEDE7FF), Color(0xFFFBFAFF), Color(0xFFFCEFF5)],
-            stops: [0, .42, 1],
-          ),
+          gradient: PortraitorTokens.tabPageGradient,
         ),
         child: SafeArea(
-          child: Column(
+          bottom: false,
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(20, 4, 20, bottomPad),
             children: [
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                  children: [
-                    _HomeHeader(onSettings: () => context.push('/settings')),
-                    const SizedBox(height: 14),
-                    _PassChip(onManage: () => context.push('/profile')),
-                    const SizedBox(height: 14),
-                    _NewPortraitCard(onStart: _openAddConversation),
-                    const SizedBox(height: 26),
-                    _RecentPortraits(
-                      portraits: portraits.portraits,
-                      onSeeAll: () => context.push('/library'),
-                      onPortrait:
-                          (portrait) => context.push('/result/${portrait.id}'),
-                    ),
-                  ],
-                ),
-              ),
-              _HomeTabBar(
-                onHome: () => context.go('/home'),
-                onPortraits: () => context.push('/library'),
-                onProfile: () => context.push('/profile'),
+              _HomeHeader(onSettings: () => context.push('/settings')),
+              const SizedBox(height: 14),
+              _PassChip(onManage: () => context.go('/profile')),
+              const SizedBox(height: 14),
+              _NewPortraitCard(onStart: _openAddConversation),
+              const SizedBox(height: 26),
+              _RecentSection(
+                sessions: sessions.take(2).toList(),
+                isDemo: portraits.portraits.isEmpty,
+                onSeeAll: () => context.go('/library'),
+                onSession: (session) {
+                  if (portraits.portraits.isEmpty ||
+                      session.resultIds.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Demo session — generate a portrait to open a real result',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+                  context.push('/result/${session.resultIds.first}');
+                },
               ),
             ],
           ),
@@ -109,34 +114,39 @@ class _HomeHeader extends StatelessWidget {
         ClipOval(
           child: Image.asset(
             'assets/brand/portraitor-logo.png',
-            width: 28,
-            height: 28,
+            width: 32,
+            height: 32,
             fit: BoxFit.cover,
             errorBuilder:
                 (_, __, ___) => Container(
-                  width: 28,
-                  height: 28,
+                  width: 32,
+                  height: 32,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Color(0xFF7C5CFF),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF9475E1), Color(0xFFE8B4A6)],
+                    ),
                   ),
                 ),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 10),
         const Text(
           'Portraitor',
           style: TextStyle(
-            fontFamily: 'SpaceGrotesk',
+            fontFamily: PortraitorTokens.fontFamily,
             fontSize: 20,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF211A37),
+            letterSpacing: -0.3,
+            color: PortraitorTokens.onboardingInk,
           ),
         ),
         const Spacer(),
         Semantics(
           button: true,
-          label: 'Open profile settings',
+          label: 'Open settings',
           child: InkResponse(
             onTap: onSettings,
             radius: 24,
@@ -205,7 +215,7 @@ class _PassChip extends StatelessWidget {
               const Text(
                 'Pass · 7 of 10 left',
                 style: TextStyle(
-                  fontFamily: 'SpaceGrotesk',
+                  fontFamily: PortraitorTokens.fontFamily,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: Color(0xFF8A6A1E),
@@ -215,6 +225,7 @@ class _PassChip extends StatelessWidget {
               const Text(
                 'Manage →',
                 style: TextStyle(
+                  fontFamily: PortraitorTokens.fontBody,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: Color(0xFFA17E26),
@@ -271,7 +282,7 @@ class _NewPortraitCard extends StatelessWidget {
                     'NEW PORTRAIT',
                     style: TextStyle(
                       color: Color(0xE6FFFFFF),
-                      fontFamily: 'SpaceGrotesk',
+                      fontFamily: PortraitorTokens.fontFamily,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 1.4,
@@ -282,10 +293,11 @@ class _NewPortraitCard extends StatelessWidget {
                     'Analyze a new\nconversation',
                     style: TextStyle(
                       color: Color(0xFFFFFFFF),
-                      fontFamily: 'SpaceGrotesk',
+                      fontFamily: PortraitorTokens.fontFamily,
                       fontSize: 23,
                       fontWeight: FontWeight.w700,
                       height: 1.12,
+                      letterSpacing: -0.4,
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -293,6 +305,7 @@ class _NewPortraitCard extends StatelessWidget {
                     'Share a chat or upload an\nexport',
                     style: TextStyle(
                       color: Color(0xD9FFFFFF),
+                      fontFamily: PortraitorTokens.fontBody,
                       fontSize: 16,
                       height: 1.35,
                     ),
@@ -332,7 +345,7 @@ class _NewPortraitCard extends StatelessWidget {
                                 'Start',
                                 style: TextStyle(
                                   color: Color(0xFF211A37),
-                                  fontFamily: 'SpaceGrotesk',
+                                  fontFamily: PortraitorTokens.fontFamily,
                                   fontSize: 17,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -353,54 +366,21 @@ class _NewPortraitCard extends StatelessWidget {
   }
 }
 
-class _RecentPortraits extends StatelessWidget {
-  const _RecentPortraits({
-    required this.portraits,
+class _RecentSection extends StatelessWidget {
+  const _RecentSection({
+    required this.sessions,
+    required this.isDemo,
     required this.onSeeAll,
-    required this.onPortrait,
+    required this.onSession,
   });
 
-  final List<Portrait> portraits;
+  final List<PortraitSession> sessions;
+  final bool isDemo;
   final VoidCallback onSeeAll;
-  final ValueChanged<Portrait> onPortrait;
+  final ValueChanged<PortraitSession> onSession;
 
   @override
   Widget build(BuildContext context) {
-    final rows =
-        portraits.isEmpty
-            ? const <_PortraitPreview>[
-              _PortraitPreview(
-                'Sarah',
-                'PARTNER',
-                '2 days ago',
-                'S',
-                _sarahGradient,
-              ),
-              _PortraitPreview(
-                'Mom',
-                'FAMILY',
-                '1 week ago',
-                'M',
-                _momGradient,
-              ),
-            ]
-            : portraits
-                .take(2)
-                .map(
-                  (portrait) => _PortraitPreview(
-                    portrait.targetName.isEmpty
-                        ? 'Portrait'
-                        : portrait.targetName,
-                    portrait.mode.toUpperCase(),
-                    portrait.title,
-                    portrait.targetName.isEmpty
-                        ? 'P'
-                        : portrait.targetName.characters.first.toUpperCase(),
-                    _momGradient,
-                    portrait: portrait,
-                  ),
-                )
-                .toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -408,12 +388,13 @@ class _RecentPortraits extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text(
-              'Recent portraits',
+              'Recent',
               style: TextStyle(
-                fontFamily: 'SpaceGrotesk',
+                fontFamily: PortraitorTokens.fontFamily,
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF211A37),
+                letterSpacing: -0.3,
+                color: PortraitorTokens.onboardingInk,
               ),
             ),
             TextButton(
@@ -425,7 +406,8 @@ class _RecentPortraits extends StatelessWidget {
               child: const Text(
                 'See all',
                 style: TextStyle(
-                  color: Color(0xFF7C5CFF),
+                  fontFamily: PortraitorTokens.fontBody,
+                  color: PortraitorTokens.onboardingPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
@@ -433,279 +415,29 @@ class _RecentPortraits extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 4),
-        for (var index = 0; index < rows.length; index++) ...[
-          _PortraitPreviewRow(
-            preview: rows[index],
-            onTap:
-                rows[index].portrait == null
-                    ? null
-                    : () => onPortrait(rows[index].portrait!),
+        if (isDemo)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Demo samples — your generations will appear here',
+              style: PortraitorTokens.bodySm.copyWith(
+                color: PortraitorTokens.onboardingMuted,
+              ),
+            ),
           ),
-          if (index != rows.length - 1) const SizedBox(height: 9),
+        const SizedBox(height: 4),
+        for (var i = 0; i < sessions.length; i++) ...[
+          SessionCard(
+            session: sessions[i],
+            compact: true,
+            onTap: () => onSession(sessions[i]),
+          ),
+          if (i != sessions.length - 1) const SizedBox(height: 10),
         ],
       ],
     );
   }
 }
 
-class _PortraitPreview {
-  const _PortraitPreview(
-    this.name,
-    this.relationship,
-    this.time,
-    this.initial,
-    this.gradient, {
-    this.portrait,
-  });
-
-  final String name;
-  final String relationship;
-  final String time;
-  final String initial;
-  final LinearGradient gradient;
-  final Portrait? portrait;
-}
-
-class _PortraitPreviewRow extends StatelessWidget {
-  const _PortraitPreviewRow({required this.preview, required this.onTap});
-
-  final _PortraitPreview preview;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: onTap != null,
-      label: '${preview.name}, ${preview.relationship}, ${preview.time}',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(15),
-          child: Ink(
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFFFFF),
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: const Color(0x0F211A37)),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x4D211A37),
-                  blurRadius: 16,
-                  offset: Offset(0, 6),
-                  spreadRadius: -12,
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: preview.gradient,
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    preview.initial,
-                    style: const TextStyle(
-                      color: Color(0xFFFFFFFF),
-                      fontFamily: 'SpaceGrotesk',
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              preview.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Color(0xFF211A37),
-                                fontFamily: 'SpaceGrotesk',
-                                fontSize: 17,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 7),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0x1F7C5CFF),
-                              borderRadius: BorderRadius.circular(5),
-                            ),
-                            child: Text(
-                              preview.relationship,
-                              style: const TextStyle(
-                                color: Color(0xFF6B4AF0),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: .66,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 1),
-                      Text(
-                        preview.time,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF8C86A0),
-                          fontSize: 15,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SvgPicture.string(_chevronSvg, width: 16, height: 16),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _HomeTabBar extends StatelessWidget {
-  const _HomeTabBar({
-    required this.onHome,
-    required this.onPortraits,
-    required this.onProfile,
-  });
-
-  final VoidCallback onHome;
-  final VoidCallback onPortraits;
-  final VoidCallback onProfile;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Color(0xD9FFFFFF),
-            border: Border(top: BorderSide(color: Color(0x0A211A37))),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 11, 24, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _HomeTab(
-                    label: 'Home',
-                    icon: _homeSvg,
-                    active: true,
-                    onTap: onHome,
-                  ),
-                  _HomeTab(
-                    label: 'Portraits',
-                    icon: _portraitsSvg,
-                    onTap: onPortraits,
-                  ),
-                  _HomeTab(
-                    label: 'Profile',
-                    icon: _profileSvg,
-                    onTap: onProfile,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _HomeTab extends StatelessWidget {
-  const _HomeTab({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-    this.active = false,
-  });
-
-  final String label;
-  final String icon;
-  final VoidCallback onTap;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = active ? const Color(0xFF7C5CFF) : const Color(0xFFB4AEC4);
-    return Semantics(
-      button: true,
-      selected: active,
-      label: label,
-      child: InkResponse(
-        onTap: onTap,
-        radius: 28,
-        child: SizedBox(
-          width: 64,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ColorFiltered(
-                colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-                child: SvgPicture.string(icon, width: 21, height: 21),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontFamily: 'SpaceGrotesk',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-const _sarahGradient = LinearGradient(
-  begin: Alignment.topLeft,
-  end: Alignment.bottomRight,
-  colors: [Color(0xFF9B86E8), Color(0xFFEC4899)],
-);
-const _momGradient = LinearGradient(
-  begin: Alignment.topLeft,
-  end: Alignment.bottomRight,
-  colors: [Color(0xFF6D52FF), Color(0xFFA855F7)],
-);
-
 const _passSvg =
     '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h11A2.5 2.5 0 0 1 20 8.5v7A2.5 2.5 0 0 1 17.5 18h-11A2.5 2.5 0 0 1 4 15.5v-7Z" stroke="#96712A" stroke-width="1.8"/><path d="M4 10h16" stroke="#96712A" stroke-width="1.8"/></svg>''';
-const _chevronSvg =
-    '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="m9 6 6 6-6 6" stroke="#C4BED4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>''';
-const _homeSvg =
-    '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="m4 11 8-6 8 6M6 10v9h12v-9" stroke="#7C5CFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>''';
-const _portraitsSvg =
-    '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="5" width="16" height="13" rx="3" stroke="#B4AEC4" stroke-width="2"/><path d="M8 10h8M8 13h5" stroke="#B4AEC4" stroke-width="2" stroke-linecap="round"/></svg>''';
-const _profileSvg =
-    '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="8" r="3.4" stroke="#B4AEC4" stroke-width="2"/><path d="M5.5 20c.7-3.7 3.2-5.6 6.5-5.6s5.8 1.9 6.5 5.6" stroke="#B4AEC4" stroke-width="2" stroke-linecap="round"/></svg>''';

@@ -7,16 +7,56 @@ import 'package:portraitor_mobile/features/import/services/date_parser.dart';
 enum FunnelTier { you, partner, family, pass }
 
 extension FunnelTierX on FunnelTier {
+  /// Short badge / receipt label.
   String get label {
     switch (this) {
       case FunnelTier.you:
         return 'You';
       case FunnelTier.partner:
-        return 'You + Partner';
+        return 'You + a partner';
       case FunnelTier.family:
         return 'Family';
       case FunnelTier.pass:
         return 'Pass';
+    }
+  }
+
+  String get planSubtitle {
+    switch (this) {
+      case FunnelTier.you:
+        return 'Your personal portrait.';
+      case FunnelTier.partner:
+        return "You and your partner's portrait.";
+      case FunnelTier.family:
+        return 'Up to 5 people from a group chat.';
+      case FunnelTier.pass:
+        return '10 portraits a month with the Pass.';
+    }
+  }
+
+  String get configureLead {
+    switch (this) {
+      case FunnelTier.you:
+        return 'One portrait — just for you.';
+      case FunnelTier.partner:
+        return 'Two portraits — one for each of you.';
+      case FunnelTier.family:
+        return 'Up to five portraits from this chat.';
+      case FunnelTier.pass:
+        return 'Pass includes every bundle.';
+    }
+  }
+
+  String get consentLabel {
+    switch (this) {
+      case FunnelTier.you:
+        return 'This is my own conversation.';
+      case FunnelTier.partner:
+        return 'This is our conversation — we both consent.';
+      case FunnelTier.family:
+        return 'My own family chat — everyone analysed consents.';
+      case FunnelTier.pass:
+        return 'This is my own conversation.';
     }
   }
 
@@ -34,10 +74,26 @@ extension FunnelTierX on FunnelTier {
     }
   }
 
+  int get portraitCount {
+    switch (this) {
+      case FunnelTier.you:
+        return 1;
+      case FunnelTier.partner:
+        return 2;
+      case FunnelTier.family:
+        return 5;
+      case FunnelTier.pass:
+        return 10;
+    }
+  }
+
   bool get isOneOff => this != FunnelTier.pass;
 
-  /// v1 gate: only You is payable until multi-person + Pass APIs land.
-  bool get isEnabledInV1 => this == FunnelTier.you;
+  /// Payable in v1: You only. Partner/Family/Pass keep full UI; gate at pay.
+  bool get isPayableInV1 => this == FunnelTier.you;
+
+  @Deprecated('Use isPayableInV1')
+  bool get isEnabledInV1 => isPayableInV1;
 }
 
 class FunnelDraft {

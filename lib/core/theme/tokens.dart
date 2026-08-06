@@ -65,6 +65,22 @@ class PortraitorTokens {
 
   static const Color pageBackground = Color(0xFFF8F6FF);
 
+  /// Home / Portraits / Profile — stronger wash (~15%) matching prototype `--grad-page-tabs`.
+  static const Gradient tabPageGradient = RadialGradient(
+    center: Alignment.topCenter,
+    radius: 1.25,
+    colors: [Color(0xFFDDD2FF), Color(0xFFF0EAFF), Color(0xFFFADCEC)],
+    stops: [0.0, 0.42, 1.0],
+  );
+
+  /// Funnel / secondary pages — softer wash matching `--grad-page`.
+  static const Gradient funnelPageGradient = RadialGradient(
+    center: Alignment.topCenter,
+    radius: 1.25,
+    colors: [Color(0xFFEDE7FF), Color(0xFFFBFAFF), Color(0xFFFCEFF5)],
+    stops: [0.0, 0.42, 1.0],
+  );
+
   // ── INK (text colors) ────────────────────────────────────────
   static const Color inkStrong = Color(0xFF1E1B2E);
   static const Color ink = Color(0xFF2D2945);
@@ -89,6 +105,26 @@ class PortraitorTokens {
 
   // ── TYPOGRAPHY ──────────────────────────────────────────────
   static const String fontFamily = 'Space Grotesk';
+  static const String fontBody = 'Inter';
+
+  /// Funnel H1 — matches prototype `.flow-h1` (28px Space Grotesk).
+  static const TextStyle flowH1 = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 28,
+    fontWeight: FontWeight.w700,
+    letterSpacing: -0.56,
+    height: 1.15,
+    color: onboardingInk,
+  );
+
+  /// Funnel lead — matches prototype `.flow-lead` (15px Inter).
+  static const TextStyle flowLead = TextStyle(
+    fontFamily: fontBody,
+    fontSize: 15,
+    fontWeight: FontWeight.w400,
+    height: 1.45,
+    color: onboardingMuted,
+  );
 
   static const TextStyle displayLg = TextStyle(
     fontFamily: fontFamily,
@@ -139,21 +175,21 @@ class PortraitorTokens {
     color: inkStrong,
   );
   static const TextStyle bodyLg = TextStyle(
-    fontFamily: fontFamily,
+    fontFamily: fontBody,
     fontSize: 16,
     fontWeight: FontWeight.w400,
     height: 1.5,
     color: ink,
   );
   static const TextStyle bodyMd = TextStyle(
-    fontFamily: fontFamily,
+    fontFamily: fontBody,
     fontSize: 14,
     fontWeight: FontWeight.w400,
     height: 1.5,
     color: inkSoft,
   );
   static const TextStyle bodySm = TextStyle(
-    fontFamily: fontFamily,
+    fontFamily: fontBody,
     fontSize: 13,
     fontWeight: FontWeight.w400,
     height: 1.4,

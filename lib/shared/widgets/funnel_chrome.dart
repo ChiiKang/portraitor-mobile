@@ -6,7 +6,8 @@ import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/shared/widgets/gradient_button.dart';
 import 'package:portraitor_mobile/shared/widgets/gradient_progress_bar.dart';
 
-/// Shared 4-step portrait funnel chrome: back · progress · n/4 · title · lead · CTA.
+/// Shared 4-step portrait funnel chrome matching the Open Design prototype:
+/// glass back · progress · n/4 · flow H1 · lead · glass CTA (+ optional arrow).
 class FunnelChrome extends StatelessWidget {
   const FunnelChrome({
     super.key,
@@ -18,9 +19,12 @@ class FunnelChrome extends StatelessWidget {
     required this.onCta,
     this.ctaLoading = false,
     this.ctaEnabled = true,
+    this.showCtaArrow = true,
     this.onBack,
     this.useGlassBars = true,
-    this.bodyPadding = const EdgeInsets.fromLTRB(20, 8, 20, 24),
+    this.lockBodyScroll = false,
+    this.bodyPadding = const EdgeInsets.fromLTRB(20, 4, 20, 24),
+    this.bottomExtra,
   });
 
   /// 1-based step index (1…4).
@@ -32,9 +36,14 @@ class FunnelChrome extends StatelessWidget {
   final VoidCallback? onCta;
   final bool ctaLoading;
   final bool ctaEnabled;
+  final bool showCtaArrow;
   final VoidCallback? onBack;
   final bool useGlassBars;
+  /// When true, body does not scroll (Plan packs mode).
+  final bool lockBodyScroll;
   final EdgeInsetsGeometry bodyPadding;
+  /// Optional content under the primary CTA inside the glass bar (e.g. Pass legal).
+  final Widget? bottomExtra;
 
   static const int totalSteps = 4;
 
@@ -44,17 +53,41 @@ class FunnelChrome extends StatelessWidget {
     final keyboard = MediaQuery.viewInsetsOf(context).bottom;
     final progress = step / totalSteps;
 
+    final titleBlock = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: PortraitorTokens.flowH1),
+        const SizedBox(height: 8),
+        Text(lead, style: PortraitorTokens.flowLead),
+        const SizedBox(height: 18),
+      ],
+    );
+
+    final bodyContent =
+        lockBodyScroll
+            ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [titleBlock, Expanded(child: body)],
+            )
+            : ListView(
+              padding: bodyPadding.add(
+                EdgeInsets.only(
+                  bottom:
+                      PortraitorTokens.buttonHeightLg +
+                      bottomSafe +
+                      56 +
+                      (keyboard > 0 ? 8 : 0),
+                ),
+              ),
+              children: [titleBlock, body],
+            );
+
     return Scaffold(
       resizeToAvoidBottomInset: true,
       backgroundColor: PortraitorTokens.onboardingSurface,
       body: DecoratedBox(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFEDE7FF), Color(0xFFFBFAFF), Color(0xFFFCEFF5)],
-            stops: [0.0, 0.45, 1.0],
-          ),
+          gradient: PortraitorTokens.funnelPageGradient,
         ),
         child: Stack(
           children: [
@@ -64,32 +97,22 @@ class FunnelChrome extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    SizedBox(height: useGlassBars ? 72 : 8),
+                    SizedBox(height: useGlassBars ? 76 : 8),
                     Expanded(
-                      child: ListView(
-                        padding: bodyPadding.add(
-                          EdgeInsets.only(
-                            bottom:
-                                PortraitorTokens.buttonHeightLg +
-                                bottomSafe +
-                                48 +
-                                (keyboard > 0 ? 8 : 0),
-                          ),
-                        ),
-                        children: [
-                          Text(title, style: PortraitorTokens.displaySm),
-                          const SizedBox(height: 8),
-                          Text(
-                            lead,
-                            style: PortraitorTokens.bodyMd.copyWith(
-                              color: PortraitorTokens.onboardingMuted,
-                              height: 1.45,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          body,
-                        ],
-                      ),
+                      child:
+                          lockBodyScroll
+                              ? Padding(
+                                padding: bodyPadding.add(
+                                  EdgeInsets.only(
+                                    bottom:
+                                        PortraitorTokens.buttonHeightLg +
+                                        bottomSafe +
+                                        48,
+                                  ),
+                                ),
+                                child: bodyContent,
+                              )
+                              : bodyContent,
                     ),
                   ],
                 ),
@@ -125,10 +148,39 @@ class FunnelChrome extends StatelessWidget {
                 ),
                 child: _FunnelBottomBar(
                   useGlass: useGlassBars,
-                  child: GradientButton(
-                    onPressed: ctaEnabled && !ctaLoading ? onCta : null,
-                    isLoading: ctaLoading,
-                    child: Text(ctaLabel),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      GradientButton(
+                        onPressed: ctaEnabled && !ctaLoading ? onCta : null,
+                        isLoading: ctaLoading,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                ctaLabel,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (showCtaArrow && !ctaLoading) ...[
+                              const SizedBox(width: 8),
+                              const Icon(
+                                Icons.arrow_forward_rounded,
+                                size: 18,
+                                color: Colors.white,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      if (bottomExtra != null) ...[
+                        const SizedBox(height: 8),
+                        bottomExtra!,
+                      ],
+                    ],
                   ),
                 ),
               ),
@@ -157,25 +209,36 @@ class _FunnelTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final row = Row(
       children: [
-        _CircleIconButton(icon: Icons.chevron_left, onPressed: onBack),
-        const SizedBox(width: 12),
+        _CircleIconButton(icon: Icons.chevron_left_rounded, onPressed: onBack),
+        const SizedBox(width: 10),
         Expanded(child: GradientProgressBar(value: progress, height: 6)),
-        const SizedBox(width: 12),
-        Text(
-          '$step/${FunnelChrome.totalSteps}',
-          style: PortraitorTokens.labelMd.copyWith(
-            fontWeight: FontWeight.w700,
-            color: PortraitorTokens.onboardingInkSoft,
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 28,
+          child: Text(
+            '$step/${FunnelChrome.totalSteps}',
+            textAlign: TextAlign.right,
+            style: PortraitorTokens.bodySm.copyWith(
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.02,
+              color: PortraitorTokens.onboardingMuted,
+            ),
           ),
         ),
       ],
     );
 
     if (!useGlass) {
-      return Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: row);
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: row,
+      );
     }
 
-    return _GlassCapsule(padding: const EdgeInsets.fromLTRB(6, 6, 14, 6), child: row);
+    return _GlassCapsule(
+      padding: const EdgeInsets.fromLTRB(6, 6, 14, 6),
+      child: row,
+    );
   }
 }
 
@@ -204,19 +267,27 @@ class _GlassCapsule extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(28),
+      borderRadius: BorderRadius.circular(30),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+        filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(28),
-            color: const Color(0xCCFBFAFF),
-            border: Border.all(color: const Color(0x66FFFFFF)),
+            borderRadius: BorderRadius.circular(30),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withValues(alpha: 0.72),
+                const Color(0xCCFBFAFF),
+                const Color(0xAAF5E8FF),
+              ],
+            ),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.55)),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x14000000),
-                offset: Offset(0, 8),
-                blurRadius: 20,
+                color: Color(0x12000000),
+                offset: Offset(0, 6),
+                blurRadius: 16,
               ),
             ],
           ),
@@ -236,7 +307,7 @@ class _CircleIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white.withValues(alpha: 0.72),
+      color: Colors.white.withValues(alpha: 0.78),
       shape: const CircleBorder(),
       child: InkWell(
         customBorder: const CircleBorder(),
