@@ -75,7 +75,7 @@ The alternative, deep-linking to `https://apps.apple.com/account/subscriptions`,
 ```
 portraitor-mobile (Flutter)
   confirm_pay_screen
-    -> POST /api/apple/purchase/prepare.php   (obtain or reserve public_uuid)
+    -> POST /api/apple/purchase/prepare.php   (ONLY when a Pass session exists)
     -> IapService.buy(productId, appAccountToken: public_uuid)
                           |
                           v
@@ -83,7 +83,7 @@ portraitor-mobile (Flutter)
                           |  signed JWS transaction
                           v
 portraitor_v3 (PHP)
-  POST /api/apple/purchase/prepare.php   <- client, authenticated
+  POST /api/apple/purchase/prepare.php   <- client, Bearer, existing Pass only
   POST /api/apple/purchase/verify.php    <- client
   POST /api/apple/notifications.php      <- Apple ASSN v2
                           |
@@ -244,7 +244,7 @@ Any disagreement or unknown combination fails closed.
 
 ### Flow A - one-time portrait
 
-1. `confirm_pay_screen` calls `POST /api/apple/purchase/prepare.php` to obtain or reserve a `public_uuid`, defaulting to a **new** Pass.
+1. `confirm_pay_screen` resolves a `public_uuid`: generated locally when there is no Pass session, or fetched via `prepare.php` when there is (Flow A0). A first purchase makes no server call.
 2. `IapService.buy(productId, appAccountToken: public_uuid)` via `Sk2PurchaseParam`.
 3. Apple renders its sheet; StoreKit returns a signed JWS transaction.
 4. `POST /api/apple/purchase/verify.php { jws, public_uuid, product_id }`.
@@ -704,7 +704,7 @@ The paid mobile flow has not shipped, so legacy `pending_job.paymentSessionId` r
 | `src/Billing/ProviderEventProcessor.php:49` | **Changed.** Gates refill on `$event->refillRef !== null` instead of matching `invoice.payment_succeeded` |
 | Consumable refund handler | **New.** Payment-event path that does not pass through `EntitlementService` |
 | `src/Services/PassService.php:69` | **Changed.** `mint()` accepts `public_uuid` and includes it in the INSERT |
-| `public/api/apple/purchase/prepare.php` | **New.** Authenticated `public_uuid` preparation |
+| `public/api/apple/purchase/prepare.php` | **New.** Bearer-authenticated `public_uuid` lookup and product-aware preflight. Called only when a Pass session exists; a first purchase never reaches it. |
 | `public/api/apple/purchase/verify.php` | **New.** Client posts signed JWS; returns Pass credential and session |
 | `public/api/apple/notifications.php` | **New.** ASSN v2 webhook |
 | Node JWS verifier | **New.** Apple's official server library behind `proc_open` |
