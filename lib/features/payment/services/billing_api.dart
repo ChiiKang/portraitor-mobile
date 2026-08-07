@@ -134,6 +134,9 @@ class FakeBillingApi implements BillingApi {
   int _prepareCount = 0;
   final Set<String> _verified = {};
 
+  /// How many times prepare was called. A first purchase must not call it.
+  int get prepareCallCount => _prepareCount;
+
   /// When set, a subscription preflight for this session is rejected.
   String? fundedPassSession;
 

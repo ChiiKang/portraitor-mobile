@@ -207,6 +207,10 @@ class FakeIapService implements IapService {
   final Map<String, String> _products;
   final _controller = StreamController<IapTransaction>.broadcast();
 
+  /// Mirrors StoreKitIapService, which can only buy a product it has loaded.
+  /// A fake that is more permissive than the real service hides real bugs.
+  final Set<String> _loaded = {};
+
   final List<String> finished = [];
   final List<IapTransaction> pending = [];
   IapTransaction? lastTransaction;
@@ -221,8 +225,9 @@ class FakeIapService implements IapService {
 
   @override
   Future<List<IapProduct>> loadProducts(Set<String> productIds) async {
-    return productIds
-        .where(_products.containsKey)
+    final known = productIds.where(_products.containsKey);
+    _loaded.addAll(known);
+    return known
         .map(
           (id) => IapProduct(
             productId: id,
@@ -239,6 +244,9 @@ class FakeIapService implements IapService {
     required String productId,
     required String appAccountToken,
   }) async {
+    if (!_loaded.contains(productId)) {
+      throw StateError('Product $productId was not loaded before purchase.');
+    }
     final txn = IapTransaction(
       productId: productId,
       jws: 'signed-$productId-$appAccountToken',

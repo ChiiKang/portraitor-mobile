@@ -37,6 +37,7 @@ void main() {
 
     test('a purchase surfaces on the stream with pending completion', () async {
       final service = FakeIapService(products: const {'sku': r'$1'});
+      await service.loadProducts({'sku'});
       final emitted = <IapTransaction>[];
       final sub = service.transactions.listen(emitted.add);
 
@@ -52,6 +53,7 @@ void main() {
 
     test('the appAccountToken travels into the signed proof', () async {
       final service = FakeIapService(products: const {'sku': r'$1'});
+      await service.loadProducts({'sku'});
 
       await service.buy(productId: 'sku', appAccountToken: 'uuid-abc');
 
@@ -60,6 +62,7 @@ void main() {
 
     test('an unfinished purchase stays pending until completed', () async {
       final service = FakeIapService(products: const {'sku': r'$1'});
+      await service.loadProducts({'sku'});
 
       await service.buy(productId: 'sku', appAccountToken: 'uuid-1');
       expect(await service.unfinished(), hasLength(1));
@@ -68,6 +71,17 @@ void main() {
 
       expect(service.finished, contains('sku'));
       expect(await service.unfinished(), isEmpty);
+    });
+
+    test('buying a product that was never loaded throws', () async {
+      final service = FakeIapService(products: const {'sku': r'$1'});
+
+      expect(
+        () => service.buy(productId: 'sku', appAccountToken: 'uuid-1'),
+        throwsA(isA<StateError>()),
+        reason: 'StoreKit cannot purchase a product whose details were never '
+            'fetched, and the fake must not be more permissive',
+      );
     });
 
     test('restore does not prompt, sync does', () async {
