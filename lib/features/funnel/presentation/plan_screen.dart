@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
+import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
 import 'package:portraitor_mobile/shared/widgets/funnel_chrome.dart';
 
 /// Step 2/4 — Who is this portrait for?
@@ -19,6 +20,24 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
   bool _passOpen = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Real prices are set in App Store Connect and vary by storefront, so the
+    // store is the only truthful source. The demo keeps its Dart strings.
+    if (!kDemoIapPurchase) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(iapProvider.notifier).loadPrices();
+      });
+    }
+  }
+
+  /// The demo renders its own copy; real builds render what StoreKit reports.
+  String _priceFor(FunnelTier tier) {
+    if (kDemoIapPurchase) return tier.priceLabel;
+    return ref.watch(iapProvider).priceFor(tier) ?? tier.priceLabel;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final draft = ref.watch(funnelDraftProvider);
     final selected = draft.selectedTier;
@@ -32,12 +51,12 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
       showCtaArrow: !_passOpen,
       ctaEnabled: !_passOpen,
       onCta: () {
-        if (_passOpen) {
+        // The demo cannot simulate a subscription, so the Pass still routes
+        // to a notice there. With real StoreKit it is a first-class product.
+        if (_passOpen && !FunnelTier.pass.canPurchase) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
-                'Pass needs StoreKit + quota API. Use a one-time pack for now.',
-              ),
+              content: Text('The Pass needs a real StoreKit build.'),
             ),
           );
           return;
@@ -70,6 +89,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                         _PlanTierCard(
                           tier: FunnelTier.you,
                           selected: selected == FunnelTier.you,
+                          priceLabel: _priceFor(FunnelTier.you),
                           onTap:
                               () => ref
                                   .read(funnelDraftProvider.notifier)
@@ -79,6 +99,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                         _PlanTierCard(
                           tier: FunnelTier.partner,
                           selected: selected == FunnelTier.partner,
+                          priceLabel: _priceFor(FunnelTier.partner),
                           onTap:
                               () => ref
                                   .read(funnelDraftProvider.notifier)
@@ -88,6 +109,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                         _PlanTierCard(
                           tier: FunnelTier.family,
                           selected: selected == FunnelTier.family,
+                          priceLabel: _priceFor(FunnelTier.family),
                           onTap:
                               () => ref
                                   .read(funnelDraftProvider.notifier)
@@ -140,11 +162,16 @@ class _PlanTierCard extends StatelessWidget {
     required this.tier,
     required this.selected,
     required this.onTap,
+    required this.priceLabel,
   });
 
   final FunnelTier tier;
   final bool selected;
   final VoidCallback onTap;
+
+  /// Resolved by the parent: the demo's Dart string, or StoreKit's own
+  /// localized price in a real build.
+  final String priceLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -210,7 +237,7 @@ class _PlanTierCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    tier.priceLabel,
+                    priceLabel,
                     style: PortraitorTokens.titleMd.copyWith(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,

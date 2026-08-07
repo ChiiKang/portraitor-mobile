@@ -6,6 +6,18 @@ import 'package:portraitor_mobile/features/import/services/date_parser.dart';
 /// Commercial tier for the 4-step funnel. Partner/Family/Pass gated until backend ready.
 enum FunnelTier { you, partner, family, pass }
 
+/// Demo build: the Apple IAP sheet is simulated end to end, so every one-off
+/// bundle can complete a purchase and start a generation without StoreKit or
+/// the payments backend.
+///
+/// Enabled only by `--dart-define=DEMO_IAP=true`, and off in every other
+/// build. A hand-flipped constant is one forgotten revert away from shipping
+/// an app that gives away paid content, which is both lost revenue and an App
+/// Store Guideline 3.1.1 breach.
+///
+/// With the flag off, real StoreKit runs and all four products are purchasable.
+const bool kDemoIapPurchase = bool.fromEnvironment('DEMO_IAP');
+
 extension FunnelTierX on FunnelTier {
   /// Short badge / receipt label.
   String get label {
@@ -89,11 +101,31 @@ extension FunnelTierX on FunnelTier {
 
   bool get isOneOff => this != FunnelTier.pass;
 
-  /// Payable in v1: You only. Partner/Family/Pass keep full UI; gate at pay.
-  bool get isPayableInV1 => this == FunnelTier.you;
+  /// Whether the pay CTA may start a purchase.
+  ///
+  /// The demo can only simulate one-off bundles: a subscription grants monthly
+  /// quota rather than a portrait, so a faked one cannot do anything truthful.
+  /// Real StoreKit ships all four products.
+  bool get canPurchase => kDemoIapPurchase ? isOneOff : true;
 
-  @Deprecated('Use isPayableInV1')
-  bool get isEnabledInV1 => isPayableInV1;
+  /// App Store product title — prototype `"Portraitor · " + meta.label`.
+  String get iapProductTitle =>
+      this == FunnelTier.pass ? 'Portraitor Pass' : 'Portraitor · $label';
+
+  /// App Store product kind line.
+  String get iapProductKind =>
+      this == FunnelTier.pass ? 'Monthly subscription' : 'One-time purchase';
+
+  /// App Store price, formatted the way StoreKit renders it.
+  String get iapPriceLabel => '$priceLabel.00';
+
+  /// Caption under the price — prototype `"one-time · N portraits"`.
+  String get iapPriceCaption {
+    if (this == FunnelTier.pass) return 'per month · renews until cancelled';
+    return 'one-time · $portraitCount '
+        '${portraitCount == 1 ? 'portrait' : 'portraits'}';
+  }
+
 }
 
 class FunnelDraft {
@@ -169,10 +201,8 @@ class FunnelDraftNotifier extends StateNotifier<FunnelDraft> {
     );
   }
 
+  /// Any tier can be selected; purchasability is gated at the pay CTA.
   void selectTier(FunnelTier tier) {
-    if (!tier.isEnabledInV1 && tier != FunnelTier.you) {
-      // Allow selecting for UI preview only when enabled; gate at CTA.
-    }
     state = state.copyWith(selectedTier: tier);
   }
 
