@@ -75,7 +75,7 @@ The alternative, deep-linking to `https://apps.apple.com/account/subscriptions`,
 ```
 portraitor-mobile (Flutter)
   confirm_pay_screen
-    -> POST /api/apple/purchase/prepare.php   (ONLY when a Pass session exists)
+    -> POST /api/apple/purchase/prepare.php   (Pass subscription only)
     -> IapService.buy(productId, appAccountToken: public_uuid)
                           |
                           v
@@ -83,7 +83,7 @@ portraitor-mobile (Flutter)
                           |  signed JWS transaction
                           v
 portraitor_v3 (PHP)
-  POST /api/apple/purchase/prepare.php   <- client, Bearer, existing Pass only
+  POST /api/apple/purchase/prepare.php   <- Pass subscription only, Bearer
   POST /api/apple/purchase/verify.php    <- client
   POST /api/apple/notifications.php      <- Apple ASSN v2
                           |
@@ -92,9 +92,9 @@ portraitor_v3 (PHP)
               ApplePurchaseService      (client-transaction orchestration)
                           |
                           v
-   EntitlementService -> entitlement_sources   (Pass subscription)
-   ApplePurchaseService -> payments            (one-time portraits)
+   EntitlementService   -> entitlement_sources  (Pass subscription only)
                         -> passes.uses_remaining
+   ApplePurchaseService -> payments             (one-off portraits only)
 ```
 
 ### 3.1 Scope correction
@@ -157,79 +157,125 @@ Section 10 keeps an executable invariant for it even though V1 has a single SKU:
 
 Unknown or disabled product IDs fail closed.
 
-### 4.2 Write path differs by product type
+### 4.2 The two products are entirely separate
+
+A one-off purchase and the Pass share no state. This is a product decision, not an
+implementation convenience: the Pass is the upsell (cheaper per portrait, more
+attempts), which is why the funnel offers it at the moment of paying for a one-off.
 
 | | One-time portrait | Pass |
 |---|---|---|
 | StoreKit type | Consumable | Auto-renewable |
 | Server writes | `payments` row | `entitlement_sources` row |
 | Idempotency key | `(provider, environment, provider_transaction_id)` | `(provider, environment, provider_ref)`, ref = `originalTransactionId` |
-| Grants | Generation grant, non-expiring | `passes.uses_remaining = passes.uses_total` |
+| Grants | That one generation | `passes.uses_remaining = passes.uses_total` |
+| Mints a Pass | **No** | Yes |
+| Pass code issued | **No** | Yes |
+| Identity | **None** | `public_uuid` / `appTransactionId` / Pass code |
 | Renewal | n/a | `last_refill_ref` vs renewal `transactionId` |
-| Refund path | `payments` + grant revocation | `entitlement_sources` revocation |
+| Refund path | `payments` | `entitlement_sources` |
 
-Only recurring Pass funding belongs in `entitlement_sources`.
-One-time portraits remain payment rows feeding the generation-grant path.
-A consumable refund must never touch `entitlement_sources`.
+**A one-off buyer receives no Pass, no code, and no account.**
+The portrait is stored locally on the device and emailed. Deleting the app loses
+the local copy; the email is the durable artifact. Nothing server-side ties that
+purchase to a person, which is the privacy posture, not a gap.
 
-### 4.3 How a consumable actually authorizes generation
+Consumables therefore never touch `passes.uses_remaining`, `entitlement_sources`,
+or the `subgrant_*` path. An earlier draft had them credit a Pass; that invented a
+product nobody asked for and would have re-granted one-off portraits on every
+subscription renewal, because `EntitlementService` refills with
+`uses_remaining = uses_total`.
 
-Writing a `payments` row is not sufficient. Generation authorizes on a **session token stored on that row**, not on the row's existence.
+### 4.3 How a consumable authorizes generation
 
-`payments.stripe_session_id` is the key the whole generation path reads: `src/Proxy/PackProgressTracker.php:98,129,160`, `src/Proxy/ChunkProgressTracker.php:32,59`, and `src/Proxy/PostProcessing.php:80,109,118`.
-An Apple purchase that writes a payment without one produces no portrait at all.
+**Exactly the way a Stripe one-time purchase does today: the `payments` row is the
+grant.** No new table, no new mechanism.
 
-**An Apple consumable must never enter the Stripe PaymentIntent lifecycle.**
+The generation path reads `payments.stripe_session_id`
+(`src/Proxy/PackProgressTracker.php:98,129,160`, `src/Proxy/ChunkProgressTracker.php:32,59`,
+`src/Proxy/PostProcessing.php:80,109,118`) and gates on `payments.status`
+(`public/api/gemini-validate.php:118-122`, `gemini-validate-stream.php:153-157`,
+`ProcessingQueueService.php:498-510`).
 
-An earlier draft put an opaque token in `stripe_session_id` with `status = authorized`.
-That is wrong: `PostProcessing::capturePayment(array $config, string $paymentSessionId)` calls Stripe's `capturePaymentIntent`, so an Apple row would reach capture logic for a purchase Apple has already charged.
+An Apple consumable writes:
 
-**The mechanism to reuse already exists.**
-`SubscriptionGrantService` mints a `subgrant_*` token, and `SubscriptionGrantService.php:16` records that capture, cancel, and queue-payment-check are **skipped for `subgrant_*` ids**.
-That is exactly the provider-neutral execution path this needs, already built and already exercised by the Pass.
+| Column | Value |
+|---|---|
+| `provider` | `'apple'` |
+| `environment` | `'production'` or `'sandbox'` |
+| `provider_transaction_id` | Apple's verified `transactionId` (idempotency key) |
+| `provider_client_uuid` | The client-generated `appAccountToken` for this purchase |
+| `stripe_session_id` | An opaque, Portraitor-generated token - **never** Apple's transaction id |
+| `status` | `'authorized'` |
+| `tier`, `pack_total` | Resolved server-side from the verified product id |
 
-Two layers, each doing one thing:
+`'authorized'` is the correct entry state: it is what `assertPaymentCanQueue`
+requires, and the existing machine then runs
+`authorized -> delivering -> completed` unchanged.
 
-| Layer | Where | Lifetime |
-|---|---|---|
-| **Durable credit** - the thing paid for | `payments` row: `provider='apple'`, `status='completed'`, `pass_id`, `consumed_at NULL` | Permanent until consumed |
-| **Execution capability** - permission to run one generation | short-lived `subgrant_*` token linked to `payment_id` | One attempt |
+Because `provider_client_uuid` is a fresh UUID per purchase (no Pass to reuse),
+`uq_payment_provider_client` behaves correctly and needs no change.
 
-```
-Apple verifies purchase
-  -> durable payments row (provider=apple, status=completed, consumed_at NULL)
-  -> generation starts
-  -> mint subgrant_* linked to payment_id
-  -> existing proxy sees subgrant_* and skips every Stripe operation
-  -> success: consume the grant and stamp consumed_at
-  -> failure: release the grant, leave consumed_at NULL so the credit is reusable
-```
+#### The Stripe operations must become provider-aware
 
-Status is `completed`, not `authorized`: Apple charged at purchase time, so there is nothing to capture. The enum is `('pending','authorized','delivering','completed','failed','refunded','canceled')` from migration 022 and gains no new values.
+This is the one genuinely new requirement, and it is not optional.
 
-Required changes, deliberately minimal:
+Everything downstream assumes that a `payment_session_id` without a `subgrant_`
+prefix addresses a Stripe PaymentIntent. An Apple row reaching
+`PostProcessing::capturePayment()` would be marked `completed` at `:118`
+**before** the Stripe call, then the call throws, and the exception is
+**swallowed** at `:148-153` - a payment recorded as captured with no money moved
+and every caller proceeding as if it succeeded.
 
-- Add `pass_id` and a nullable `consumed_at` to `payments`. **No new table and no new state machine** - one nullable timestamp expresses "credit still available".
-- Extend the grant mechanism to accept `payment_id` as a source alongside subscriptions.
-- A payment-backed grant must **not** touch `passes.uses_remaining`; that quota belongs to the subscription.
-- On grant expiry or failure, restore the durable payment credit, never subscription quota.
-- On Apple refund, revoke an unused credit and any outstanding grant.
-- An authenticated Pass session can discover unconsumed Apple credits, which is how a paid portrait survives a crash after `completePurchase()` (7.1).
+Each of these already branches on `isGrant()`; each needs a provider guard beside
+it, reading the `provider` column that migration 046 already added:
 
-Apple's `transactionId` never enters the generation pipeline and never reaches Stripe code.
+| Site | Required behaviour for `provider != 'stripe'` |
+|---|---|
+| `PostProcessing::capturePayment()` `:97` | Perform the `delivering -> completed` transition, skip the Stripe capture entirely |
+| `PostProcessing::cancelAuthorizedPayment()` `:397` | Transition to `canceled`, skip `cancelPaymentIntent` |
+| `PostProcessing::issueRefund()` `:439` | Do not call Stripe; Apple refunds arrive via notification |
+| `PostProcessing::getStripeCustomerIdFromPayment()` `:525` | Return null; there is no Stripe customer |
+| `PostProcessing::recoverStaleDeliveryClaims()` `:166` | Recover the row without a Stripe cancel |
+| `public/api/admin/config.php:62-92` orphan sweep | Skip the Stripe cancel |
 
-This is provider-neutral by construction: Google consumables later use the identical path.
+`PackProgressTracker` and `ChunkProgressTracker` need no change: they read and
+write only `payments` columns and never touch Stripe.
 
-### 4.4 Schema contradiction to resolve before implementation
+### 4.3a Crash safety for a one-off purchase
 
-Migration 046 declares `uq_payment_provider_client (provider, environment, provider_client_uuid)` while this design sends `appAccountToken = public_uuid`, which is per-Pass and reused across purchases.
+With no Pass and no account, there is no server-side handle to rediscover a paid
+consumable. Safety comes entirely from ordering:
 
-Those two cannot both hold for consumables: the unique key permits exactly one payment row per Pass, forever, so a second portrait purchase fails on a duplicate key.
+1. Verify server-side and write the `payments` row.
+2. Only then call `completePurchase()`.
 
-Resolution: add `pass_id` to `payments`, drop `uq_payment_provider_client`, and let `uq_payment_provider_transaction` be the sole purchase idempotency key.
-It already does that job correctly, keyed on the verified Apple `transactionId`.
+An unfinished StoreKit transaction lives with the Apple ID rather than the app, so
+a purchase interrupted before step 2 replays on next launch - **including after the
+app is deleted and reinstalled** - and `uq_payment_provider_transaction` absorbs
+the duplicate.
 
-Also persist the verified commercial facts Apple supplies and this design previously ignored: price in milliunits, ISO currency, storefront, quantity, and transaction dates.
+A purchase that completed normally and was then lost with the app is not
+recoverable. That case is covered by the emailed portrait, which is the durable
+artifact by design.
+
+### 4.4 Schema: no changes required
+
+An earlier draft flagged `uq_payment_provider_client (provider, environment, provider_client_uuid)`
+as incompatible with this design, because it assumed `appAccountToken` was a
+per-Pass value reused across purchases. With one-off purchases carrying no Pass,
+the client generates a **fresh UUID per purchase**, so the constraint is satisfied
+naturally and is in fact a useful second idempotency guard.
+
+`payments` therefore needs **no migration**: `provider`, `environment`,
+`provider_transaction_id`, `provider_client_uuid`, `provider_product_key` and
+`storefront` all already exist from migration 046 and are currently unused by any
+code.
+
+Do persist the verified commercial facts Apple supplies, using columns that already
+exist: price in milliunits and ISO currency map onto `amount_cents` / `currency`,
+and `storefront` has a column of its own. Quantity and transaction dates come from
+the verified JWS.
 
 ### 4.5 Product classification must not infer from expiry
 
@@ -244,7 +290,7 @@ Any disagreement or unknown combination fails closed.
 
 ### Flow A - one-time portrait
 
-1. `confirm_pay_screen` resolves a `public_uuid`: generated locally when there is no Pass session, or fetched via `prepare.php` when there is (Flow A0). A first purchase makes no server call.
+1. `confirm_pay_screen` generates a UUID locally and sends it as `appAccountToken`. A one-off purchase **never** calls `prepare.php` - there is no Pass to look up.
 2. `IapService.buy(productId, appAccountToken: public_uuid)` via `Sk2PurchaseParam`.
 3. Apple renders its sheet; StoreKit returns a signed JWS transaction.
 4. `POST /api/apple/purchase/verify.php { jws, public_uuid, product_id }`.
@@ -257,30 +303,34 @@ Any disagreement or unknown combination fails closed.
 Defaulting to a new Pass is the client-side layer of the double-billing guard.
 No path may attach a second active funding source to an already-funded Pass.
 
-### Flow A0 - purchase preparation, only when it is needed
+### Flow A0 - purchase preparation, subscription only
 
-**First purchase, no Pass yet: no server call at all.**
-The client generates a UUID locally and sends it as `appAccountToken`.
-That value is a correlation hint; the server derives every billing fact from the verified JWS regardless, so a round trip to obtain it buys nothing.
+**One-off purchases never call it.** The client generates a UUID locally and sends
+it as `appAccountToken`. There is no Pass to look up, and the server derives every
+billing fact from the verified JWS regardless, so a round trip buys nothing.
 
-**Device already holds a Pass session:** call `POST /api/apple/purchase/prepare.php` with Bearer auth.
-It returns that Pass's `public_uuid` and runs a **product-aware** preflight.
+**Buying the Pass while already holding one:** call
+`POST /api/apple/purchase/prepare.php` with Bearer auth. It returns that Pass's
+`public_uuid` and rejects the purchase if the Pass already has an active funding
+source - which is far cheaper than unwinding an Apple charge you cannot reverse.
 
-| Product | Preflight rule |
-|---|---|
-| Consumable | **May** attach to an existing Pass, even one with an active subscription |
-| Subscription | Reject if that Pass already has an active funding source |
+That is its only remaining job. If the device holds no Pass session, there is
+nothing to prepare and the client proceeds directly to StoreKit.
 
-The distinction matters: an earlier draft rejected any purchase against a funded Pass, which would have blocked a Pass subscriber from ever buying a one-off portrait.
+**Notification-first correlation.**
+`providerSubjectRef` (the verified `appAccountToken`) resolves as
+`appAccountToken -> passes.public_uuid -> EntitlementSubject('pass', pass_id)`,
+passed to `EntitlementService::apply(..., subjectHint)`. This applies to the Pass
+only; consumables have no subject to correlate to.
 
-**Pass reuse is the default for consumables.**
-An earlier draft generated a fresh UUID per purchase and minted a Pass from it, so buying three portraits produced three Passes and three codes.
-Correct behaviour: reuse the existing Pass when one is available; mint a new one only when none exists, after verified purchase.
+When the Pass does not exist yet, the event stays retryable until client
+verification mints it. This is not merely a design preference: `locateSubject()`
+hardcodes `['stripe','mock']` as the only providers permitted the legacy-column
+fallback, and `ProviderEventProcessor` never passes a `subjectHint`, so an Apple
+notification structurally cannot attach before the purchase endpoint has run.
 
-**Notification-first correlation, accepted as-is.**
-`providerSubjectRef` (the verified `appAccountToken`) resolves as `appAccountToken -> passes.public_uuid -> EntitlementSubject('pass', pass_id)`, passed to `EntitlementService::apply(..., subjectHint)`.
-When the Pass does not exist yet, the event stays retryable until client verification mints it.
-No reservation table: it would close a few seconds' gap at the cost of its own schema, lifecycle, and cleanup.
+No reservation table: it would close a few seconds' gap at the cost of its own
+schema, lifecycle and cleanup.
 
 ### Flow B - Pass subscription
 
@@ -563,20 +613,27 @@ Nothing is recovered by asking the user to act.
 
 ### 7.1 Paid consumable recovery
 
-Finishing a StoreKit transaction is irreversible: Apple then considers it delivered and will not replay it.
-If the app dies between `completePurchase()` and processing, the user has paid and the transaction is gone.
-Apple requires purchased credits not to expire (Guideline 3.1.1), so the unconsumed portrait must survive.
+Finishing a StoreKit transaction is irreversible: Apple then considers it delivered
+and will not replay it. Apple also requires purchased credits not to expire
+(Guideline 3.1.1).
 
-Therefore, **before** `completePurchase()`:
+A one-off purchase has no Pass and no account, so there is no server-side handle to
+rediscover it by. Safety is entirely a matter of ordering:
 
-1. The payment and an unused generation grant are durably persisted server-side.
-2. The grant is discoverable through the authenticated Pass session, so any device holding the session can find it.
-3. Client-side resume state is persisted locally.
+1. Verify server-side and write the `payments` row.
+2. Only then call `completePurchase()`.
 
-Paid consumable value never expires.
-A crash immediately after `completePurchase()` is an explicit test case (section 10.2), not an assumed-safe path.
+Unfinished transactions live with the Apple ID rather than the app, so a purchase
+interrupted before step 2 replays at next launch **and survives app deletion and
+reinstall**. `uq_payment_provider_transaction` absorbs the duplicate.
 
-This is why ordering alone is insufficient: the ordering protects against loss *before* finish, and the durable grant protects against loss *after* it.
+Finishing is best-effort and must never invalidate a completed purchase. If
+verification succeeded and the row was written, the sale is real; a failure to
+finish only means StoreKit will replay it. Treating that as a purchase failure
+discards paid work, which is the failure mode this section exists to prevent.
+
+A purchase that completed normally and was then lost with the app is not
+recoverable. The emailed portrait is the durable artifact by design.
 
 ### 7.2 Failure table
 
@@ -699,12 +756,13 @@ The paid mobile flow has not shipped, so legacy `pending_job.paymentSessionId` r
 | `src/Billing/Dto/VerifiedProviderEvent.php` | **Changed.** Adds `?string $providerSubjectRef` and `?string $providerTransactionRef`. No `paidPeriod`. |
 | `public/api/internal/provider-events/drain.php:42` | **Changed.** Accepts any provider registered in `ProviderRegistry`, still validating environment. It is hardcoded to `stripe` today, so Apple events would never drain. |
 | Session auth helper | **New.** One shared extractor accepting `Authorization: Bearer` for native and the `portraitor_session` cookie for web |
-| `payments` schema | **Changed.** Adds `pass_id` and nullable `consumed_at`; drops `uq_payment_provider_client` (4.4). Apple rows never touch `stripe_session_id` (4.3). |
-| Grant mechanism | **Changed.** Accepts `payment_id` as a source beside subscriptions; a payment-backed grant never touches `passes.uses_remaining` |
+| `payments` schema | **Unchanged.** Migration 046 already added every column needed (4.4). |
+| `src/Proxy/PostProcessing.php` | **Changed.** `capturePayment`, `cancelAuthorizedPayment`, `issueRefund`, `getStripeCustomerIdFromPayment` and `recoverStaleDeliveryClaims` gain a provider guard beside their existing `isGrant()` check (4.3). |
+| `public/api/admin/config.php:62-92` | **Changed.** Orphan sweep skips the Stripe cancel for non-Stripe rows. |
 | `src/Billing/ProviderEventProcessor.php:49` | **Changed.** Gates refill on `$event->refillRef !== null` instead of matching `invoice.payment_succeeded` |
 | Consumable refund handler | **New.** Payment-event path that does not pass through `EntitlementService` |
-| `src/Services/PassService.php:69` | **Changed.** `mint()` accepts `public_uuid` and includes it in the INSERT |
-| `public/api/apple/purchase/prepare.php` | **New.** Bearer-authenticated `public_uuid` lookup and product-aware preflight. Called only when a Pass session exists; a first purchase never reaches it. |
+| `src/Services/PassService.php:69` | **Changed.** `mint()` accepts `public_uuid` and includes it in the INSERT. Pass subscription only. |
+| `public/api/apple/purchase/prepare.php` | **New.** Bearer-authenticated. Returns an existing Pass's `public_uuid` and rejects a second funding source. Pass subscription only; consumables never reach it. |
 | `public/api/apple/purchase/verify.php` | **New.** Client posts signed JWS; returns Pass credential and session |
 | `public/api/apple/notifications.php` | **New.** ASSN v2 webhook |
 | Node JWS verifier | **New.** Apple's official server library behind `proc_open` |
@@ -821,7 +879,7 @@ Apple's official library already supplies these components, so PHP holds no cryp
 | `apple-idempotency.test.php` (new) | Replayed verify returns `pass_code_delivered: false` plus session; duplicate notification rejected; a paid period refills exactly once; `DID_FAIL_TO_RENEW` never refills |
 | `apple-refund-split.test.php` (new) | Consumable refund touches `payments` and the grant only and cannot revoke an unrelated Pass; subscription refund revokes the `entitlement_source` |
 | `billing-provider-neutrality.test.php` (new) | `refillRef !== null` drives refill for both Stripe and Apple; no Stripe event name appears in `ProviderEventProcessor`; the drain endpoint accepts any registered provider |
-| `apple-consumable-grant.test.php` (new) | An Apple credit mints a `subgrant_*`, no Stripe operation runs, success stamps `consumed_at`, failure leaves the credit reusable, and `passes.uses_remaining` is never touched |
+| `apple-consumable-path.test.php` (new) | An Apple `payments` row authorizes generation, no Stripe operation is attempted on it, `capturePayment` transitions `delivering -> completed` without calling Stripe, and neither `passes.uses_remaining` nor `entitlement_sources` is touched |
 | `apple-generation-path.test.php` (new) | An Apple consumable yields a usable payment session token, drives generation to completion, and a failed generation leaves the credit reusable |
 | `apple-repeat-purchase.test.php` (new) | A second consumable purchase against the same Pass succeeds - the regression 4.4 exists to prevent |
 
