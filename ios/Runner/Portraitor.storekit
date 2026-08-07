@@ -1,0 +1,89 @@
+{
+  "identifier" : "portraitor-local",
+  "nonRenewingSubscriptions" : [],
+  "products" : [
+    {
+      "displayPrice" : "10.00",
+      "familyShareable" : false,
+      "internalID" : "portrait-you",
+      "localizations" : [
+        {
+          "description" : "One portrait, just for you.",
+          "displayName" : "You",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.portraitor.portrait.you",
+      "referenceName" : "You",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "20.00",
+      "familyShareable" : false,
+      "internalID" : "portrait-partner",
+      "localizations" : [
+        {
+          "description" : "Two portraits, one for each of you.",
+          "displayName" : "You + a partner",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.portraitor.portrait.partner",
+      "referenceName" : "Partner",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "40.00",
+      "familyShareable" : false,
+      "internalID" : "portrait-family",
+      "localizations" : [
+        {
+          "description" : "Up to five portraits from one group chat.",
+          "displayName" : "Family",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.portraitor.portrait.family",
+      "referenceName" : "Family",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_askToBuyEnabled" : false,
+    "_storeKitErrors" : []
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "portraitor-pass",
+      "localizations" : [],
+      "name" : "Portraitor Pass",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "50.00",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "pass-monthly",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "10 portraits a month.",
+              "displayName" : "Portraitor Pass",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.portraitor.pass.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Pass Monthly",
+          "subscriptionGroupID" : "portraitor-pass",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
