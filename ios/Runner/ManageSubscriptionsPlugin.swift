@@ -24,6 +24,20 @@ enum ManageSubscriptionsPlugin {
         return
       }
 
+      // The project deploys to iOS 13, but this API and StoreKit 2 both need
+      // iOS 15. Below that there is no in-app sheet to present, so the caller
+      // is told plainly rather than left thinking it worked.
+      guard #available(iOS 15.0, *) else {
+        result(
+          FlutterError(
+            code: "unsupported_os",
+            message: "Managing subscriptions in-app requires iOS 15 or later",
+            details: nil
+          )
+        )
+        return
+      }
+
       guard let scene = UIApplication.shared.connectedScenes
         .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene
       else {
