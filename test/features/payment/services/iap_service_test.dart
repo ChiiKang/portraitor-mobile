@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/features/payment/services/iap_service.dart';
 
@@ -97,6 +99,26 @@ void main() {
 
       await service.syncWithAppStore();
       expect(service.syncCalled, isTrue);
+    });
+  });
+
+  group('StoreKitIapService source contract', () {
+    // A source assertion, deliberately. The failure it guards is a platform
+    // assert inside the plugin that only fires on a real StoreKit call, so no
+    // unit test with a fake can reach it - it shipped and broke a purchase.
+    test('never calls buyConsumable', () {
+      final source =
+          File('lib/features/payment/services/iap_service.dart').readAsStringSync();
+
+      // Match the call, not the word - the file explains in prose why it is
+      // avoided, and that explanation must not trip its own guard.
+      expect(
+        source.contains('.buyConsumable('),
+        isFalse,
+        reason: 'On iOS buyConsumable asserts autoConsume is true and then '
+            'just calls buyNonConsumable. Passing autoConsume: false - which '
+            'this design wants - trips that assert at runtime.',
+      );
     });
   });
 

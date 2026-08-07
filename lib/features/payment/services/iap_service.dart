@@ -128,11 +128,17 @@ class StoreKitIapService implements IapService {
       applicationUserName: appAccountToken,
     );
 
-    if (productId == IapProductCatalog.passMonthly) {
-      await _plugin.buyNonConsumable(purchaseParam: param);
-    } else {
-      await _plugin.buyConsumable(purchaseParam: param, autoConsume: false);
-    }
+    // buyNonConsumable for both product types.
+    //
+    // On iOS, buyConsumable asserts autoConsume is true and then simply calls
+    // buyNonConsumable, so the two are identical - and autoConsume: false,
+    // which is what this design wants, trips that assert.
+    //
+    // Consumption is decided by whether we call complete(), which we only do
+    // after the server has recorded the purchase. Android will need the real
+    // buyConsumable path, and that is where autoConsume has to be reconciled
+    // with verify-before-finish.
+    await _plugin.buyNonConsumable(purchaseParam: param);
   }
 
   @override

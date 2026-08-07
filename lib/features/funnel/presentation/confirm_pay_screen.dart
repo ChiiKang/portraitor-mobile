@@ -28,6 +28,25 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
   bool _passOpen = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Idempotent: the plan screen usually loads these already, but this screen
+    // is reachable directly and must never render a price the store did not
+    // give us.
+    if (!kDemoIapPurchase) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(iapProvider.notifier).loadPrices();
+      });
+    }
+  }
+
+  /// Demo renders its own copy; real builds render what StoreKit reports.
+  String _priceFor(FunnelTier tier) {
+    if (kDemoIapPurchase) return tier.priceLabel;
+    return ref.watch(iapProvider).priceFor(tier) ?? tier.priceLabel;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final draft = ref.watch(funnelDraftProvider);
     final name =
@@ -43,8 +62,10 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
       lead: 'Review what you’re about to generate.',
       ctaLabel:
           showPass
-              ? 'Subscribe — coming soon'
-              : 'Pay ${draft.selectedTier.priceLabel}',
+              ? (FunnelTier.pass.canPurchase
+                  ? 'Subscribe ${_priceFor(FunnelTier.pass)}'
+                  : 'Subscribe — coming soon')
+              : 'Pay ${_priceFor(draft.selectedTier)}',
       ctaEnabled: !showPass && draft.selectedTier.canPurchase,
       onCta: () => _onCta(context),
       body: Column(
@@ -97,7 +118,7 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
                                 ),
                               ),
                               Text(
-                                draft.selectedTier.priceLabel,
+                                _priceFor(draft.selectedTier),
                                 style: PortraitorTokens.displaySm.copyWith(
                                   fontSize: 28,
                                 ),
@@ -110,6 +131,9 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
                     ),
           ),
           _PassInsteadCard(
+            priceCaption: FunnelTier.pass.canPurchase
+                ? '${_priceFor(FunnelTier.pass)}/month'
+                : '\$50/month · Coming soon',
             open: showPass,
             onToggle: () => setState(() => _passOpen = !_passOpen),
             onShowOneOff: () => setState(() => _passOpen = false),
@@ -270,11 +294,15 @@ class _PassInsteadCard extends StatelessWidget {
     required this.open,
     required this.onToggle,
     required this.onShowOneOff,
+    required this.priceCaption,
   });
 
   final bool open;
   final VoidCallback onToggle;
   final VoidCallback onShowOneOff;
+
+  /// Resolved by the parent so this card stays free of provider lookups.
+  final String priceCaption;
 
   @override
   Widget build(BuildContext context) {
@@ -307,7 +335,7 @@ class _PassInsteadCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '\$50/month · Coming soon',
+                          priceCaption,
                           style: PortraitorTokens.bodySm.copyWith(
                             color: const Color(0xFF8A7348),
                           ),
