@@ -34,6 +34,11 @@ class ApiService {
   /// Public base URL for constructing non-API URLs (e.g., /pay/ page)
   String get baseUrl => _dio.options.baseUrl;
 
+  /// The configured client, for callers that need per-request headers or their
+  /// own error semantics (billing sends a Bearer token and maps 409 and 4xx to
+  /// domain exceptions). Prefer the typed methods on this class otherwise.
+  Dio get dio => _dio;
+
   late final Dio _dio = Dio(
     BaseOptions(
       baseUrl: const String.fromEnvironment(
