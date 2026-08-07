@@ -393,6 +393,9 @@ Create `lib/features/payment/services/iap_service.dart`:
 import 'dart:async';
 
 import 'package:in_app_purchase/in_app_purchase.dart';
+// Sk2PurchaseParam ships from the package root (via src/types/types.dart);
+// SK2Transaction and AppStore ship from store_kit_2_wrappers. Both are needed.
+import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart';
 import 'package:in_app_purchase_storekit/store_kit_2_wrappers.dart';
 import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 
@@ -518,7 +521,9 @@ class StoreKitIapService implements IapService {
         .map(
           (t) => IapTransaction(
             productId: t.productId,
-            jws: '',
+            // receiptData IS the jwsRepresentation. Treating it as absent
+            // leaves every crash-recovered purchase unverifiable forever.
+            jws: t.receiptData ?? '',
             status: IapTransactionStatus.purchased,
             isPendingCompletion: true,
             raw: t,
@@ -531,7 +536,7 @@ class StoreKitIapService implements IapService {
   Future<void> restore() => _plugin.restorePurchases();
 
   @override
-  Future<void> syncWithAppStore() => SK2Transaction.restorePurchases();
+  Future<void> syncWithAppStore() => _appStore.sync();
 
   void _onPurchases(List<PurchaseDetails> purchases) {
     for (final p in purchases) {
@@ -629,7 +634,11 @@ class FakeIapService implements IapService {
 }
 ```
 
-> **Verify before running:** the exact `Sk2PurchaseParam` constructor and `SK2Transaction` static method names against the installed `in_app_purchase_storekit` version. The platform source confirms `applicationUserName` is passed through as `appAccountToken`, but the wrapper's public signature must be read, not assumed.
+> **Already verified against installed 0.4.11, do not re-derive:**
+> `Sk2PurchaseParam({required super.productDetails, super.applicationUserName, this.quantity = 1, this.winBackOfferId, this.promotionalOffer})`, exported from the package **root**, not `store_kit_2_wrappers`.
+> `SK2Transaction.receiptData` is the jwsRepresentation used for server-side verification.
+> `SK2Transaction.finish(int id)` takes an int while `SK2Transaction.id` is a String, so `int.tryParse` is required.
+> `AppStore().sync()` is the **prompting** path; `InAppPurchase.instance.restorePurchases()` iterates `currentEntitlements` without prompting. Swapping them shows a credential prompt on every launch.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -1570,11 +1579,13 @@ git commit -m "Add launch-time purchase recovery for unfinished transactions"
 
 ## Phase 4 - UI
 
-### Task 8: Live prices and full product availability
+### Task 8: Prices and availability behind the demo flag
+
+The demo path stays. `kDemoIapPurchase` becomes the single switch between the simulated sheet and real StoreKit, so both paths remain runnable until the real one is proven.
 
 **Files:**
-- Modify: `lib/features/funnel/application/funnel_draft_provider.dart:109,121`
-- Modify: `lib/features/funnel/presentation/plan_screen.dart:39`
+- Modify: `lib/features/funnel/application/funnel_draft_provider.dart`
+- Modify: `lib/features/funnel/presentation/plan_screen.dart`
 - Test: `test/features/funnel/live_price_test.dart`
 
 - [ ] **Step 1: Write the failing test**
@@ -1586,7 +1597,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 
 void main() {
-  test('no tier is gated out of purchase', () {
+  test('the demo flag defaults off so it cannot ship enabled', () {
+    expect(
+      kDemoIapPurchase,
+      isFalse,
+      reason: 'a build that fakes purchases must never reach the App Store',
+    );
+  });
+
+  test('with the demo flag off, every tier is purchasable', () {
     for (final tier in FunnelTier.values) {
       expect(
         tier.canPurchase,
@@ -1595,71 +1614,62 @@ void main() {
       );
     }
   });
-
-  test('the tier extension exposes no hardcoded price string', () {
-    final source = File(
-      'lib/features/funnel/application/funnel_draft_provider.dart',
-    ).readAsStringSync();
-    expect(
-      source.contains(r"iapPriceLabel => '$priceLabel.00'"),
-      isFalse,
-      reason: 'prices come from StoreKit, not from a Dart string',
-    );
-  });
 }
 ```
-
-Add `import 'dart:io';` at the top.
 
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `flutter test test/features/funnel/live_price_test.dart`
-Expected: FAIL on both - `canPurchase` excludes the Pass, and the hardcoded label is present.
+Expected: FAIL - the flag is a hardcoded `true`, and `canPurchase` excludes the Pass.
 
-- [ ] **Step 3: Open every tier for purchase**
+- [ ] **Step 3: Make the flag unshippable-by-accident**
 
-In `lib/features/funnel/application/funnel_draft_provider.dart`, replace the `canPurchase` getter body with:
-
-```dart
-  /// V1 ships all four products. Kept as a getter so a future gate has a home.
-  bool get canPurchase => true;
-```
-
-Delete the now-dead `isPayableInV1` getter and its `@Deprecated` alias if still present.
-
-- [ ] **Step 4: Remove the hardcoded price**
-
-Delete the `iapPriceLabel` getter. Prices are read from `iapProvider` state instead, so no Dart string can drift from App Store Connect.
-
-- [ ] **Step 5: Remove the Pass gate in the funnel**
-
-In `lib/features/funnel/presentation/plan_screen.dart`, delete the "Pass needs StoreKit + quota API" notice at line 39.
-
-In `lib/features/funnel/presentation/confirm_pay_screen.dart`, delete the `_passOpen || !tier.canPurchase` branch and its "Coming soon" snackbar (lines 123-130).
-
-- [ ] **Step 6: Read prices from the provider**
-
-Wherever `tier.iapPriceLabel` was rendered, use:
+In `funnel_draft_provider.dart`, replace the constant:
 
 ```dart
-final price = ref.watch(iapProvider).priceFor(tier) ?? '—';
+/// Demo build: the Apple IAP sheet is simulated end to end, so a purchase can
+/// complete without StoreKit or the payments backend.
+///
+/// Defaults to false and is enabled only by `--dart-define=DEMO_IAP=true`.
+/// A hand-flipped constant is one forgotten revert away from shipping a build
+/// that gives away paid content and breaks App Store Guideline 3.1.1.
+const bool kDemoIapPurchase = bool.fromEnvironment('DEMO_IAP');
 ```
 
-Call `ref.read(iapProvider.notifier).loadPrices()` in `initState` of the plan screen so prices are available before the user chooses.
+- [ ] **Step 4: Branch availability on the flag**
 
-- [ ] **Step 7: Run tests**
+```dart
+  /// Demo simulates one-off bundles only. Real StoreKit ships all four.
+  bool get canPurchase => kDemoIapPurchase ? isOneOff : true;
+```
+
+Delete `isPayableInV1` and the `@Deprecated` `isEnabledInV1` alias: with the Pass shipping, neither has a caller.
+
+- [ ] **Step 5: Keep the demo price, add the real one**
+
+Leave `iapPriceLabel` in place - it is the demo path's price. Real prices come from `iapProvider`, never from a Dart string:
+
+```dart
+final price = kDemoIapPurchase
+    ? tier.iapPriceLabel
+    : (ref.watch(iapProvider).priceFor(tier) ?? '...');
+```
+
+Call `ref.read(iapProvider.notifier).loadPrices()` in `plan_screen`'s `initState` when the flag is off, so prices are loaded before the user chooses.
+
+Remove the "Pass needs StoreKit + quota API" notice at `plan_screen.dart:39`; it is untrue in both modes now.
+
+- [ ] **Step 6: Run tests**
 
 Run: `flutter test test/features/funnel/`
-Expected: all pass, including any existing funnel design tests.
+Expected: all pass. Existing funnel suites must stay green - the demo path still works, it is just off by default.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add lib/features/funnel test/features/funnel/live_price_test.dart
-git commit -m "Show live App Store prices and open all four products"
+git commit -m "Gate the demo purchase path behind a dart-define flag"
 ```
-
----
 
 ### Task 9: SavePassScreen
 
@@ -2155,7 +2165,30 @@ Replace `_onCta` with:
     if (payload == null) return;
 
     final tier = ref.read(funnelDraftProvider).selectedTier;
-    final outcome = await ref.read(iapProvider.notifier).buy(tier);
+
+    // The demo path stays runnable until real StoreKit is proven. It
+    // synthesizes its own outcome rather than borrowing the Stripe provider,
+    // so Task 13 can delete payment_provider.dart without breaking it.
+    final PurchaseOutcome outcome;
+    if (kDemoIapPurchase) {
+      await showAppleIapSheet(
+        context: context,
+        productTitle: tier.iapProductTitle,
+        productKind: tier.iapProductKind,
+        priceLabel: tier.iapPriceLabel,
+        priceCaption: tier.iapPriceCaption,
+        isSubscription: !tier.isOneOff,
+        onConfirm: () {},
+      );
+      outcome = const PurchaseVerified(
+        sessionToken: 'demo-session',
+        productKey: 'demo',
+        passCodeDelivered: false,
+        paymentReference: 'demo-credit',
+      );
+    } else {
+      outcome = await ref.read(iapProvider.notifier).buy(tier);
+    }
     if (!context.mounted) return;
 
     switch (outcome) {
@@ -2189,7 +2222,7 @@ Replace `_onCta` with:
   }
 ```
 
-Delete `_completeIapPurchase` and the `showAppleIapSheet` import. Add imports for `iap_provider.dart`, `purchase_outcome.dart`, and `save_pass_screen.dart`.
+Delete `_completeIapPurchase`. **Keep** the `showAppleIapSheet` import - the demo branch still uses it. Add imports for `iap_provider.dart`, `purchase_outcome.dart`, and `save_pass_screen.dart`.
 
 - [ ] **Step 2: Verify the app compiles**
 
@@ -2198,8 +2231,8 @@ Expected: no errors. `apple_iap_sheet.dart` is now unreferenced but still presen
 
 - [ ] **Step 3: Run the whole suite**
 
-Run: `flutter test`
-Expected: all pass except the legacy Stripe payment tests, which Task 13 removes.
+Run: `flutter test` then `flutter test --dart-define=DEMO_IAP=true`
+Expected: all pass in both modes except the legacy Stripe payment tests, which Task 13 removes.
 
 - [ ] **Step 4: Manual verification against the local StoreKit config**
 
@@ -2220,20 +2253,22 @@ git commit -m "Wire the funnel to real StoreKit purchases"
 
 ## Phase 5 - Removal
 
-### Task 13: Delete the Stripe surface
+### Task 13: Delete the Stripe surface, keep the demo path
 
-Deliberately last. Deleting first would leave the branch with no working payment path for its whole life and would discard the reference implementation while it is still useful.
+Deliberately last, and deliberately narrower than it first appears: this removes the **Stripe web-redirect** path, not the demo path. `apple_iap_sheet.dart` and its test survive behind `kDemoIapPurchase`.
+
+The demo currently calls `paymentNotifier.initiateDemo()`, which lives in the Stripe provider. Task 12 already removed that dependency by synthesizing the demo outcome locally, so nothing demo-related is lost here.
 
 **Files:**
-- Delete: `lib/features/payment/presentation/apple_iap_sheet.dart`, `lib/features/payment/presentation/payment_screen.dart`, `lib/features/payment/services/stripe_service.dart`, `lib/features/payment/application/payment_provider.dart`
+- Delete: `lib/features/payment/presentation/payment_screen.dart`, `lib/features/payment/services/stripe_service.dart`, `lib/features/payment/application/payment_provider.dart`
 - Delete: `test/integration/payment_flow_test.dart`, `test/providers/payment_provider_test.dart`, `test/widgets/payment_screen_test.dart`
-- Modify: `lib/app/app.dart:112-125,135`, `lib/core/api/api_service.dart:54-99`, `lib/core/storage/pending_job.dart`, `lib/features/processing/**`, `pubspec.yaml`
+- **Keep:** `lib/features/payment/presentation/apple_iap_sheet.dart` and `test/features/payment/presentation/apple_iap_sheet_test.dart`
+- Modify: `lib/app/app.dart`, `lib/core/api/api_service.dart`, `lib/core/storage/pending_job.dart`, `lib/features/processing/**`, `pubspec.yaml`
 
-- [ ] **Step 1: Delete the files**
+- [ ] **Step 1: Delete the Stripe files only**
 
 ```bash
-git rm lib/features/payment/presentation/apple_iap_sheet.dart \
-       lib/features/payment/presentation/payment_screen.dart \
+git rm lib/features/payment/presentation/payment_screen.dart \
        lib/features/payment/services/stripe_service.dart \
        lib/features/payment/application/payment_provider.dart \
        test/integration/payment_flow_test.dart \
@@ -2243,56 +2278,49 @@ git rm lib/features/payment/presentation/apple_iap_sheet.dart \
 
 - [ ] **Step 2: Remove the route**
 
-In `lib/app/app.dart`, delete the `/payment` `GoRoute` (lines 112-125) and the `PaymentScreen` import.
+In `lib/app/app.dart`, delete the `/payment` `GoRoute` and its `PaymentScreen` import.
 
 - [ ] **Step 3: Rename the processing parameter**
 
-The `/processing` route at `app.dart:135` reads `extra['paymentIntentId']`. Change it to `extra['paymentReference']`, and rename the field through `ProcessingScreen` (`processing_screen.dart:19,33,66,80`), `pending_job.dart`, `pending_job_recovery_provider.dart:226`, and `pending_job_resume_sheet.dart:67`.
+`/processing` reads `extra['paymentIntentId']`. Change it to `extra['paymentReference']` and rename through `ProcessingScreen`, `pending_job.dart`, `pending_job_recovery_provider.dart`, and `pending_job_resume_sheet.dart`.
 
-This value is the opaque `payment_reference` from verify. It is **never** Apple's `transactionId`.
+This value is the opaque `payment_reference` from verify. It is never Apple's `transactionId`.
 
 - [ ] **Step 4: Drop pending jobs from the old flow**
 
-`pending_job.paymentReference` rows written under the Stripe flow hold PaymentIntent IDs the Apple path cannot verify. The paid mobile flow never shipped, so delete them on upgrade rather than support two payment systems. Add the deletion to the storage migration path in `lib/core/storage/storage_service.dart`.
+Rows written under the Stripe flow hold PaymentIntent IDs the Apple path cannot verify. The paid mobile flow never shipped, so delete them on upgrade in `lib/core/storage/storage_service.dart` rather than support two payment systems.
 
 - [ ] **Step 5: Remove the Stripe API methods**
 
-In `lib/core/api/api_service.dart`, delete `createPayment`, `verifyPayment`, and the cancel-hold method (lines 54-99).
+In `lib/core/api/api_service.dart`, delete `createPayment`, `verifyPayment`, and the cancel-hold method.
 
 - [ ] **Step 6: Remove the dependencies**
 
-In `pubspec.yaml`, delete `flutter_stripe` and `flutter_web_auth_2`. Both are used only by the deleted files.
+Delete `flutter_stripe` and `flutter_web_auth_2` from `pubspec.yaml`, then `flutter pub get`.
+
+- [ ] **Step 7: Verify**
 
 ```bash
-flutter pub get
+grep -rn "flutter_stripe\|FlutterWebAuth2\|paymentIntentId\|paymentProvider" lib test
 ```
 
-- [ ] **Step 7: Verify nothing references the removed code**
-
-```bash
-grep -rn "flutter_stripe\|FlutterWebAuth2\|paymentIntentId\|showAppleIapSheet\|paymentProvider" lib test
-```
-
-Expected: no results.
+Expected: no results. `showAppleIapSheet` **will** still appear - that is the retained demo path.
 
 - [ ] **Step 8: Run everything**
 
 ```bash
 flutter analyze && flutter test
+flutter test --dart-define=DEMO_IAP=true
 ```
 
-Expected: clean analyze, all tests pass.
+Expected: clean analyze, all tests pass in **both** modes. The demo path is retained, so it must stay green.
 
 - [ ] **Step 9: Commit**
 
 ```bash
 git add -A
-git commit -m "Remove the Stripe payment surface from mobile"
+git commit -m "Remove the Stripe payment surface, retain the demo path"
 ```
-
----
-
-## Phase 6 - Integration
 
 ### Task 14: End-to-end against staging
 
