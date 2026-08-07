@@ -29,6 +29,7 @@ The commission cost is accepted in exchange for compliance.
 | Android | Google Play Billing later, never Stripe |
 | Stripe | Web app only |
 | Products | 3 consumables + 1 auto-renewable subscription |
+| V1 scope | **All of them.** Both one-off bundles and the Pass ship in this version. Confirmed 2026-08-07. `isPayableInV1` in `funnel_draft_provider.dart:93` is superseded and must be removed. |
 | Client library | `in_app_purchase` + `in_app_purchase_storekit` (direct dependency, pinned >= 0.4.11) |
 | Native code | One `MethodChannel` for `showManageSubscriptions(in:)` only |
 | Pass-code rotation | Cut from V1 - no safe authorization model exists yet (6.4) |
@@ -141,15 +142,18 @@ Prices are changeable in App Store Connect, so price points block launch but not
 
 That unique key enforces one Apple-funded Pass per Apple account **only if every Pass SKU maps to the same `product_key`**.
 
+V1 ships **one** Pass SKU:
+
 ```
 com.portraitor.pass.monthly  -> pass_subscription
-com.portraitor.pass.promo    -> pass_subscription
-com.portraitor.pass.winback  -> pass_subscription
 ```
 
-If a promo or win-back SKU is given its own `product_key`, one Apple account can fund multiple Passes and the constraint silently stops working.
-Nothing in `ProductMapper` enforces this today; it holds by convention.
-Section 10 specifies an executable invariant for it.
+Promotional and win-back offers attach to that existing subscription product in App Store Connect.
+They are not separate SKUs and must never be modelled as separate `product_key` values.
+
+If a future SKU is ever given its own `product_key`, one Apple account can fund multiple Passes and the constraint silently stops working.
+Nothing in `ProductMapper` enforces this; it holds by convention.
+Section 10 keeps an executable invariant for it even though V1 has a single SKU: it costs nothing now and fails loudly the day a second one appears.
 
 Unknown or disabled product IDs fail closed.
 
@@ -175,11 +179,19 @@ Writing a `payments` row is not sufficient. Generation authorizes on a **session
 `payments.stripe_session_id` is the key the whole generation path reads: `src/Proxy/PackProgressTracker.php:98,129,160`, `src/Proxy/ChunkProgressTracker.php:32,59`, and `src/Proxy/PostProcessing.php:80,109,118`.
 An Apple purchase that writes a payment without one produces no portrait at all.
 
+**The `payments` row and its status already are the durable, single-use generation grant.**
+There is no separate grant table, and V1 must not create one.
+
 Required:
 
-- Generate an opaque, provider-neutral payment token at purchase time, persist it, and return it to the client as `payment_session_id`.
-- Rename or generalize the column so an Apple row is not stored under a Stripe-named field, and support Apple rows across generation and post-processing.
-- Use the **real** status enum: `('pending','authorized','delivering','completed','failed','refunded','canceled')`, defined by migration 022. There is no `succeeded` state. An Apple consumable starts `authorized` and transitions through the existing machine.
+- Generate an opaque, provider-neutral payment token at purchase time and store it in the existing `stripe_session_id` column.
+- Expose it through the API as `payment_session_id`. The physical column keeps its Stripe-era name for V1; renaming it touches many working web paths without adding correctness, so do that as an additive rename later.
+- Add `pass_id` to `payments` so a row is associated with its Pass.
+- Start an Apple consumable at `authorized` and transition it through the existing machine. The real enum is `('pending','authorized','delivering','completed','failed','refunded','canceled')`, defined by migration 022. There is no `succeeded` state.
+- Make post-processing provider-aware so Apple rows flow through it.
+- Let an authenticated Pass session rediscover unused Apple payment rows, which is how a paid portrait survives a crash after `completePurchase()` (section 7.1).
+
+The token is opaque and Portraitor-generated. It is **never** Apple's `transactionId`, which is a billing fact rather than an authorization capability.
 
 ### 4.4 Schema contradiction to resolve before implementation
 
@@ -209,7 +221,7 @@ Any disagreement or unknown combination fails closed.
 2. `IapService.buy(productId, appAccountToken: public_uuid)` via `Sk2PurchaseParam`.
 3. Apple renders its sheet; StoreKit returns a signed JWS transaction.
 4. `POST /api/apple/purchase/verify.php { jws, public_uuid, product_id }`.
-5. `ApplePurchaseService` performs one atomic operation (section 9.2), returning `pass_code` (first creation only), `session_token`, and `entitlement`.
+5. `ApplePurchaseService` performs one atomic operation (section 9.2), returning `pass_code` (first creation only), `session_token`, `payment_session_id`, and `entitlement`. The `payment_session_id` is the opaque token from 4.3 and is what authorizes generation.
 6. Client writes the code to `flutter_secure_storage` and shows the save-your-code screen.
 7. Client persists resume state locally.
 8. Only now `completePurchase()`.
@@ -227,8 +239,17 @@ Contract:
 
 - Returns the existing Pass's `public_uuid` when targeting an authenticated Pass.
 - Rejects an already-funded Pass **before** StoreKit opens, which is cheaper than unwinding a completed Apple charge.
-- Generates and reserves a UUID for a new Pass.
+- Generates a UUID for a new Pass. It does **not** reserve one, and no Pass row is created here.
 - Returns a UUID only. It never returns billing authority, entitlement, or a Pass code.
+
+**Consequence for notification-first events, accepted deliberately.**
+Because no Pass row exists until client verification, an Apple notification arriving first has nothing to correlate to when the purchase is for a new Pass.
+
+- **Existing Pass:** correlate immediately through `public_uuid`.
+- **New Pass:** the event stays retryable until client verification mints the Pass. `providerSubjectRef` then correlates it on retry.
+
+A reservation table would close this a few seconds earlier and is not worth its own schema, lifecycle, and cleanup path.
+If the client never calls verify at all, the event exhausts its retries and dead-letters, which is the correct outcome for a purchase that was never claimed.
 
 ### Flow B - Pass subscription
 
@@ -244,8 +265,22 @@ The server instead writes `entitlement_sources` with:
 
 and sets `passes.uses_remaining = passes.uses_total`.
 
-`inAppOwnershipType` other than a direct purchase fails closed.
+**Required identity fields. A subscription fails closed unless the verified data contains all of them:**
+
+| Field | Why it is mandatory |
+|---|---|
+| `appAccountToken` | Valid UUID; correlates the purchase to a Pass |
+| `appTransactionId` | **Non-empty.** SQL uniqueness permits multiple NULLs, so a NULL `provider_account_ref` silently voids `uq_provider_account_product` and the one-Apple-funded-Pass rule enforces nothing |
+| `originalTransactionId` | Subscription lineage |
+| Product ID and type | Must match the expected pair exactly, per 4.5 |
+| `inAppOwnershipType` | Direct purchase only |
+| Bundle ID and environment | Must match the configured values |
+
+The `appTransactionId` requirement is the one most likely to be missed, because the constraint *appears* to work while enforcing nothing.
+
 Family Sharing stays disabled in App Store Connect; the shareable Pass code remains the only sharing mechanism.
+
+Initial subscription verification fetches current state from Apple rather than manufacturing `active` from the client transaction alone.
 
 ### Flow C - renewals and refunds
 
@@ -297,6 +332,34 @@ Refill rules, unchanged in intent:
 - A paid period refills only when the verified `transactionId` differs from `last_refill_ref`.
 - `DID_FAIL_TO_RENEW`, billing retry, grace entry, cancellation, and auto-renew status changes never refill.
 - Turning off auto-renew preserves the already-paid pool through `access_until`.
+
+**Three distinct references on the event DTO.**
+Overloading one field is what made the first refund-routing attempt wrong.
+
+| Field | Meaning |
+|---|---|
+| `providerRef` | Subscription lineage (`originalTransactionId`) |
+| `providerTransactionRef` | The individual transaction the event concerns. Populated for refunds and revocations, which have no refill. |
+| `refillRef` | Exactly-once refill identifier. Populated **only** when the event is an eligible paid period. |
+
+A refund carries a `providerTransactionRef` and a null `refillRef`. Reading `refillRef` to identify a refunded transaction yields nothing.
+
+### Flow C1 - how events actually get processed
+
+The design depends on the drain worker, and **nothing currently schedules it.** There are no scheduled workflows in the repo; the only non-test caller of `internal/provider-events/drain.php` is `public/api/stripe-webhook.php`, which drains opportunistically when a webhook arrives.
+
+V1 uses two mechanisms, neither of which is new infrastructure:
+
+1. **Opportunistic drain.** `apple/notifications.php` triggers a bounded drain after acknowledging, exactly as `stripe-webhook.php` already does. This covers the happy path: a `DID_RENEW` arrives and is processed immediately.
+2. **Lazy idempotent refill on entitlement read.** When an entitlement read fetches Apple's current status and finds a paid period whose transaction ID differs from `last_refill_ref`, it refills there, once, under the same row lock and the same idempotency key.
+
+Mechanism 2 is what makes a missed notification self-healing. Without it, a drain that fails on a `DID_RENEW` leaves the event `pending` until the next notification, which on a monthly subscription can be a month away, and the subscriber's pool never resets.
+
+This fits the product: a quota only matters when someone opens the app. A user who does not open it does not need the refill, and one who does triggers it on the read that would have shown them a stale number.
+
+`entitlements/current.php` already passes `reconcile_stale_seconds` (default 900) into `CurrentEntitlementService`, so entitlement *state* already re-fetches when stale. Only the refill needed this treatment.
+
+**A scheduled drain is deliberately not in V1.** Add one when there is a concrete reason: prompt refund revocation independent of user activity, or volume where state freshness between sessions starts to matter. If added, prefer a host cron over a scheduled GitHub Action, whose timing is best-effort and routinely late under load.
 
 **Refunds split by product type, on separate code paths.**
 
@@ -544,7 +607,7 @@ Removing Stripe from mobile reaches beyond `lib/features/payment/`.
 | `lib/app/app.dart:112-125` | Delete the `/payment` route and its `PaymentScreen` import |
 | `lib/app/app.dart:135` | `/processing` route drops the `paymentIntentId` extra |
 | `lib/features/processing/presentation/processing_screen.dart:19,33,66,80` | `paymentIntentId` replaced by the verified purchase reference |
-| `lib/core/storage/pending_job.dart` | `paymentSessionId` carries an Apple transaction reference instead of a Stripe PaymentIntent |
+| `lib/core/storage/pending_job.dart` | `paymentSessionId` carries the **opaque `payment_session_id`** returned by verify, never Apple's `transactionId` |
 | `lib/features/processing/application/pending_job_recovery_provider.dart:226` | Recovery passes the new reference |
 | `lib/features/processing/presentation/pending_job_resume_sheet.dart:67` | Same |
 | `lib/core/api/api_service.dart:54-99` | `createPayment`, `verifyPayment`, and the cancel-hold call target `/api/payment.php` and are removed |
@@ -562,7 +625,8 @@ The paid mobile flow has not shipped, so legacy `pending_job.paymentSessionId` r
 | `src/Billing/Dto/VerifiedPurchaseTransaction.php` | **New.** Provider-neutral DTO for a client-submitted purchase |
 | `src/Billing/ApplePurchaseService.php` | **New.** Atomic client-transaction orchestration (9.2) |
 | `src/Billing/Adapter/AppleProviderAdapter.php` | **New.** Implements the existing four-method interface for notifications and state |
-| `src/Billing/Dto/VerifiedProviderEvent.php` | **Changed.** Adds `bool $paidPeriod` and `?string $providerSubjectRef` |
+| `src/Billing/Dto/VerifiedProviderEvent.php` | **Changed.** Adds `bool $paidPeriod`, `?string $providerSubjectRef`, and `?string $providerTransactionRef` |
+| `payments` schema | **Changed.** Adds `pass_id`; drops `uq_payment_provider_client` (4.4); stores the opaque token in `stripe_session_id` (4.3) |
 | `src/Billing/ProviderEventProcessor.php:49` | **Changed.** Consumes `$event->paidPeriod` instead of matching `invoice.payment_succeeded` |
 | Consumable refund handler | **New.** Payment-event path that does not pass through `EntitlementService` |
 | `src/Services/PassService.php:69` | **Changed.** `mint()` accepts `public_uuid` and includes it in the INSERT |
@@ -571,6 +635,19 @@ The paid mobile flow has not shipped, so legacy `pending_job.paymentSessionId` r
 | `public/api/apple/notifications.php` | **New.** ASSN v2 webhook |
 | Node JWS verifier | **New.** Apple's official server library behind `proc_open` |
 | `ProductMapper` config | **Changed.** Apple product IDs mapped to canonical `product_key` values |
+
+### 9.1a Selecting current subscription state
+
+`fetchCurrentState` must not take `data[0].lastTransactions[0]` on faith.
+
+Required:
+
+1. Verify every candidate transaction and renewal JWS.
+2. Select the entry matching the requested subscription lineage and product.
+3. Confirm the decoded `originalTransactionId` equals the requested reference.
+4. Reject ambiguity rather than picking the first row.
+
+A subscription group can hold more than one entry, and the first is not guaranteed to be the one asked about.
 
 ### 9.2 ApplePurchaseService
 
@@ -645,7 +722,14 @@ Apple purchases have no email.
 Four products, one subscription group, Family Sharing disabled, and ASSN v2 URLs for both production and sandbox.
 
 Server authentication uses an **In-App Purchase key**, not a generic App Store Connect API key.
-It comprises an Issuer ID, a Key ID, and a downloaded `.p8` private key, used to sign ES256 JWTs for the App Store Server API.
+It comprises an Issuer ID, a Key ID, and a downloaded `.p8` private key.
+
+**The bundled Node library handles the App Store Server API too, not only verification.**
+It performs notification verification, transaction verification, renewal-info verification, **and** App Store Server API JWT signing and requests.
+
+Do not hand-write ES256 JWT signing or DER-to-JOSE conversion in PHP.
+An earlier draft did, and the DER conversion was wrong in a way no test would have caught, because the failure surfaces only as a rejected Apple request.
+Apple's official library already supplies these components, so PHP holds no cryptographic code at all.
 
 ---
 
