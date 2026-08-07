@@ -31,6 +31,7 @@ The commission cost is accepted in exchange for compliance.
 | Products | 3 consumables + 1 auto-renewable subscription |
 | Client library | `in_app_purchase` + `in_app_purchase_storekit` (direct dependency, pinned >= 0.4.11) |
 | Native code | One `MethodChannel` for `showManageSubscriptions(in:)` only |
+| Pass-code rotation | Cut from V1 - no safe authorization model exists yet (6.4) |
 | Server verification | Own PHP adapter plus Apple's official Node server library, no RevenueCat |
 | Identity | Anonymous Pass, no Portraitor accounts required |
 | Pass quota | Resets each billing period, no rollover |
@@ -167,6 +168,37 @@ Only recurring Pass funding belongs in `entitlement_sources`.
 One-time portraits remain payment rows feeding the generation-grant path.
 A consumable refund must never touch `entitlement_sources`.
 
+### 4.3 How a consumable actually authorizes generation
+
+Writing a `payments` row is not sufficient. Generation authorizes on a **session token stored on that row**, not on the row's existence.
+
+`payments.stripe_session_id` is the key the whole generation path reads: `src/Proxy/PackProgressTracker.php:98,129,160`, `src/Proxy/ChunkProgressTracker.php:32,59`, and `src/Proxy/PostProcessing.php:80,109,118`.
+An Apple purchase that writes a payment without one produces no portrait at all.
+
+Required:
+
+- Generate an opaque, provider-neutral payment token at purchase time, persist it, and return it to the client as `payment_session_id`.
+- Rename or generalize the column so an Apple row is not stored under a Stripe-named field, and support Apple rows across generation and post-processing.
+- Use the **real** status enum: `('pending','authorized','delivering','completed','failed','refunded','canceled')`, defined by migration 022. There is no `succeeded` state. An Apple consumable starts `authorized` and transitions through the existing machine.
+
+### 4.4 Schema contradiction to resolve before implementation
+
+Migration 046 declares `uq_payment_provider_client (provider, environment, provider_client_uuid)` while this design sends `appAccountToken = public_uuid`, which is per-Pass and reused across purchases.
+
+Those two cannot both hold for consumables: the unique key permits exactly one payment row per Pass, forever, so a second portrait purchase fails on a duplicate key.
+
+Resolution: add `pass_id` to `payments`, drop `uq_payment_provider_client`, and let `uq_payment_provider_transaction` be the sole purchase idempotency key.
+It already does that job correctly, keyed on the verified Apple `transactionId`.
+
+Also persist the verified commercial facts Apple supplies and this design previously ignored: price in milliunits, ISO currency, storefront, quantity, and transaction dates.
+
+### 4.5 Product classification must not infer from expiry
+
+Classifying "no `expiresDate`" as a consumable is unsafe, because non-consumables also lack an expiry.
+
+Classification comes from the verified Apple transaction type **and** a server-controlled product catalogue, requiring exact agreement between product ID and expected type.
+Any disagreement or unknown combination fails closed.
+
 ---
 
 ## 5. Purchase flows
@@ -231,6 +263,20 @@ receive notification
 
 Acknowledge only after durable storage, because Apple retries unsuccessful deliveries.
 The existing `internal/provider-events/drain.php` worker performs the processing.
+
+**Notification payloads are nested JWS, not decoded objects.**
+`data.signedTransactionInfo` and `data.signedRenewalInfo` are themselves JWS strings.
+Verification is three passes: verify the notification envelope, then verify and decode each nested payload separately.
+Treating them as decoded structures produces an adapter that fails on every real Apple notification.
+
+**One payload contract, applied consistently.**
+The endpoint stores the exact raw request body, and the adapter is responsible for extracting and verifying `signedPayload` from it.
+Verifying `signedPayload` at the endpoint but storing the whole JSON envelope means the drain worker later hands an envelope to a verifier expecting a JWS.
+
+**Non-entitlement notifications are valid.**
+Apple's `TEST` notification, among others, legitimately carries no transaction.
+Verified events with no transaction are durable no-ops: stored, acknowledged, and processed to completion without touching entitlement.
+An adapter that rejects every event lacking `signedTransactionInfo` will fail the Request a Test Notification check used to prove the webhook.
 
 Notification order is never trusted.
 Current status comes from Get All Subscription Statuses.
@@ -311,7 +357,7 @@ Apple IAP does not require Portraitor accounts.
 |---|---|
 | `passes.public_uuid` (CHAR(36)) | Sent as StoreKit's `appAccountToken`; correlation key only, never grants access |
 | `originalTransactionId` | Subscription lineage; `entitlement_sources.provider_ref` |
-| `appTransactionId` | Stable Apple-account-plus-app reference; enforces one Apple-funded Pass per Apple account, and authorizes rotation |
+| `appTransactionId` | Stable Apple-account-plus-app reference; enforces one Apple-funded Pass per Apple account |
 | Secret Pass code | The cross-platform credential, unchanged |
 
 Apple requires `appAccountToken` to be a real UUID, which is why `public_uuid` is `CHAR(36)` and distinct from the `CHAR(64)` `token_hash`.
@@ -353,27 +399,26 @@ It is generated, not derived from the Pass code, which is what makes the endpoin
 
 Verification always issues a fresh session, so the client never round-trips its own code through the rate-limited `pass/redeem.php`, which is built for human input and returns 429 under repeat attempts.
 
-### 6.4 Rotation requires Apple proof, not a Pass session
+### 6.4 No rotation in V1
 
-A Pass session is **not** sufficient authority to rotate the Pass code.
+Pass-code rotation is **cut from V1**. Decided 2026-08-07.
 
-The Pass is deliberately shareable.
-Anyone given the code can redeem it and receive a valid Pass session.
-If a session authorized rotation, any recipient could rotate the code and lock out the original purchaser.
-A shareable credential cannot be its own rotation authority.
+The mechanism was going to be the recovery path for a lost verify response.
+It was cut because no safe authorization exists for it yet.
 
-Rotation is authorized by Apple-specific proof:
+A Pass session cannot authorize rotation: the Pass is deliberately shareable, so anyone given the code can redeem it and hold a valid session.
+Apple purchase proof alone cannot authorize it either, and this is the attack that killed the design.
+A recipient can redeem a shared Pass, buy a consumable against that Pass, obtain genuine Apple purchase proof, receive a rotation grant, and lock out the original purchaser.
+Binding rotation to any Apple transaction *referencing* the Pass is not the same as binding it to the account that *funded* the Pass.
 
-```
-verified Apple transaction or restore
-  -> short-lived, single-use rotation grant
-     scoped to pass_id + appTransactionId + purpose=rotate
-  -> atomic code rotation
-  -> revoke all previous Pass sessions
-  -> issue fresh session and raw code exactly once
-```
+Closing that properly requires an ownership concept the schema does not have: a funding-account reference captured on `passes` at mint time, matched against the verified `appTransactionId` before any grant is issued.
+That is deliberately deferred rather than half-built, because a rotation mechanism with weak authorization is worse than none.
 
-Because rotation invalidates the Pass for anyone the original holder shared it with, and because it revokes existing sessions, the prompt must state both consequences plainly rather than bury them.
+**Accepted consequence.** If the verify response is lost, the buyer holds a working session on that device and no Pass code.
+They keep using the app there. They can never use that Pass on the web or a second device.
+This is a Portraitor-side failure with no user-facing recovery, so the mitigations in 6.3 that reduce its likelihood are load-bearing rather than best-effort.
+
+If rotation returns later, it must be owner-bound from the start.
 
 ---
 
@@ -404,7 +449,7 @@ This is why ordering alone is insufficient: the ordering protects against loss *
 | Failure | Behavior | Recovery |
 |---|---|---|
 | Purchase OK, verify network-fails | Transaction left unfinished | `unfinishedTransactions()` drains at launch; `uq_payment_provider_transaction` absorbs the replay |
-| Verify OK, response lost | Server committed, client has nothing | Replay returns `pass_code_delivered: false` plus session; rotation via section 6.4 |
+| Verify OK, response lost | Server committed, client has nothing | Replay returns `pass_code_delivered: false` plus a working session. **No code recovery** - see 6.4. Device keeps working; cross-platform use is lost. |
 | Verify OK, keychain write fails | `completePurchase()` not called | StoreKit replays next launch |
 | Crash after `completePurchase()` | Transaction gone from Apple's queue | Durable server-side grant, discoverable via Pass session (7.1) |
 | Notification arrives before client verify | Correlated via `providerSubjectRef` | Idempotent on `(provider, environment, provider_ref)` |
@@ -423,7 +468,7 @@ The client never computes entitlement from a local clock, so device time changes
 The client never infers success from StoreKit alone.
 Only a verify-200 grants anything.
 
-User-visible states are limited to three: verifying (brief, blocking, crash-safe), completing in background (a replay was drained, non-blocking), and secure your Pass (rotation).
+User-visible states are limited to three: verifying (brief, blocking, crash-safe), completing in background (a replay was drained, non-blocking), and code-not-delivered (informational, since 6.4 removed the recovery action).
 
 One case remains genuinely non-recoverable: an anonymous Pass whose code was never secured, on a device that is then lost, with the Apple ID unavailable.
 Apple-ID restore covers same-account recovery; nothing covers that combination.
@@ -469,7 +514,6 @@ lib/features/payment/
     purchase_recovery.dart      launch and background transaction handling
   presentation/
     save_pass_screen.dart       blocking save-your-code moment
-    secure_pass_sheet.dart      rotation when the code was never delivered
     manage_subscription_tile.dart  Apple-managed info and controls
 
 ios/Runner/
@@ -618,14 +662,19 @@ It comprises an Issuer ID, a Key ID, and a downloaded `.p8` private key, used to
 | `apple-product-mapping.test.php` (new) | Every Pass SKU maps to one canonical `product_key`, keeping `uq_provider_account_product` effective |
 | `apple-idempotency.test.php` (new) | Replayed verify returns `pass_code_delivered: false` plus session; duplicate notification rejected; a paid period refills exactly once; `DID_FAIL_TO_RENEW` never refills |
 | `apple-refund-split.test.php` (new) | Consumable refund touches `payments` and the grant only and cannot revoke an unrelated Pass; subscription refund revokes the `entitlement_source` |
-| `apple-rotation.test.php` (new) | A Pass session alone cannot rotate; only a valid single-use grant scoped to `pass_id` + `appTransactionId` + `purpose=rotate` can; rotation revokes prior sessions |
 | `billing-provider-neutrality.test.php` (new) | `paidPeriod` drives refill for both Stripe and Apple; no Stripe event name appears in `ProviderEventProcessor` |
+| `apple-generation-path.test.php` (new) | An Apple consumable yields a usable payment session token, drives generation to completion, and a failed generation leaves the credit reusable |
+| `apple-repeat-purchase.test.php` (new) | A second consumable purchase against the same Pass succeeds - the regression 4.4 exists to prevent |
 
 The Apple adapter joins the existing contract suite rather than getting a bespoke one.
 That suite already asserts the adapter-agnostic invariants: the interface stays narrow, the event DTO cannot grant access or mutate Pass pools, and unknown provider, unknown product, and environment mismatch all fail closed.
 
 `apple-product-mapping.test.php` exists specifically because the canonical-key requirement holds by convention today and fails silently when a promo SKU is added.
-`apple-rotation.test.php` exists because the shareable Pass makes session-authorized rotation a lockout vector.
+`apple-repeat-purchase.test.php` exists because `uq_payment_provider_client` would otherwise cap a Pass at one lifetime purchase, and that failure appears only on a user's *second* portrait.
+
+Fixture-based verification is required, not source-string inspection.
+Suites asserting on `str_contains($source, ...)` describe code shape and pass against broken behaviour.
+Apple suites need real signed transaction, renewal, and nested notification fixtures, plus invalid signature, bundle, environment, ownership, and product cases.
 
 ### 10.2 Mobile
 
@@ -696,7 +745,7 @@ The adapter cannot simply drop into the existing interface, because that interfa
 ### 11.4 Closed by review
 
 - Unused-grant compensation on consumable refund: revoke an unused grant; if already consumed, keep the output, record the loss, flag repeated abuse.
-- Rotation eligibility: superseded by the Apple-proof rotation grant in section 6.4.
+- Rotation eligibility: moot. Rotation is cut from V1 (section 6.4). Any future implementation must be owner-bound from the start.
 - Pending jobs holding Stripe PaymentIntent IDs: dropped during migration, since the paid mobile flow has not shipped.
 
 ---
@@ -712,6 +761,7 @@ Recorded so they are not rediscovered.
 | `iap-stripe-accounts-and-subscriptions.md` s3 step 4 | "The server returns the existing secret Pass code" is impossible; codes are stored as a peppered HMAC and are not recoverable. See section 6.2. |
 | `iap-stripe-accounts-and-subscriptions.md` s7b.11 | Management-asymmetry table omits refill, which is equally Stripe-only. See section 5, Flow E. |
 | `iap-stripe-accounts-and-subscriptions.md` s3 | Describes the Apple adapter as a narrow contract. Accurate for notifications and state, but there is no interface support for a client-submitted purchase; see section 3.1. |
+| Migration 046 vs this design | `uq_payment_provider_client` and `appAccountToken = public_uuid` are mutually incompatible for consumables. The unique key caps a Pass at one payment row for life. Resolution in section 4.4. |
 | `docs/web-payment-flow-plan.md` | Superseded for mobile. Retained as the record of why the web-redirect approach was chosen and reversed. |
 
 ---
