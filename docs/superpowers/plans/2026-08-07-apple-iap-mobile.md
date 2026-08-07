@@ -32,25 +32,33 @@ V1 ships **all four products**, so `canPurchase` and the "Coming soon" snackbar 
 
 Fixed by backend plan Tasks 11-12. Build against a fake implementing exactly these shapes; the two repos proceed in parallel.
 
+All authenticated calls use `Authorization: Bearer <session_token>`, held in `flutter_secure_storage`. No cookie jar.
+
 ```
-POST /api/apple/purchase/prepare.php
-  headers: X-Pass-Session: <token>   (optional - absent means "new Pass")
-  200 -> { status: "ok", data: { public_uuid: "<uuid>", pass_id: <int|null> } }
-  409 -> Pass already has an active funding source
+POST /api/apple/purchase/prepare.php        [ONLY when a Pass session exists]
+  headers: Authorization: Bearer <session_token>
+  200 -> { status: "ok", data: { public_uuid: "<uuid>", pass_id: <int> } }
+  409 -> that Pass already has an active SUBSCRIPTION funding source
+         (consumables are always allowed, even on a subscribed Pass)
 
 POST /api/apple/purchase/verify.php
-  body: { jws: "<serverVerificationData>", public_uuid: "<uuid>", product_id: "<sku>" }
+  headers: Authorization: Bearer <session_token>   (absent on first purchase)
+  body:    { jws: "<serverVerificationData>", public_uuid: "<uuid>", product_id: "<sku>" }
   200 -> { status: "ok", data: {
             pass_code:           "<string|null>",   // first creation only
             pass_code_delivered: <bool>,
             session_token:       "<64 hex chars>",
-            payment_session_id:  "<opaque token>",  // authorizes generation
+            payment_reference:   "<opaque|null>",   // consumable only: the durable credit
             product_key:         "<string>"
           }}
   400 -> could not verify   422 -> unsupported (ownership, product)
 ```
 
-`payment_session_id` is opaque and Portraitor-generated. It is **never** Apple's `transactionId`.
+**First purchase makes no `prepare` call.** The client generates a UUID locally and sends it as `appAccountToken`. It is a correlation hint; the server derives every billing fact from the verified JWS regardless, so a round trip to obtain it buys nothing.
+
+**`payment_reference` identifies the durable credit**, not an execution capability. The `subgrant_*` token that actually authorizes a generation run is minted server-side when processing starts and never reaches the client. Apple's `transactionId` never reaches the client either.
+
+> **Confirm against the regenerated backend plan** before Task 5: the exact field name for `payment_reference`, and whether the client carries it at all or the server discovers an unconsumed credit from the Bearer session. Both are workable; the plan assumes the client carries it so a job is unambiguously tied to one credit.
 
 ## Conventions
 
@@ -266,7 +274,7 @@ sealed class PurchaseOutcome {
 class PurchaseVerified extends PurchaseOutcome {
   const PurchaseVerified({
     required this.sessionToken,
-    required this.paymentSessionId,
+    required this.paymentReference,
     required this.productKey,
     required this.passCodeDelivered,
     this.passCode,
@@ -275,7 +283,7 @@ class PurchaseVerified extends PurchaseOutcome {
   final String sessionToken;
 
   /// Opaque, Portraitor-generated. Authorizes generation. Never Apple's id.
-  final String paymentSessionId;
+  final String paymentReference;
   final String productKey;
   final bool passCodeDelivered;
   final String? passCode;
@@ -806,7 +814,7 @@ void main() {
       );
       expect(result.passCode, isNotNull);
       expect(result.passCodeDelivered, isTrue);
-      expect(result.paymentSessionId, isNotEmpty);
+      expect(result.paymentReference, isNotEmpty);
       expect(result.sessionToken, isNotEmpty);
     });
 
@@ -857,14 +865,14 @@ class PreparedPurchase {
 class VerifiedPurchase {
   const VerifiedPurchase({
     required this.sessionToken,
-    required this.paymentSessionId,
+    required this.paymentReference,
     required this.productKey,
     required this.passCodeDelivered,
     this.passCode,
   });
 
   final String sessionToken;
-  final String paymentSessionId;
+  final String paymentReference;
   final String productKey;
   final bool passCodeDelivered;
   final String? passCode;
@@ -901,7 +909,7 @@ class HttpBillingApi implements BillingApi {
       final response = await _dio.post<Map<String, dynamic>>(
         '/api/apple/purchase/prepare.php',
         options: Options(
-          headers: sessionToken != null ? {'X-Pass-Session': sessionToken} : null,
+          headers: sessionToken != null ? {'Authorization': 'Bearer $sessionToken'} : null,
         ),
       );
       final data = response.data?['data'] as Map<String, dynamic>? ?? {};
@@ -929,13 +937,13 @@ class HttpBillingApi implements BillingApi {
         '/api/apple/purchase/verify.php',
         data: {'jws': jws, 'public_uuid': publicUuid, 'product_id': productId},
         options: Options(
-          headers: sessionToken != null ? {'X-Pass-Session': sessionToken} : null,
+          headers: sessionToken != null ? {'Authorization': 'Bearer $sessionToken'} : null,
         ),
       );
       final data = response.data?['data'] as Map<String, dynamic>? ?? {};
       return VerifiedPurchase(
         sessionToken: data['session_token'] as String? ?? '',
-        paymentSessionId: data['payment_session_id'] as String? ?? '',
+        paymentReference: data['payment_reference'] as String? ?? '',
         productKey: data['product_key'] as String? ?? '',
         passCodeDelivered: data['pass_code_delivered'] as bool? ?? false,
         passCode: data['pass_code'] as String?,
@@ -973,7 +981,7 @@ class FakeBillingApi implements BillingApi {
     final first = _verified.add(jws);
     return VerifiedPurchase(
       sessionToken: 'a' * 64,
-      paymentSessionId: 'pay-$publicUuid',
+      paymentReference: 'pay-$publicUuid',
       productKey: 'portrait_you',
       passCodeDelivered: first,
       passCode: first ? 'PASS-CODE-1' : null,
@@ -1046,7 +1054,7 @@ void main() {
       final outcome = await notifier.buy(FunnelTier.you);
 
       expect(outcome, isA<PurchaseVerified>());
-      expect((outcome as PurchaseVerified).paymentSessionId, isNotEmpty);
+      expect((outcome as PurchaseVerified).paymentReference, isNotEmpty);
       expect(await store.readPassCode(), 'PASS-CODE-1');
       expect(await store.readSessionToken(), isNotEmpty);
       expect(notifier.state.status, IapStatus.success);
@@ -1143,6 +1151,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/domain/purchase_outcome.dart';
@@ -1234,10 +1243,14 @@ class IapNotifier extends StateNotifier<IapState> {
     final productId = IapProductCatalog.productIdFor(tier);
     final sessionToken = await _store.readSessionToken();
 
+    // No Pass yet means no server round trip: the UUID is a correlation hint
+    // and the server derives every billing fact from the verified JWS anyway.
     PreparedPurchase prepared;
     try {
       state = state.copyWith(status: IapStatus.purchasing, error: null);
-      prepared = await _api.preparePurchase(sessionToken: sessionToken);
+      prepared = sessionToken == null
+          ? PreparedPurchase(publicUuid: const Uuid().v4())
+          : await _api.preparePurchase(sessionToken: sessionToken);
     } on PassAlreadyFundedException {
       state = state.copyWith(
         status: IapStatus.failed,
@@ -1300,13 +1313,13 @@ class IapNotifier extends StateNotifier<IapState> {
 
       state = state.copyWith(
         status: IapStatus.success,
-        lastPaymentSessionId: verified.paymentSessionId,
+        lastPaymentSessionId: verified.paymentReference,
         passCodeDelivered: verified.passCodeDelivered,
       );
 
       return PurchaseVerified(
         sessionToken: verified.sessionToken,
-        paymentSessionId: verified.paymentSessionId,
+        paymentReference: verified.paymentReference,
         productKey: verified.productKey,
         passCodeDelivered: verified.passCodeDelivered,
         passCode: verified.passCode,
@@ -2146,7 +2159,7 @@ Replace `_onCta` with:
     if (!context.mounted) return;
 
     switch (outcome) {
-      case PurchaseVerified(:final passCode, :final paymentSessionId):
+      case PurchaseVerified(:final passCode, :final paymentReference):
         await Navigator.of(context).push(
           MaterialPageRoute<void>(
             builder: (_) => SavePassScreen(
@@ -2158,7 +2171,7 @@ Replace `_onCta` with:
         if (!context.mounted) return;
         context.push(
           '/processing',
-          extra: {...payload, 'paymentSessionId': paymentSessionId},
+          extra: {...payload, 'paymentReference': paymentReference},
         );
       case PurchaseCancelled():
         break;
@@ -2234,13 +2247,13 @@ In `lib/app/app.dart`, delete the `/payment` `GoRoute` (lines 112-125) and the `
 
 - [ ] **Step 3: Rename the processing parameter**
 
-The `/processing` route at `app.dart:135` reads `extra['paymentIntentId']`. Change it to `extra['paymentSessionId']`, and rename the field through `ProcessingScreen` (`processing_screen.dart:19,33,66,80`), `pending_job.dart`, `pending_job_recovery_provider.dart:226`, and `pending_job_resume_sheet.dart:67`.
+The `/processing` route at `app.dart:135` reads `extra['paymentIntentId']`. Change it to `extra['paymentReference']`, and rename the field through `ProcessingScreen` (`processing_screen.dart:19,33,66,80`), `pending_job.dart`, `pending_job_recovery_provider.dart:226`, and `pending_job_resume_sheet.dart:67`.
 
-This value is the opaque `payment_session_id` from verify. It is **never** Apple's `transactionId`.
+This value is the opaque `payment_reference` from verify. It is **never** Apple's `transactionId`.
 
 - [ ] **Step 4: Drop pending jobs from the old flow**
 
-`pending_job.paymentSessionId` rows written under the Stripe flow hold PaymentIntent IDs the Apple path cannot verify. The paid mobile flow never shipped, so delete them on upgrade rather than support two payment systems. Add the deletion to the storage migration path in `lib/core/storage/storage_service.dart`.
+`pending_job.paymentReference` rows written under the Stripe flow hold PaymentIntent IDs the Apple path cannot verify. The paid mobile flow never shipped, so delete them on upgrade rather than support two payment systems. Add the deletion to the storage migration path in `lib/core/storage/storage_service.dart`.
 
 - [ ] **Step 5: Remove the Stripe API methods**
 
@@ -2330,7 +2343,7 @@ git commit -m "Fix issues found during Apple sandbox end-to-end testing"
 
 **Spec coverage.** Sections 5 Flow A (Tasks 6, 12), A0 (Task 5), B (Tasks 6, 14), D (Task 7), E (Tasks 10, 11); 6.3 delivery state (Tasks 5, 6, 9); 7.1 durable consumable recovery (Tasks 7, 14 step 5); 8.1 removals (Task 13); 8.2 additions (Tasks 2-11); 8.4 Stripe surface (Task 13); 10.2 mobile tests (throughout). Section 6.4 needs nothing: rotation is cut, so `secure_pass_sheet.dart` is absent by design and `SavePassScreen` handles the undelivered case as information.
 
-**Type consistency.** `payment_session_id` (API) maps to `paymentSessionId` (Dart) everywhere, including the `/processing` route extra and `pending_job`. `IapTransaction.jws` is `serverVerificationData` throughout. `IapProductCatalog.productIdFor` is the single source of tier-to-SKU mapping.
+**Type consistency.** `payment_reference` (API) maps to `paymentReference` (Dart) everywhere, including the `/processing` route extra and `pending_job`. `IapTransaction.jws` is `serverVerificationData` throughout. `IapProductCatalog.productIdFor` is the single source of tier-to-SKU mapping.
 
 **Three places that say read-before-writing**, each naming exactly what to check rather than guessing: the `Sk2PurchaseParam` and `SK2Transaction` public signatures (Task 3), whether `ApiService` exposes `.dio` (Task 5), and the real `PortraitorTokens` style names on this branch (Task 9). These are API surfaces I did not read, and inventing them would produce code that compiles in the plan and not in the repo.
 
