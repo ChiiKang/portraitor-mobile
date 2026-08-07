@@ -52,8 +52,22 @@ class IapState {
   }
 }
 
+/// Stub the server while the Apple endpoints do not exist yet.
+///
+/// Enabled only by `--dart-define=FAKE_BILLING=true`. This keeps real StoreKit
+/// in play - Apple's own sheet, real transactions, real finish semantics - and
+/// fakes only the verification round trip, which is the piece the backend has
+/// not shipped.
+///
+/// Defaults off, like [kDemoIapPurchase], so it cannot reach a release build
+/// and hand out portraits nobody paid for.
+const bool kFakeBilling = bool.fromEnvironment('FAKE_BILLING');
+
 final iapServiceProvider = Provider<IapService>((ref) => StoreKitIapService());
-final billingApiProvider = Provider<BillingApi>((ref) => HttpBillingApi());
+
+final billingApiProvider = Provider<BillingApi>(
+  (ref) => kFakeBilling ? FakeBillingApi() : HttpBillingApi(),
+);
 final passCredentialStoreProvider =
     Provider<PassCredentialStore>((ref) => KeychainPassCredentialStore());
 
