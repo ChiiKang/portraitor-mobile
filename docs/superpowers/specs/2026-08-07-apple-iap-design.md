@@ -179,19 +179,46 @@ Writing a `payments` row is not sufficient. Generation authorizes on a **session
 `payments.stripe_session_id` is the key the whole generation path reads: `src/Proxy/PackProgressTracker.php:98,129,160`, `src/Proxy/ChunkProgressTracker.php:32,59`, and `src/Proxy/PostProcessing.php:80,109,118`.
 An Apple purchase that writes a payment without one produces no portrait at all.
 
-**The `payments` row and its status already are the durable, single-use generation grant.**
-There is no separate grant table, and V1 must not create one.
+**An Apple consumable must never enter the Stripe PaymentIntent lifecycle.**
 
-Required:
+An earlier draft put an opaque token in `stripe_session_id` with `status = authorized`.
+That is wrong: `PostProcessing::capturePayment(array $config, string $paymentSessionId)` calls Stripe's `capturePaymentIntent`, so an Apple row would reach capture logic for a purchase Apple has already charged.
 
-- Generate an opaque, provider-neutral payment token at purchase time and store it in the existing `stripe_session_id` column.
-- Expose it through the API as `payment_session_id`. The physical column keeps its Stripe-era name for V1; renaming it touches many working web paths without adding correctness, so do that as an additive rename later.
-- Add `pass_id` to `payments` so a row is associated with its Pass.
-- Start an Apple consumable at `authorized` and transition it through the existing machine. The real enum is `('pending','authorized','delivering','completed','failed','refunded','canceled')`, defined by migration 022. There is no `succeeded` state.
-- Make post-processing provider-aware so Apple rows flow through it.
-- Let an authenticated Pass session rediscover unused Apple payment rows, which is how a paid portrait survives a crash after `completePurchase()` (section 7.1).
+**The mechanism to reuse already exists.**
+`SubscriptionGrantService` mints a `subgrant_*` token, and `SubscriptionGrantService.php:16` records that capture, cancel, and queue-payment-check are **skipped for `subgrant_*` ids**.
+That is exactly the provider-neutral execution path this needs, already built and already exercised by the Pass.
 
-The token is opaque and Portraitor-generated. It is **never** Apple's `transactionId`, which is a billing fact rather than an authorization capability.
+Two layers, each doing one thing:
+
+| Layer | Where | Lifetime |
+|---|---|---|
+| **Durable credit** - the thing paid for | `payments` row: `provider='apple'`, `status='completed'`, `pass_id`, `consumed_at NULL` | Permanent until consumed |
+| **Execution capability** - permission to run one generation | short-lived `subgrant_*` token linked to `payment_id` | One attempt |
+
+```
+Apple verifies purchase
+  -> durable payments row (provider=apple, status=completed, consumed_at NULL)
+  -> generation starts
+  -> mint subgrant_* linked to payment_id
+  -> existing proxy sees subgrant_* and skips every Stripe operation
+  -> success: consume the grant and stamp consumed_at
+  -> failure: release the grant, leave consumed_at NULL so the credit is reusable
+```
+
+Status is `completed`, not `authorized`: Apple charged at purchase time, so there is nothing to capture. The enum is `('pending','authorized','delivering','completed','failed','refunded','canceled')` from migration 022 and gains no new values.
+
+Required changes, deliberately minimal:
+
+- Add `pass_id` and a nullable `consumed_at` to `payments`. **No new table and no new state machine** - one nullable timestamp expresses "credit still available".
+- Extend the grant mechanism to accept `payment_id` as a source alongside subscriptions.
+- A payment-backed grant must **not** touch `passes.uses_remaining`; that quota belongs to the subscription.
+- On grant expiry or failure, restore the durable payment credit, never subscription quota.
+- On Apple refund, revoke an unused credit and any outstanding grant.
+- An authenticated Pass session can discover unconsumed Apple credits, which is how a paid portrait survives a crash after `completePurchase()` (7.1).
+
+Apple's `transactionId` never enters the generation pipeline and never reaches Stripe code.
+
+This is provider-neutral by construction: Google consumables later use the identical path.
 
 ### 4.4 Schema contradiction to resolve before implementation
 
@@ -230,26 +257,30 @@ Any disagreement or unknown combination fails closed.
 Defaulting to a new Pass is the client-side layer of the double-billing guard.
 No path may attach a second active funding source to an already-funded Pass.
 
-### Flow A0 - purchase preparation
+### Flow A0 - purchase preparation, only when it is needed
 
-`POST /api/apple/purchase/prepare.php` is authenticated and exists because the client currently has no way to obtain a `public_uuid`.
-Mobile has no implementation of it, no public endpoint returns it, and the only runtime reference writes it internally.
+**First purchase, no Pass yet: no server call at all.**
+The client generates a UUID locally and sends it as `appAccountToken`.
+That value is a correlation hint; the server derives every billing fact from the verified JWS regardless, so a round trip to obtain it buys nothing.
 
-Contract:
+**Device already holds a Pass session:** call `POST /api/apple/purchase/prepare.php` with Bearer auth.
+It returns that Pass's `public_uuid` and runs a **product-aware** preflight.
 
-- Returns the existing Pass's `public_uuid` when targeting an authenticated Pass.
-- Rejects an already-funded Pass **before** StoreKit opens, which is cheaper than unwinding a completed Apple charge.
-- Generates a UUID for a new Pass. It does **not** reserve one, and no Pass row is created here.
-- Returns a UUID only. It never returns billing authority, entitlement, or a Pass code.
+| Product | Preflight rule |
+|---|---|
+| Consumable | **May** attach to an existing Pass, even one with an active subscription |
+| Subscription | Reject if that Pass already has an active funding source |
 
-**Consequence for notification-first events, accepted deliberately.**
-Because no Pass row exists until client verification, an Apple notification arriving first has nothing to correlate to when the purchase is for a new Pass.
+The distinction matters: an earlier draft rejected any purchase against a funded Pass, which would have blocked a Pass subscriber from ever buying a one-off portrait.
 
-- **Existing Pass:** correlate immediately through `public_uuid`.
-- **New Pass:** the event stays retryable until client verification mints the Pass. `providerSubjectRef` then correlates it on retry.
+**Pass reuse is the default for consumables.**
+An earlier draft generated a fresh UUID per purchase and minted a Pass from it, so buying three portraits produced three Passes and three codes.
+Correct behaviour: reuse the existing Pass when one is available; mint a new one only when none exists, after verified purchase.
 
-A reservation table would close this a few seconds earlier and is not worth its own schema, lifecycle, and cleanup path.
-If the client never calls verify at all, the event exhausts its retries and dead-letters, which is the correct outcome for a purchase that was never claimed.
+**Notification-first correlation, accepted as-is.**
+`providerSubjectRef` (the verified `appAccountToken`) resolves as `appAccountToken -> passes.public_uuid -> EntitlementSubject('pass', pass_id)`, passed to `EntitlementService::apply(..., subjectHint)`.
+When the Pass does not exist yet, the event stays retryable until client verification mints it.
+No reservation table: it would close a few seconds' gap at the cost of its own schema, lifecycle, and cleanup.
 
 ### Flow B - Pass subscription
 
@@ -317,15 +348,24 @@ Notification order is never trusted.
 Current status comes from Get All Subscription Statuses.
 This generalizes the rule established by commit `f07edfa` for Stripe.
 
-**Refill must become provider-neutral.**
+**Refill must become provider-neutral, with one rule and no new field.**
 `ProviderEventProcessor.php:49` currently reads:
 
 ```php
 $paidPeriod = $event->eventType === 'invoice.payment_succeeded' && $event->refillRef !== null;
 ```
 
-`VerifiedProviderEvent` gains an explicit `bool $paidPeriod` fact that each adapter sets from verified provider data, and the processor consumes that instead of matching a Stripe event name.
-An explicit DTO fact is preferred over inferring from `refillRef !== null`, because the latter makes correctness depend on an unstated adapter convention.
+Replace the Stripe event-name comparison with `$event->refillRef !== null`, under a single stated invariant:
+
+> A non-null `refillRef` means the adapter has verified an eligible paid period.
+
+- Stripe supplies the paid invoice ID.
+- Apple supplies the latest paid `transactionId`.
+- Non-paid events supply null.
+- `EntitlementService` compares against `last_refill_ref`, so duplicate events and reads stay harmless.
+
+An earlier draft added a `bool $paidPeriod` alongside this. It is dropped: a field whose only job is to restate what another field already implies is exactly the kind of state worth not having.
+The convention is enforced in `billing-provider-contract.test.php` rather than by carrying a second flag.
 
 Refill rules, unchanged in intent:
 
@@ -347,6 +387,8 @@ A refund carries a `providerTransactionRef` and a null `refillRef`. Reading `ref
 ### Flow C1 - how events actually get processed
 
 The design depends on the drain worker, and **nothing currently schedules it.** There are no scheduled workflows in the repo; the only non-test caller of `internal/provider-events/drain.php` is `public/api/stripe-webhook.php`, which drains opportunistically when a webhook arrives.
+
+**The drain endpoint is hardcoded to Stripe.** `drain.php:42` rejects anything else: `if ($provider !== 'stripe' || ...) throw`. It must accept any provider registered in `ProviderRegistry` while still validating environment, or Apple events sit in the inbox forever and renewals silently never refill.
 
 V1 uses two mechanisms, neither of which is new infrastructure:
 
@@ -407,6 +449,22 @@ Hidden for Apple-funded passes: cancel, change payment method, and **refill**.
 An Apple subscription cannot be charged off-cycle, so an Apple-funded pool refills only on Apple's renewal.
 This omission should be recorded against the management-asymmetry table in `iap-stripe-accounts-and-subscriptions.md` section 7b.11, which currently lists cancel, resume, and change-card but not refill.
 
+### Flow F - Apple-funded Pass on web
+
+The Pass is cross-platform, so an Apple-funded Pass appears on the web account page and the web must handle it correctly.
+This is a third surface, and it is required rather than optional: the whole point of the centralized Pass is that it works everywhere.
+
+Scope is deliberately minimal:
+
+- Show status, renewal date, quota, and "Billing managed by Apple".
+- Hide Stripe refill, cancel, resume, and change-card controls.
+- **Reject those operations server-side** for an Apple-funded source, returning a clear error.
+- Optionally link to Apple's subscription management page.
+
+Hiding buttons is not sufficient. The endpoints stay reachable, and a Stripe cancel against an Apple-funded Pass would either fail obscurely or corrupt local state while Apple keeps billing.
+
+No new web UI beyond a status panel and a link.
+
 ---
 
 ## 6. Identity and Pass delivery
@@ -428,6 +486,19 @@ Apple requires `appAccountToken` to be a real UUID, which is why `public_uuid` i
 Google auth and magic-link auth are deprecated in favor of Pass-based access.
 Mobile uses `CurrentEntitlementService::forPass()` exclusively; Apple entitlement rows always carry `pass_id`, never `user_id`.
 Removing the deprecated auth endpoints is out of scope here: the `user_id` subject path is woven through `EntitlementService`, `CurrentEntitlementService`, `EntitlementAccessResolver`, and the `chk_entitlement_subject` constraint, and removing it is a schema migration on live billing.
+
+### 6.1a Mobile authentication
+
+Mobile sends `Authorization: Bearer <session_token>`, holding the token in `flutter_secure_storage`.
+
+The backend accepts both, through **one shared extractor** rather than per-endpoint handling:
+
+- `Authorization: Bearer` for native clients
+- The existing `portraitor_session` cookie for web
+
+Used by `entitlements/current.php`, Apple purchase preparation, unconsumed-credit discovery, and any Pass management endpoint mobile calls.
+
+A native cookie jar imitating a browser is explicitly rejected. It would make a mobile client pretend to be a web one to satisfy a transport detail, and every future endpoint would inherit the pretence.
 
 ### 6.2 The lost-response problem
 
@@ -625,9 +696,12 @@ The paid mobile flow has not shipped, so legacy `pending_job.paymentSessionId` r
 | `src/Billing/Dto/VerifiedPurchaseTransaction.php` | **New.** Provider-neutral DTO for a client-submitted purchase |
 | `src/Billing/ApplePurchaseService.php` | **New.** Atomic client-transaction orchestration (9.2) |
 | `src/Billing/Adapter/AppleProviderAdapter.php` | **New.** Implements the existing four-method interface for notifications and state |
-| `src/Billing/Dto/VerifiedProviderEvent.php` | **Changed.** Adds `bool $paidPeriod`, `?string $providerSubjectRef`, and `?string $providerTransactionRef` |
-| `payments` schema | **Changed.** Adds `pass_id`; drops `uq_payment_provider_client` (4.4); stores the opaque token in `stripe_session_id` (4.3) |
-| `src/Billing/ProviderEventProcessor.php:49` | **Changed.** Consumes `$event->paidPeriod` instead of matching `invoice.payment_succeeded` |
+| `src/Billing/Dto/VerifiedProviderEvent.php` | **Changed.** Adds `?string $providerSubjectRef` and `?string $providerTransactionRef`. No `paidPeriod`. |
+| `public/api/internal/provider-events/drain.php:42` | **Changed.** Accepts any provider registered in `ProviderRegistry`, still validating environment. It is hardcoded to `stripe` today, so Apple events would never drain. |
+| Session auth helper | **New.** One shared extractor accepting `Authorization: Bearer` for native and the `portraitor_session` cookie for web |
+| `payments` schema | **Changed.** Adds `pass_id` and nullable `consumed_at`; drops `uq_payment_provider_client` (4.4). Apple rows never touch `stripe_session_id` (4.3). |
+| Grant mechanism | **Changed.** Accepts `payment_id` as a source beside subscriptions; a payment-backed grant never touches `passes.uses_remaining` |
+| `src/Billing/ProviderEventProcessor.php:49` | **Changed.** Gates refill on `$event->refillRef !== null` instead of matching `invoice.payment_succeeded` |
 | Consumable refund handler | **New.** Payment-event path that does not pass through `EntitlementService` |
 | `src/Services/PassService.php:69` | **Changed.** `mint()` accepts `public_uuid` and includes it in the INSERT |
 | `public/api/apple/purchase/prepare.php` | **New.** Authenticated `public_uuid` preparation |
@@ -746,7 +820,8 @@ Apple's official library already supplies these components, so PHP holds no cryp
 | `apple-product-mapping.test.php` (new) | Every Pass SKU maps to one canonical `product_key`, keeping `uq_provider_account_product` effective |
 | `apple-idempotency.test.php` (new) | Replayed verify returns `pass_code_delivered: false` plus session; duplicate notification rejected; a paid period refills exactly once; `DID_FAIL_TO_RENEW` never refills |
 | `apple-refund-split.test.php` (new) | Consumable refund touches `payments` and the grant only and cannot revoke an unrelated Pass; subscription refund revokes the `entitlement_source` |
-| `billing-provider-neutrality.test.php` (new) | `paidPeriod` drives refill for both Stripe and Apple; no Stripe event name appears in `ProviderEventProcessor` |
+| `billing-provider-neutrality.test.php` (new) | `refillRef !== null` drives refill for both Stripe and Apple; no Stripe event name appears in `ProviderEventProcessor`; the drain endpoint accepts any registered provider |
+| `apple-consumable-grant.test.php` (new) | An Apple credit mints a `subgrant_*`, no Stripe operation runs, success stamps `consumed_at`, failure leaves the credit reusable, and `passes.uses_remaining` is never touched |
 | `apple-generation-path.test.php` (new) | An Apple consumable yields a usable payment session token, drives generation to completion, and a failed generation leaves the credit reusable |
 | `apple-repeat-purchase.test.php` (new) | A second consumable purchase against the same Pass succeeds - the regression 4.4 exists to prevent |
 
