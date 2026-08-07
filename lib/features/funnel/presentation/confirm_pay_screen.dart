@@ -248,7 +248,7 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
       extra: {
         ...payload,
         'conversationId': paymentState.clientConversationRef ?? '',
-        'paymentIntentId': paymentState.paymentIntentId ?? '',
+        'paymentReference': paymentState.paymentIntentId ?? '',
       },
     );
   }

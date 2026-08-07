@@ -130,7 +130,9 @@ void main() {
       expect(source, contains("'normalizedText': _job.inputText"));
       expect(source, contains("'targetName': _job.targetName"));
       expect(source, contains("'conversationId': _job.id"));
-      expect(source, contains("'paymentIntentId': _job.paymentSessionId"));
+      // Provider-neutral: the route carries an opaque Portraitor reference,
+      // never a provider's own transaction id.
+      expect(source, contains("'paymentReference': _job.paymentSessionId"));
       expect(source, contains("'dateRange': _job.dateRange"));
       expect(source, contains("'resume': true"),
           reason: 'processing screen must know it is a resume so it can call '

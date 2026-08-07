@@ -132,7 +132,7 @@ final router = GoRouter(
           normalizedText: extra['normalizedText'] as String? ?? '',
           targetName: extra['targetName'] as String? ?? '',
           conversationId: extra['conversationId'] as String? ?? '',
-          paymentIntentId: extra['paymentIntentId'] as String? ?? '',
+          paymentReference: extra['paymentReference'] as String? ?? '',
           dateRange: extra['dateRange'] as String?,
           isResume: extra['resume'] as bool? ?? false,
         );

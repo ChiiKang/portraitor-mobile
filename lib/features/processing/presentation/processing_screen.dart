@@ -16,7 +16,9 @@ class ProcessingScreen extends ConsumerStatefulWidget {
   final String normalizedText;
   final String targetName;
   final String conversationId;
-  final String paymentIntentId;
+  /// Opaque, Portraitor-generated. Authorizes generation. Never a provider's
+  /// own transaction id.
+  final String paymentReference;
   final String? dateRange;
 
   /// When true, the screen looks up the saved [PendingJob] by
@@ -30,7 +32,7 @@ class ProcessingScreen extends ConsumerStatefulWidget {
     required this.normalizedText,
     required this.targetName,
     required this.conversationId,
-    required this.paymentIntentId,
+    required this.paymentReference,
     this.dateRange,
     this.isResume = false,
   });
@@ -63,7 +65,7 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
           // Fall through to a fresh start using the same payment session.
           ref.read(processingProvider.notifier).startProcessing(
                 conversationId: widget.conversationId,
-                paymentSessionId: widget.paymentIntentId,
+                paymentSessionId: widget.paymentReference,
                 normalizedText: widget.normalizedText,
                 targetName: widget.targetName,
                 dateRange: widget.dateRange,
@@ -77,7 +79,7 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
           .read(processingProvider.notifier)
           .startProcessing(
             conversationId: widget.conversationId,
-            paymentSessionId: widget.paymentIntentId,
+            paymentSessionId: widget.paymentReference,
             normalizedText: widget.normalizedText,
             targetName: widget.targetName,
             dateRange: widget.dateRange,

@@ -64,7 +64,7 @@ class PendingJobResumeSheetState
         'normalizedText': _job.inputText,
         'targetName': _job.targetName ?? '',
         'conversationId': _job.id,
-        'paymentIntentId': _job.paymentSessionId,
+        'paymentReference': _job.paymentSessionId,
         'dateRange': _job.dateRange,
         'resume': true,
       },
