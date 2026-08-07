@@ -33,7 +33,7 @@ The commission cost is accepted in exchange for compliance.
 | Client library | `in_app_purchase` + `in_app_purchase_storekit` (direct dependency, pinned >= 0.4.11) |
 | Native code | One `MethodChannel` for `showManageSubscriptions(in:)` only |
 | Pass-code rotation | Cut from V1 - no safe authorization model exists yet (6.4) |
-| Server verification | Own PHP adapter plus Apple's official Node server library, no RevenueCat |
+| Server verification | Own PHP adapter, pure-PHP JWS verification via openssl, no RevenueCat, no Node |
 | Identity | Anonymous Pass, no Portraitor accounts required |
 | Pass quota | Resets each billing period, no rollover |
 | Entitlement authority | `entitlement_sources` via a new `AppleProviderAdapter` |
@@ -765,7 +765,7 @@ The paid mobile flow has not shipped, so legacy `pending_job.paymentSessionId` r
 | `public/api/apple/purchase/prepare.php` | **New.** Bearer-authenticated. Returns an existing Pass's `public_uuid` and rejects a second funding source. Pass subscription only; consumables never reach it. |
 | `public/api/apple/purchase/verify.php` | **New.** Client posts signed JWS; returns Pass credential and session |
 | `public/api/apple/notifications.php` | **New.** ASSN v2 webhook |
-| Node JWS verifier | **New.** Apple's official server library behind `proc_open` |
+| `src/Billing/Apple/AppleJwsVerifier.php` | **New.** Pure-PHP x5c chain + ES256 verification against a pinned Apple root |
 | `ProductMapper` config | **Changed.** Apple product IDs mapped to canonical `product_key` values |
 
 ### 9.1a Selecting current subscription state
@@ -800,48 +800,44 @@ This exists because no current component spans those steps.
 
 ### 9.3 JWS verification
 
-Verifying Apple's signed payloads requires walking an x5c certificate chain to Apple's root CA.
-`composer.json` contains no JWT or JOSE library (PHP 8.2, PHPMailer and TCPDF only), and Apple's official App Store Server Library ships for Java, Python, Node, and Swift but not PHP.
+Verifying Apple's signed payloads means walking the `x5c` certificate chain in the JWS header to Apple's root CA, then verifying the ES256 signature with the leaf certificate's public key.
 
-Hand-rolling chain verification in the money path is the wrong risk.
-The adapter shells out to Apple's official Node library via `proc_open`, following the precedent in `src/Services/PortraitPdfService.php`.
+**This is implemented in pure PHP. The Node approach is abandoned.**
 
-Hardening requirements, all mandatory:
+An earlier draft shelled out to Apple's official Node library, citing `src/Services/PortraitPdfService.php` as precedent. That precedent does not exist:
 
-- Fixed absolute executable path, never resolved from `PATH`
-- JWS passed over stdin, never as an argument
-- No shell interpolation anywhere in the invocation
-- Explicit timeout and output-size limit
-- Pinned Apple root certificates
-- Production `appAppleId` supplied explicitly
-- Online certificate revocation checking enabled
-- Raw JWS never written to logs
+- `PortraitPdfService::generate()` lines 72-75 use the PHP/TCPDF renderer for **all** environments, with the comment *"Hostinger cannot reliably execute the Node/pdfmake generator from PHP."*
+- `runGenerator()` and `canUseNodeGenerator()` are dead code. Nothing in production shells to Node.
+- `node_modules/pdfmake/build/` is listed in `DEPLOY_PATHS` but is gitignored and there is no `npm ci` in `deploy-v3.yml`, so it silently deploys nothing.
+- `deploy-v3.yml` has no `setup-node` step at all.
 
-#### Deployment packaging is the real constraint
+The precedent was abandoned code, abandoned because it does not work on this host. Building the money path on it would have shipped a verifier that cannot execute.
 
-Apple's Node library requires Node 16 or later; Node 20 is the sensible target.
-The GitHub workflow pins `node-version: '20'` but that describes the Actions runner, not Hostinger.
+**PHP has the primitives.** No Composer dependency is required:
 
-The production Node version is answerable at runtime: `public/api/pdf-diagnostics.php:158` already runs `which node` and `node -v` behind protection.
+| Step | Function |
+|---|---|
+| Parse the `x5c` chain from the JWS header | `openssl_x509_read` on each base64 DER entry |
+| Verify each certificate against its issuer, up to Apple's pinned root | `openssl_x509_verify` (PHP 8.0+) |
+| Extract the leaf public key | `openssl_pkey_get_public` |
+| Verify the ES256 signature over `header.payload` | `openssl_verify` with `OPENSSL_ALGO_SHA256` |
 
-The harder problem is that the deployed tree will not contain the library at all.
-`deploy/ftp-deploy.py` excludes both `node_modules` and `tools` in `EXCLUDE_PATTERNS`, and re-admits only two paths through `INCLUDE_OVERRIDES`:
+Mandatory requirements:
 
-```python
-INCLUDE_OVERRIDES = [
-    "tools/pdf/",
-    "node_modules/pdfmake/build/",
-]
-```
+- **Pin Apple's root CA** in the repo and verify the chain terminates at it. A chain that validates against the system trust store is not sufficient.
+- Check certificate validity dates and the expected leaf subject.
+- Convert the JWS signature from raw `r||s` to DER before `openssl_verify`, and test that conversion against known ES256 vectors. The inverse conversion was written wrongly in an earlier draft and no test would have caught it.
+- Reject on any failure. Never fall back to decoding the payload unverified.
+- Verify `bundleId` and `environment` against configuration.
+- Never write a raw JWS to a log.
 
-So `import { SignedDataVerifier } from '@apple/app-store-server-library'` would fail on the server even with a correct Node version.
+**Nested payloads are separate verifications.** `data.signedTransactionInfo` and `data.signedRenewalInfo` are themselves JWS strings, so a notification is three passes: envelope, transaction, renewal info.
 
-Required approach:
+**The App Store Server API also needs ES256 signing** for its In-App Purchase key JWT (Issuer ID, Key ID, `.p8`). Same primitives: `openssl_sign` with `OPENSSL_ALGO_SHA256`, then DER-to-JOSE for the JWT signature. Same requirement to test the conversion against known vectors.
 
-1. Bundle the Apple verifier into a single deployable `.cjs` file during CI, targeting the confirmed Hostinger Node version.
-2. Deploy it under `tools/apple/`, and **add `tools/apple/` to `INCLUDE_OVERRIDES`**, mirroring the existing `tools/pdf/` entry. Without that line the directory is excluded by the broad `tools` pattern.
-3. Do not upload `node_modules`.
-4. Add a staging smoke test that invokes the bundled verifier through PHP, in the same spirit as the existing PDF smoke test.
+This is the highest-risk component in the backend: cryptographic verification in a money path, with no library, where a subtle error means accepting forged purchases. It deserves adversarial tests - tampered payloads, wrong chain, expired certificates, swapped signatures - not just a happy-path fixture.
+
+**Nothing about Apple deploys under `tools/`.** Only `public/` has its prefix stripped on deploy, so a `tools/apple/` directory would land at `public_html/tools/apple/`, inside the web root, with no `.htaccess` denying it. Verifier code and key material must not be web-reachable.
 
 ### 9.4 Unchanged
 
@@ -856,12 +852,8 @@ Four products, one subscription group, Family Sharing disabled, and ASSN v2 URLs
 Server authentication uses an **In-App Purchase key**, not a generic App Store Connect API key.
 It comprises an Issuer ID, a Key ID, and a downloaded `.p8` private key.
 
-**The bundled Node library handles the App Store Server API too, not only verification.**
-It performs notification verification, transaction verification, renewal-info verification, **and** App Store Server API JWT signing and requests.
-
-Do not hand-write ES256 JWT signing or DER-to-JOSE conversion in PHP.
-An earlier draft did, and the DER conversion was wrong in a way no test would have caught, because the failure surfaces only as a rejected Apple request.
-Apple's official library already supplies these components, so PHP holds no cryptographic code at all.
+The same key signs the App Store Server API JWT, using `openssl_sign` (section 9.3).
+The DER-to-JOSE conversion it needs must be tested against known ES256 vectors: an earlier draft got it wrong in a way that surfaces only as a rejected Apple request, which no unit test would have caught.
 
 ---
 
@@ -924,7 +916,7 @@ Production delivery is only provable in production.
 
 | Prerequisite | Gates | Does not gate |
 |---|---|---|
-| Bundled Node verifier deployable to Hostinger | Any server-side JWS verification, staging or production | Client work, fixture-based backend unit tests |
+| Apple root CA pinned and chain verification tested | Any server-side JWS verification | Client work, fixture-based tests using a test root |
 | Apple In-App Purchase key, app record, products, sandbox accounts, ASSN URLs | Real sandbox transactions, real ASSN delivery, TestFlight end-to-end | Local `.storekit` testing, fixture-based backend tests |
 | `billing_entitlements_mode` = `central` | **Production release only** | Writing code, unit tests, sandbox testing |
 | Price points | App Store Connect completion, launch | Implementation |
@@ -940,7 +932,7 @@ A Hostinger environment override could still set it, so runtime confirmation is 
 
 ### 11.2 Implementation order
 
-1. Confirm the Hostinger Node version via `pdf-diagnostics.php` and prove the bundled verifier deploys and runs.
+1. Build and adversarially test the pure-PHP JWS verifier against Apple's published vectors and tampered inputs. No Node, no deploy-pipeline change.
 2. Fix the backend purchase and event contracts: `VerifiedPurchaseTransaction`, `ApplePurchaseService`, provider-neutral refill eligibility, event subject correlation, consumable refund routing.
 3. Implement `AppleProviderAdapter` and its test suites.
 4. In parallel with 2 and 3, start mobile scaffolding against a local `.storekit` configuration.
@@ -992,5 +984,5 @@ Recorded so they are not rediscovered.
 - Apple, [showManageSubscriptions(in:)](https://developer.apple.com/documentation/storekit/appstore/showmanagesubscriptions(in:))
 - Apple, [responding to App Store Server Notifications](https://developer.apple.com/documentation/appstoreservernotifications/responding-to-app-store-server-notifications)
 - Apple, [Get All Subscription Statuses](https://developer.apple.com/documentation/appstoreserverapi/get-all-subscription-statuses)
-- Apple, [app-store-server-library](https://github.com/apple/app-store-server-library-node)
+- Apple, [JWS verification and the x5c chain](https://developer.apple.com/documentation/appstoreserverapi/jwsdecodedheader)
 - App Store Review Guidelines 3.1.1 and 3.1.3(b)
