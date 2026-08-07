@@ -143,15 +143,32 @@ class StoreKitIapService implements IapService {
 
   @override
   Future<void> complete(IapTransaction transaction) async {
+    // Prefer an id we already hold.
+    final storeId = transaction.storeTransactionId;
+    if (storeId != null) {
+      await SK2Transaction.finish(storeId);
+      return;
+    }
+
     final details = transaction.purchaseDetails;
-    if (details != null) {
+    if (details != null && details.purchaseID != null) {
       await _plugin.completePurchase(details);
       return;
     }
 
-    final id = transaction.storeTransactionId;
-    if (id != null) {
-      await SK2Transaction.finish(id);
+    // completePurchase does `int.parse(purchase.purchaseID!)` on StoreKit 2,
+    // and convertToDetails sets purchaseID to null whenever the native
+    // transaction id is not > 0 - which is what StoreKit Test transactions
+    // return. Calling it would throw a null-check error, so finish the
+    // transaction directly instead.
+    final pending = await SK2Transaction.unfinishedTransactions();
+    for (final t in pending) {
+      if (t.productId != transaction.productId) continue;
+      final id = int.tryParse(t.id);
+      if (id != null) {
+        await SK2Transaction.finish(id);
+        return;
+      }
     }
   }
 

@@ -87,6 +87,25 @@ void main() {
       expect(iap.finished, contains(_youSku));
     });
 
+    test('a purchase that verifies but cannot be finished still succeeds',
+        () async {
+      final iap = _UnfinishableIapService();
+      await iap.loadProducts({_youSku});
+      final store = InMemoryPassCredentialStore();
+      final notifier = buildNotifier(iap: iap, store: store);
+      await notifier.loadPrices();
+
+      final outcome = await notifier.buy(FunnelTier.you);
+
+      expect(
+        outcome,
+        isA<PurchaseVerified>(),
+        reason: 'the user paid and the server recorded it; failing to finish '
+            'the StoreKit transaction only means it replays',
+      );
+      expect(await store.readPassCode(), isNotNull);
+    });
+
     test('a failed verification leaves the transaction unfinished', () async {
       final iap = buildIap();
       final api = FakeBillingApi()..rejectVerification = true;
@@ -173,4 +192,16 @@ void main() {
       expect(iap.pending, isEmpty);
     });
   });
+}
+
+/// Finishing always throws, mirroring the StoreKit 2 plugin bug where
+/// completePurchase does int.parse(purchaseID!) and purchaseID is null.
+class _UnfinishableIapService extends FakeIapService {
+  _UnfinishableIapService()
+      : super(products: const {_youSku: r'HK$78.00', _passSku: r'HK$388.00'});
+
+  @override
+  Future<void> complete(IapTransaction transaction) async {
+    throw TypeError();
+  }
 }

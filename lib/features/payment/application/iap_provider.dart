@@ -180,7 +180,17 @@ class IapNotifier extends StateNotifier<IapState> {
       await _store.writeSessionToken(verified.sessionToken);
 
       // Durable everywhere it matters. Only now may StoreKit forget it.
-      await _iap.complete(txn);
+      //
+      // Failing to finish is not failing to buy: the purchase is verified and
+      // the credential is stored, so the user has what they paid for. Leaving
+      // it unfinished only means StoreKit replays it, which recovery absorbs
+      // idempotently. Treating this as a purchase failure would throw away a
+      // completed sale.
+      try {
+        await _iap.complete(txn);
+      } catch (e) {
+        debugPrint('[IAP] purchase verified but finish failed, will replay: $e');
+      }
 
       state = state.copyWith(
         status: IapStatus.success,
