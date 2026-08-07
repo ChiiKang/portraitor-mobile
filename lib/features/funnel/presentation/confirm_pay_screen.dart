@@ -5,12 +5,18 @@ import 'package:intl/intl.dart';
 
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
+import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
+import 'package:portraitor_mobile/features/payment/application/payment_provider.dart';
+import 'package:portraitor_mobile/features/payment/domain/purchase_outcome.dart';
 import 'package:portraitor_mobile/features/payment/presentation/apple_iap_sheet.dart';
+import 'package:portraitor_mobile/features/payment/presentation/save_pass_screen.dart';
 import 'package:portraitor_mobile/shared/widgets/funnel_chrome.dart';
 
 /// Step 4/4 — Confirm & pay.
-/// You → Apple IAP sheet UI → legacy `/payment` bridge until StoreKit verifies.
-/// Pass Subscribe stays gated.
+/// Every one-off bundle → Apple IAP sheet → `/processing`. Apple IAP is the only
+/// purchase path; the Stripe web checkout at `/payment` is kept in the codebase
+/// but no longer reachable from the funnel. Pass Subscribe stays gated — see
+/// [kDemoIapPurchase].
 class ConfirmPayScreen extends ConsumerStatefulWidget {
   const ConfirmPayScreen({super.key});
 
@@ -39,7 +45,7 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
           showPass
               ? 'Subscribe — coming soon'
               : 'Pay ${draft.selectedTier.priceLabel}',
-      ctaEnabled: !showPass && draft.selectedTier.isEnabledInV1,
+      ctaEnabled: !showPass && draft.selectedTier.canPurchase,
       onCta: () => _onCta(context),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -115,32 +121,85 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
 
   Future<void> _onCta(BuildContext context) async {
     final draft = ref.read(funnelDraftProvider);
-    if (_passOpen || !draft.selectedTier.isEnabledInV1) {
+    final tier = draft.selectedTier;
+
+    if (!tier.canPurchase) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Pass needs StoreKit + quota API. Coming soon.'),
-        ),
+        const SnackBar(content: Text('The Pass needs a real StoreKit build.')),
       );
       return;
     }
 
-    await showAppleIapSheet(
-      context: context,
-      productTitle: 'You · one portrait',
-      priceLabel: draft.selectedTier.priceLabel,
-      isSubscription: false,
-      onConfirm: () => _bridgeToLegacyPayment(context),
-    );
+    if (kDemoIapPurchase) {
+      await showAppleIapSheet(
+        context: context,
+        productTitle: tier.iapProductTitle,
+        productKind: tier.iapProductKind,
+        priceLabel: tier.iapPriceLabel,
+        priceCaption: tier.iapPriceCaption,
+        isSubscription: !tier.isOneOff,
+        onConfirm: () => _completeIapPurchase(context),
+      );
+      return;
+    }
+
+    await _completeStoreKitPurchase(context, tier);
   }
 
-  void _bridgeToLegacyPayment(BuildContext context) {
+  /// Real StoreKit. Apple renders its own sheet, so there is none of ours to
+  /// show; the funnel goes straight to save-your-code and then processing.
+  Future<void> _completeStoreKitPurchase(
+    BuildContext context,
+    FunnelTier tier,
+  ) async {
+    final payload = _funnelPayload(context);
+    if (payload == null) return;
+
+    final outcome = await ref.read(iapProvider.notifier).buy(tier);
+    if (!context.mounted) return;
+
+    switch (outcome) {
+      case PurchaseVerified(:final passCode, :final paymentReference):
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => SavePassScreen(
+              passCode: passCode,
+              onContinue: () => Navigator.of(context).pop(),
+            ),
+          ),
+        );
+        if (!context.mounted) return;
+        context.pushReplacement(
+          '/processing',
+          extra: {...payload, 'paymentReference': paymentReference ?? ''},
+        );
+      case PurchaseCancelled():
+        break;
+      case PurchasePending():
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Waiting for approval. We will continue once it is approved.',
+            ),
+          ),
+        );
+      case PurchaseFailed(:final message):
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  /// Shared funnel payload for whichever post-purchase route is in use.
+  /// Returns null (after surfacing a snackbar) when the draft is incomplete.
+  Map<String, dynamic>? _funnelPayload(BuildContext context) {
     final draft = ref.read(funnelDraftProvider);
     final normalized = draft.normalized;
     if (normalized == null || draft.selectedNames.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Missing conversation or name.')),
       );
-      return;
+      return null;
     }
 
     String? dateRangeStr;
@@ -150,16 +209,57 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
           '${fmt.format(draft.rangeStart!)}..${fmt.format(draft.rangeEnd!)}';
     }
 
-    context.push(
-      '/payment',
+    return {
+      'normalizedText': normalized.text,
+      'targetName': draft.selectedNames.first,
+      'tokenEstimate': draft.tokenEstimate,
+      'conversationId': null,
+      'dateRange': dateRangeStr,
+    };
+  }
+
+  /// Apple IAP is the only purchase path. Face ID authorises the purchase, so
+  /// the funnel goes straight to `/processing` — matching the prototype's
+  /// `iap-confirm → go("processing", {replace: true})`. There is no second
+  /// review-and-pay step to confirm the same charge twice.
+  ///
+  /// StoreKit is not wired yet, so the receipt is provisioned locally the same
+  /// way the demo path does; swap `initiateDemo` for StoreKit verification when
+  /// the products go live.
+  Future<void> _completeIapPurchase(BuildContext context) async {
+    final payload = _funnelPayload(context);
+    if (payload == null) return;
+
+    final paymentNotifier = ref.read(paymentProvider.notifier);
+    final authorized = await paymentNotifier.initiateDemo();
+    if (!context.mounted) return;
+
+    if (!authorized) {
+      final error = ref.read(paymentProvider).error ?? 'Purchase failed';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
+
+    final paymentState = ref.read(paymentProvider);
+    context.pushReplacement(
+      '/processing',
       extra: {
-        'normalizedText': normalized.text,
-        'targetName': draft.selectedNames.first,
-        'tokenEstimate': draft.tokenEstimate,
-        'conversationId': null,
-        'dateRange': dateRangeStr,
+        ...payload,
+        'conversationId': paymentState.clientConversationRef ?? '',
+        'paymentIntentId': paymentState.paymentIntentId ?? '',
       },
     );
+  }
+
+  /// Retained for the Stripe web checkout path (`/payment` → `PaymentScreen`).
+  /// Unused while the funnel is Apple-IAP-only; do not delete.
+  // ignore: unused_element
+  void _bridgeToLegacyPayment(BuildContext context) {
+    final payload = _funnelPayload(context);
+    if (payload == null) return;
+    context.push('/payment', extra: payload);
   }
 
   String _fmt(DateTime d) => DateFormat('MMM yyyy').format(d);
