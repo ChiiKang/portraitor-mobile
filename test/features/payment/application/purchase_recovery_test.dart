@@ -37,14 +37,18 @@ void main() {
       );
     });
 
-    test('stores the credential recovered from a replay', () async {
+    test('stores the session recovered from a replayed one-off', () async {
       final iap = await iapWithUnfinishedPurchase();
       final store = InMemoryPassCredentialStore();
 
       await buildRecovery(iap: iap, store: store).runAtLaunch();
 
-      expect(await store.readPassCode(), isNotNull);
       expect(await store.readSessionToken(), isNotEmpty);
+      expect(
+        await store.readPassCode(),
+        isNull,
+        reason: 'a one-off bundle never mints a Pass',
+      );
     });
 
     test('restores subscription entitlements without prompting', () async {

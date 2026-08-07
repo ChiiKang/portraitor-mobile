@@ -35,26 +35,48 @@ void main() {
   });
 
   group('FakeBillingApi verify', () {
-    test('first verify reveals a Pass code and a payment reference', () async {
+    test('a one-off returns a payment reference and no Pass code', () async {
       final api = FakeBillingApi();
       final result = await api.verifyPurchase(
-        jws: 'signed', publicUuid: 'uuid-1', productId: 'sku',
+        jws: 'signed',
+        publicUuid: 'uuid-1',
+        productId: 'com.portraitor.portrait.you',
+      );
+
+      expect(result.paymentReference, isNotEmpty);
+      expect(result.sessionToken, isNotEmpty);
+      expect(
+        result.passCode,
+        isNull,
+        reason: 'a one-off bundle buys portraits of one conversation and '
+            'mints no Pass',
+      );
+      expect(result.passCodeDelivered, isFalse);
+    });
+
+    test('the subscription returns a Pass code and no payment reference',
+        () async {
+      final api = FakeBillingApi();
+      final result = await api.verifyPurchase(
+        jws: 'signed',
+        publicUuid: 'uuid-1',
+        productId: 'com.portraitor.pass.monthly',
       );
 
       expect(result.passCode, isNotNull);
       expect(result.passCodeDelivered, isTrue);
-      expect(result.sessionToken, isNotEmpty);
-      expect(result.paymentReference, isNotEmpty);
+      expect(result.paymentReference, isNull);
     });
 
     test('replayed verify reveals no code but still issues a session', () async {
       final api = FakeBillingApi();
+      const pass = 'com.portraitor.pass.monthly';
       await api.verifyPurchase(
-        jws: 'signed', publicUuid: 'uuid-1', productId: 'sku',
+        jws: 'signed', publicUuid: 'uuid-1', productId: pass,
       );
 
       final replay = await api.verifyPurchase(
-        jws: 'signed', publicUuid: 'uuid-1', productId: 'sku',
+        jws: 'signed', publicUuid: 'uuid-1', productId: pass,
       );
 
       expect(replay.passCode, isNull);

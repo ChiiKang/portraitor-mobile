@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:portraitor_mobile/core/api/api_service.dart';
+import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 
 /// The correlation UUID sent to StoreKit as `appAccountToken`.
 class PreparedPurchase {
@@ -167,12 +168,18 @@ class FakeBillingApi implements BillingApi {
       throw const PurchaseNotVerifiedException('Purchase could not be verified');
     }
     final first = _verified.add(jws);
+
+    // Mirrors the real contract: a one-off bundle buys portraits of one
+    // conversation and mints no Pass, so it returns a payment reference and no
+    // code. Only the subscription produces a Pass credential.
+    final isSubscription = productId == IapProductCatalog.passMonthly;
+
     return VerifiedPurchase(
       sessionToken: 'a' * 64,
-      productKey: 'portrait_you',
-      passCodeDelivered: first,
-      paymentReference: 'credit-$publicUuid',
-      passCode: first ? 'PASS-CODE-1' : null,
+      productKey: isSubscription ? 'pass_subscription' : 'portrait_you',
+      passCodeDelivered: isSubscription && first,
+      paymentReference: isSubscription ? null : 'credit-$publicUuid',
+      passCode: (isSubscription && first) ? 'PASS-CODE-1' : null,
     );
   }
 }

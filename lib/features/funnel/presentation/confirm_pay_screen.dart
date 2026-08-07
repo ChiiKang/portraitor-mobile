@@ -7,6 +7,7 @@ import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/payment_provider.dart';
+import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/domain/purchase_outcome.dart';
 import 'package:portraitor_mobile/features/payment/presentation/apple_iap_sheet.dart';
 import 'package:portraitor_mobile/features/payment/presentation/save_pass_screen.dart';
@@ -184,15 +185,20 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
 
     switch (outcome) {
       case PurchaseVerified(:final passCode, :final paymentReference):
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => SavePassScreen(
-              passCode: passCode,
-              onContinue: () => Navigator.of(context).pop(),
+        // A one-off bundle buys portraits of THIS conversation. It mints no
+        // Pass and there is no code to save, so it goes straight to
+        // generation. Only the subscription produces a Pass credential.
+        if (IapProductCatalog.isSubscription(tier)) {
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => SavePassScreen(
+                passCode: passCode,
+                onContinue: () => Navigator.of(context).pop(),
+              ),
             ),
-          ),
-        );
-        if (!context.mounted) return;
+          );
+          if (!context.mounted) return;
+        }
         context.pushReplacement(
           '/processing',
           extra: {...payload, 'paymentReference': paymentReference ?? ''},

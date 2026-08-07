@@ -35,9 +35,9 @@ class _OrderingStore extends InMemoryPassCredentialStore {
   bool? wroteBeforeComplete;
 
   @override
-  Future<void> writePassCode(String code) async {
+  Future<void> writeSessionToken(String token) async {
     wroteBeforeComplete = iap.finished.isEmpty;
-    return super.writePassCode(code);
+    return super.writeSessionToken(token);
   }
 }
 
@@ -55,7 +55,7 @@ void main() {
       expect(notifier.state.priceFor(FunnelTier.pass), r'HK$388.00');
     });
 
-    test('a successful purchase verifies and stores the credential', () async {
+    test('a one-off bundle mints no Pass and reveals no code', () async {
       final store = InMemoryPassCredentialStore();
       final notifier = buildNotifier(store: store);
       await notifier.loadPrices();
@@ -63,10 +63,36 @@ void main() {
       final outcome = await notifier.buy(FunnelTier.you);
 
       expect(outcome, isA<PurchaseVerified>());
-      expect((outcome as PurchaseVerified).paymentReference, isNotEmpty);
-      expect(await store.readPassCode(), 'PASS-CODE-1');
+      final verified = outcome as PurchaseVerified;
+      expect(verified.paymentReference, isNotEmpty);
+      expect(
+        verified.passCode,
+        isNull,
+        reason: 'a one-off buys portraits of one conversation; it does not '
+            'create a Pass, so there is no code to save',
+      );
+      expect(await store.readPassCode(), isNull);
       expect(await store.readSessionToken(), isNotEmpty);
       expect(notifier.state.status, IapStatus.success);
+    });
+
+    test('the subscription mints a Pass and reveals its code once', () async {
+      final store = InMemoryPassCredentialStore();
+      final notifier = buildNotifier(store: store);
+      await notifier.loadPrices();
+
+      final outcome = await notifier.buy(FunnelTier.pass);
+
+      expect(outcome, isA<PurchaseVerified>());
+      final verified = outcome as PurchaseVerified;
+      expect(verified.passCode, 'PASS-CODE-1');
+      expect(verified.passCodeDelivered, isTrue);
+      expect(
+        verified.paymentReference,
+        isNull,
+        reason: 'a subscription funds a Pass; it is not a one-off credit',
+      );
+      expect(await store.readPassCode(), 'PASS-CODE-1');
     });
 
     test('the credential is stored before the transaction is completed',
@@ -82,7 +108,7 @@ void main() {
         store.wroteBeforeComplete,
         isTrue,
         reason: 'completePurchase is irreversible: Apple will not replay a '
-            'finished transaction, so the code must be durable first',
+            'finished transaction, so the credential must be durable first',
       );
       expect(iap.finished, contains(_youSku));
     });
@@ -103,7 +129,7 @@ void main() {
         reason: 'the user paid and the server recorded it; failing to finish '
             'the StoreKit transaction only means it replays',
       );
-      expect(await store.readPassCode(), isNotNull);
+      expect(await store.readSessionToken(), isNotEmpty);
     });
 
     test('a failed verification leaves the transaction unfinished', () async {
