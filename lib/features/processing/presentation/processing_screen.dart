@@ -9,6 +9,7 @@ import 'package:portraitor_mobile/features/processing/application/processing_pro
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/shared/widgets/markdown_text.dart';
 import 'package:portraitor_mobile/shared/widgets/gradient_background.dart';
+import 'package:portraitor_mobile/shared/widgets/gradient_button.dart';
 import 'package:portraitor_mobile/shared/widgets/gradient_progress_bar.dart';
 import 'package:portraitor_mobile/shared/widgets/portraitor_orb.dart';
 
@@ -106,6 +107,23 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
     return m > 0 ? '~${m}m ${s}s remaining' : '~${s}s remaining';
   }
 
+
+  /// Plain-language cause, so the first thing the user reads is not a stack
+  /// trace. The raw error is still shown beneath for support.
+  String _friendlyFailure(String? error) {
+    final raw = error ?? '';
+    if (raw.contains('Payment not found') ||
+        raw.contains('Payment must be authorized')) {
+      return 'We could not confirm your payment for this conversation. '
+          'You have not been charged for a portrait we did not deliver.';
+    }
+    if (raw.contains('conversation reference')) {
+      return 'This purchase belongs to a different conversation.';
+    }
+    return 'Something went wrong before your portrait was generated. '
+        'If you were charged, it will be reversed.';
+  }
+
   @override
   Widget build(BuildContext context) {
     final processing = ref.watch(processingProvider);
@@ -116,8 +134,13 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
       }
     });
 
+    final failed = processing.status == ProcessingStatus.error;
+
     return PopScope(
-      canPop: false,
+      // Locked while work is genuinely in flight so a stray back gesture cannot
+      // orphan a paid run. Released on failure: there is nothing left to
+      // protect, and trapping someone on a dead screen is its own bug.
+      canPop: failed,
       child: Scaffold(
         body: GradientBackground(
           child: SafeArea(
@@ -126,59 +149,85 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
               child: Column(
                 children: [
                   const Spacer(flex: 2),
-                  const _PulseRing(child: PortraitorOrb(size: 110)),
+                  // The pulse says "working". Leaving it running after a
+                  // failure is the screen telling the user something untrue.
+                  failed
+                      ? const PortraitorOrb(size: 110)
+                      : const _PulseRing(child: PortraitorOrb(size: 110)),
                   const SizedBox(height: PortraitorTokens.space32),
                   Text(
-                    processing.statusMessage.isNotEmpty
-                        ? processing.statusMessage
-                        : 'Generating portrait...',
+                    failed
+                        ? 'We could not finish this portrait'
+                        : (processing.statusMessage.isNotEmpty
+                            ? processing.statusMessage
+                            : 'Generating portrait...'),
                     style: PortraitorTokens.titleLg,
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: PortraitorTokens.space8),
-                  Text(
-                    _formatElapsed(_elapsedSeconds),
-                    style: PortraitorTokens.bodyMd.copyWith(
-                      color: PortraitorTokens.inkMuted,
-                    ),
-                  ),
-                  if (processing.estimatedSecondsRemaining > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        _formatEta(processing.estimatedSecondsRemaining),
-                        style: PortraitorTokens.bodySm.copyWith(
-                          color: PortraitorTokens.inkDim,
-                        ),
+                  if (!failed) ...[
+                    Text(
+                      _formatElapsed(_elapsedSeconds),
+                      style: PortraitorTokens.bodyMd.copyWith(
+                        color: PortraitorTokens.inkMuted,
                       ),
                     ),
-                  const SizedBox(height: PortraitorTokens.space32),
-                  _ProgressSection(
-                    chunksCompleted: processing.chunksCompleted,
-                    chunksTotal: processing.chunksTotal,
-                    percentage: processing.percentage,
-                  ),
-                  const SizedBox(height: PortraitorTokens.space24),
-                  Expanded(
-                    flex: 3,
-                    child: ThinkingPanel(
-                      text: processing.thinkingText,
-                      phaseLabel: processing.thinkingPhaseLabel,
-                    ),
-                  ),
-                  const SizedBox(height: PortraitorTokens.space16),
-                  const ProcessingEmailNotice(),
-                  if (processing.status == ProcessingStatus.error)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 16),
-                      child: Text(
-                        processing.error ?? 'An error occurred',
-                        style: PortraitorTokens.bodySm.copyWith(
-                          color: PortraitorTokens.error,
+                    if (processing.estimatedSecondsRemaining > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          _formatEta(processing.estimatedSecondsRemaining),
+                          style: PortraitorTokens.bodySm.copyWith(
+                            color: PortraitorTokens.inkDim,
+                          ),
                         ),
-                        textAlign: TextAlign.center,
+                      ),
+                    const SizedBox(height: PortraitorTokens.space32),
+                    _ProgressSection(
+                      chunksCompleted: processing.chunksCompleted,
+                      chunksTotal: processing.chunksTotal,
+                      percentage: processing.percentage,
+                    ),
+                    const SizedBox(height: PortraitorTokens.space24),
+                    Expanded(
+                      flex: 3,
+                      child: ThinkingPanel(
+                        text: processing.thinkingText,
+                        phaseLabel: processing.thinkingPhaseLabel,
                       ),
                     ),
+                    const SizedBox(height: PortraitorTokens.space16),
+                    // Only while the run is alive. Promising delivery for a run
+                    // that has already failed is the screen lying to the user,
+                    // and they would wait for an email that is never sent.
+                    const ProcessingEmailNotice(),
+                  ],
+                  if (failed) ...[
+                    const Spacer(),
+                    Text(
+                      _friendlyFailure(processing.error),
+                      style: PortraitorTokens.bodyMd.copyWith(
+                        color: PortraitorTokens.inkMuted,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: PortraitorTokens.space24),
+                    GradientButton(
+                      onPressed: () => context.go('/'),
+                      child: const Text('Back to start'),
+                    ),
+                    const SizedBox(height: PortraitorTokens.space12),
+                    // The raw message stays, small and last: support needs it,
+                    // and hiding it entirely would make failures unreportable.
+                    Text(
+                      processing.error ?? 'An error occurred',
+                      style: PortraitorTokens.bodySm.copyWith(
+                        color: PortraitorTokens.inkDim,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const Spacer(),
+                  ],
                   const SizedBox(height: PortraitorTokens.space24),
                 ],
               ),
