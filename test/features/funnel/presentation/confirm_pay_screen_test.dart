@@ -69,22 +69,37 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('Pay \$20 on the partner bundle opens the Apple IAP sheet', (
+  // Prices are read from the tier rather than written out. Price points are
+  // still undecided and the App Store is authoritative once they are, so a
+  // literal here pins a number that is expected to move: it broke three tests
+  // when the fallbacks were realigned to the web tiers in 7ec33b6. What this
+  // suite is actually for is that the CTA and the sheet show the SELECTED
+  // tier's price, which is what these read.
+  final partnerPrice = FunnelTier.partner.priceLabel;
+  final familyPrice = FunnelTier.family.priceLabel;
+
+  testWidgets('the pay CTA on the partner bundle opens the Apple IAP sheet', (
     tester,
   ) async {
     await pumpConfirm(tester, FunnelTier.partner);
 
-    expect(find.text(r'Pay $20'), findsOneWidget);
+    expect(find.text('Pay $partnerPrice'), findsOneWidget);
 
-    await tester.tap(find.text(r'Pay $20'));
+    await tester.tap(find.text('Pay $partnerPrice'));
     await tester.pumpAndSettle();
 
     // The App Store sheet, with this bundle's product copy.
     expect(find.text('App Store'), findsOneWidget);
     expect(find.text('Portraitor · You + a partner'), findsOneWidget);
-    expect(find.text(r'$20.00'), findsOneWidget);
+    expect(find.text(FunnelTier.partner.iapPriceLabel), findsOneWidget);
     expect(find.text('one-time · 2 portraits'), findsOneWidget);
     expect(find.text('Pay with Face ID'), findsOneWidget);
+  });
+
+  testWidgets('the sheet price is the tier price with cents', (tester) async {
+    // StoreKit always renders cents, and a bare dollar figure beside Apple's
+    // own sheet is how a price looks wrong without being wrong.
+    expect(FunnelTier.partner.iapPriceLabel, '$partnerPrice.00');
   });
 
   testWidgets('Face ID confirm goes straight to processing, no review step', (
@@ -92,7 +107,7 @@ void main() {
   ) async {
     await pumpConfirm(tester, FunnelTier.partner);
 
-    await tester.tap(find.text(r'Pay $20'));
+    await tester.tap(find.text('Pay $partnerPrice'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Pay with Face ID'));
     await tester.pumpAndSettle();
@@ -104,7 +119,7 @@ void main() {
   testWidgets('the family bundle is payable too', (tester) async {
     await pumpConfirm(tester, FunnelTier.family);
 
-    await tester.tap(find.text(r'Pay $40'));
+    await tester.tap(find.text('Pay $familyPrice'));
     await tester.pumpAndSettle();
 
     expect(find.text('Portraitor · Family'), findsOneWidget);
