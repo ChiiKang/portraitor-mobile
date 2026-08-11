@@ -127,6 +127,23 @@ Codes are stored as a peppered HMAC and are not reconstructable (`PassService.ph
 Once a delivery email is collected, the same address can receive the Pass backup, and spec 6.4's accepted loss stops being a loss.
 **Task 18 sends it on first Apple Pass mint.** Rotation stays cut from V1; this is recovery of the original code, not reissue of a new one, so it needs none of the ownership model that 6.4 says the schema lacks.
 
+### 2a-ter. `session_token` on a consumable response can destroy a real Pass session
+
+Found 2026-08-11 while implementing Task 9, and it settles the open question the plan left in that task.
+
+`iap_provider.dart:180` calls `await _store.writeSessionToken(verified.sessionToken)` **unconditionally**, outside the `if (verified.passCode != null)` guard above it.
+
+A one-off buyer has no Pass, so there is no session for the server to mint. If `verify.php` answers with an empty string, two things break:
+
+1. **A Pass holder who buys a one-off has their working session overwritten with `''`.** They are silently signed out of a Pass they are still paying for.
+2. **`''` is not `null`**, so `iap_provider.dart:120` (`sessionToken == null ? ... : preparePurchase(...)`) takes the authenticated branch on the next subscription purchase and sends an empty Bearer to `prepare.php`.
+
+**Server contract, decided:** for a consumable, `session_token` echoes the caller's existing session token when the request carried a valid one, and is `""` only when the caller had no session at all. The server never mints a session for a consumable, because there is no Pass to attach one to.
+
+**That is not sufficient on its own.** The client must also stop writing an empty token. Section 6 item 1 covers it: guard the write with a non-empty check, in the same commit that adds `client_conversation_ref`. Until that lands, the server behaviour above keeps the damage to the already-sessionless case.
+
+The mobile `FakeBillingApi` returns a 64-character string for both product types (`billing_api.dart:178`), which is why no existing test catches this.
+
 ### 2b. The `payments` row must carry `client_conversation_ref` or generation cannot queue
 
 `ProcessingQueueService::assertPaymentCanQueue()` at `src/Services/ProcessingQueueService.php:496-516` requires the row's `client_conversation_ref` to be non-empty and `hash_equals` the ref in the queue request.
@@ -1568,7 +1585,7 @@ None of these stops implementation. All of them stop launch, and they are the us
 
 Out of scope for this plan; listed so it is not lost.
 
-1. Send `client_conversation_ref` in the `verify.php` body (section 2b). One line in `billing_api.dart`.
+1. Send `client_conversation_ref` in the `verify.php` body (section 2b), **and in the same commit guard the session write** at `iap_provider.dart:180` so an empty `session_token` is never stored (section 2a-ter). The guard is the more urgent of the two: without it a Pass holder who buys a one-off is silently signed out of a subscription they are still paying for. Add a test with a fake returning `session_token: ''` and assert the previously stored token survives.
 2. Collect a delivery email in the funnel and send it as `metadata.delivery_email` on the generation request, and in the `verify.php` body so the Pass backup can be sent (sections 2a and 2a-bis). Validate the address client-side; the server re-validates with `filter_var` and, outside testing mode, an MX check, matching `payment.php:123-144`. One field, used for both the portrait and the Pass backup, asked once.
 3. Point the entitlement read at `entitlements/current.php` and unblock the four items in handoff section 6, once Task 11 lands.
 4. **Make the profile screen provider-aware**, which is the mobile half of Task 21 and currently missing. `lib/features/settings/presentation/profile_screen.dart` renders `_StripeButton` and `_CancelSubscriptionButton` as toast stubs (`_openStripe()`, `_cancelSubscription()`) with no provider check at all. For an Apple-funded Pass both must be replaced by the already-built `ManageSubscriptionTile`, which opens Apple's own sheet through `ManageSubscriptionsPlugin` (commits `753e7ec`, `9169581`). That tile is built and tested but nothing renders it. Refill must be hidden too: `pass/refill.php` creates a fresh subscription that takes over billing, which Apple cannot do off-cycle. Spec Flow E.
