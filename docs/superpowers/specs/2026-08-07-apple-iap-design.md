@@ -855,6 +855,33 @@ It comprises an Issuer ID, a Key ID, and a downloaded `.p8` private key.
 The same key signs the App Store Server API JWT, using `openssl_sign` (section 9.3).
 The DER-to-JOSE conversion it needs must be tested against known ES256 vectors: an earlier draft got it wrong in a way that surfaces only as a rejected Apple request, which no unit test would have caught.
 
+### 9.6 Prices: two storefronts, one reconciliation
+
+Prices exist in two places that cannot be made to read from each other.
+
+`config/tiers.php` is authoritative for the web: `portraitor_tiers()` for the one-off tiers and `portraitor_subscription_price_cents()` for the Pass, each admin-overridable, and `payment.php` charges the server-resolved amount so the client never dictates it.
+
+**App Store Connect is authoritative for iOS, and nothing can change that.**
+Apple charges the price configured for the product id, in the buyer's own storefront currency, drawn from Apple's price points.
+The admin panel cannot set it, and an app that displays a price other than the one StoreKit will charge is rejected under Guideline 2.3.1.
+So the client shows `product.price` from StoreKit and treats its own constants as a pre-load fallback only.
+
+Exact parity is therefore impossible by construction.
+A US buyer sees $29; a HK buyer sees whichever Apple price point is nearest.
+The goal is not equal numbers everywhere, it is **knowing the real number and being told when the two storefronts disagree**.
+
+| Concern | Mechanism |
+|---|---|
+| What the buyer actually paid | `verify.php` reads `price` and `currency` from the decoded JWS transaction payload and writes them to the `payments` row, rather than copying the admin config value |
+| Revenue reporting | Reads the recorded amount, so an Apple purchase is never reported at the web price it was not sold at |
+| Drift | The admin panel renders the live App Store price beside the web price per tier and flags a mismatch on the US storefront |
+
+The drift check is a report, not an enforcement.
+Blocking a purchase because the two disagree would refuse money over a display inconsistency.
+
+> Not yet decided: whether the admin panel pulls Apple's prices live from the App Store Server API or shows the last price observed in a verified purchase.
+> The latter needs no extra credentials and no scheduled job, which fits the rest of this design; it is blind to a tier nobody has bought yet.
+
 ---
 
 ## 10. Testing
