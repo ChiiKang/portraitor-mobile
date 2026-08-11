@@ -1516,6 +1516,21 @@ Then:
 
 **One-offs are unaffected.** A one-off bundle has nothing to cancel, so none of this applies to it. Only the Pass has a funding source with a cancel button attached.
 
+**Refill must never become purchasable inside the iOS app, for any Pass, including a Stripe-funded one.**
+
+This is a separate rule from the one above and it is easy to get wrong, because the reasoning inverts. Cancel behaves as you would expect: cancelling a *Stripe* subscription from inside the app is permitted, since that button calls Portraitor's own API and Guideline 3.1.1 prohibits selling outside IAP, not managing a subscription sold elsewhere.
+
+Refill is not management. It charges money for portrait quota that is then consumed in the app, which is exactly what 3.1.1 covers. A refill button in the iOS app that takes a Stripe payment is a rejection, and it would be a rejection even though the Pass has nothing to do with Apple.
+
+So the matrix is not "Apple-funded hides it, Stripe-funded shows it":
+
+| Where | Apple-funded Pass | Stripe-funded Pass |
+|---|---|---|
+| Web | Hidden and blocked (impossible) | Works, unchanged |
+| iOS app | Hidden (impossible **and** 3.1.1) | **Hidden (3.1.1)** |
+
+The app has no refill purchase UI today, which is why this is a note rather than a bug: `profile_screen.dart:210,461` use "Refills" only as informational renewal-date copy, and `manage_subscription_tile.dart:8-9` already records that refill belongs to Apple. Keep it that way. An iOS Pass holder whose pool is spent waits for renewal or buys a one-off bundle, which is a consumable and therefore compliant.
+
 Note `pass/refill.php` in particular: it creates a fresh subscription that takes over billing, which is a Stripe-only capability. An Apple subscription cannot be charged off-cycle, so an Apple-funded pool refills only on Apple's renewal. Record this against the management-asymmetry table in `portraitor_v3:docs/iap-stripe-accounts-and-subscriptions.md` section 7b.11, which lists cancel, resume and change-card but not refill.
 
 Pre-existing and **out of scope here**, but worth a written note when this task lands: `subscription/portal.php` treats a redeemed Pass as sufficient authorization for the Stripe customer portal, so any holder of a shared code reaches billing.
