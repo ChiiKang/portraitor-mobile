@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:portraitor_mobile/features/payment/presentation/manage_subscription_tile.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
@@ -236,6 +237,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onShare: _sharePass,
                 onStripe: _openStripe,
                 onCancel: _cancelSubscription,
+                fundingProvider: _fundingProvider,
               ),
               const SizedBox(height: 8),
 
@@ -268,6 +270,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  /// Which provider funds this Pass.
+  ///
+  /// Read from the entitlement endpoint once that read is wired into this
+  /// screen; until then it stays null, which renders the Stripe controls
+  /// exactly as before. Null is the safe default: it is what a Stripe-funded
+  /// and an unfunded Pass both look like, and an Apple-funded Pass is refused
+  /// server-side regardless of what this screen renders.
+  String? get _fundingProvider => null;
+
   void _openStripe() => _toast('Opening Stripe billing portal…');
 
   void _cancelSubscription() => _toast('Cancellation is handled on Stripe');
@@ -294,6 +305,7 @@ class _MembershipCard extends StatelessWidget {
     required this.onShare,
     required this.onStripe,
     required this.onCancel,
+    this.fundingProvider,
   });
 
   final int used;
@@ -303,6 +315,12 @@ class _MembershipCard extends StatelessWidget {
   final VoidCallback onToggleVisibility;
   final VoidCallback onCopy;
   final VoidCallback onShare;
+  /// Who took the money: 'apple', 'stripe', later 'google', or null.
+  ///
+  /// Decides which controls may appear at all. Whoever took the money owns
+  /// cancellation and payment method, and Apple exposes no API for either.
+  final String? fundingProvider;
+
   final VoidCallback onStripe;
   final VoidCallback onCancel;
 
@@ -551,15 +569,33 @@ class _MembershipCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          _StripeButton(
-            key: const ValueKey('profile-stripe'),
-            onTap: onStripe,
-          ),
-          const SizedBox(height: 12),
-          _CancelSubscriptionButton(
-            key: const ValueKey('profile-cancel'),
-            onTap: onCancel,
-          ),
+          // Whoever took the money owns these buttons.
+          //
+          // For an Apple-funded Pass, cancel and change-card live in Apple's
+          // own sheet and there is no API for us to call. Refill is absent for
+          // a second, independent reason: it charges for quota consumed in the
+          // app, so a Stripe payment for it inside the iOS app would breach
+          // App Store Guideline 3.1.1 even on a Stripe-funded Pass. That is
+          // why there is no refill control here for ANY provider.
+          if (fundingProvider == 'apple')
+            const ManageSubscriptionTile(
+              key: ValueKey('profile-apple-managed'),
+              status: 'Active',
+              renewalDate: _ProfileScreenState._renewalDate,
+              usesRemaining: 0,
+              cancelPending: false,
+            )
+          else ...[
+            _StripeButton(
+              key: const ValueKey('profile-stripe'),
+              onTap: onStripe,
+            ),
+            const SizedBox(height: 12),
+            _CancelSubscriptionButton(
+              key: const ValueKey('profile-cancel'),
+              onTap: onCancel,
+            ),
+          ],
 
           // Foot note
           const _CardDivider(top: 18, bottom: 14),
