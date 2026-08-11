@@ -1507,7 +1507,14 @@ Then:
 - Show status, renewal date, quota, and "Billing managed by Apple".
 - Hide Stripe refill, cancel, resume and change-card controls.
 - **Reject those operations server-side** for an Apple-funded source with a clear error. Hiding buttons is not sufficient: the endpoints stay reachable, and a Stripe cancel against an Apple-funded Pass would either fail obscurely or corrupt local state while Apple keeps billing.
-- Optionally link to Apple's subscription management page.
+- **Say where to go instead, and link there. This is required, not optional.** Whoever took the money owns the cancel button, so a subscriber who bought on iPhone cannot cancel on the web at all. Telling them "not available here" without telling them where is a dead end, and it is the precise moment they would otherwise contact support. Link to `https://apps.apple.com/account/subscriptions`, and name the reason in plain words: this subscription was purchased through the App Store, so Apple handles cancellation and payment method.
+- The error returned by the rejected endpoints must carry the same message and link, not a bare 403. An error a user never sees is still an error a support agent has to explain.
+
+**Provider naming.** Store and branch on the provider string (`'apple'`, `'stripe'`, later `'google'`), never on a boolean like `is_apple`. Android is a third value on the same column, and a boolean would have to be unpicked the moment Google Play Billing lands.
+
+**Switching platforms is impossible in both directions**, and the copy should not imply otherwise. There is no migrate-my-subscription path: cancel on the original platform, let it lapse, resubscribe on the new one. This is universal (ChatGPT, LinkedIn, Notion and Udemy all document the same), so the honest message is better than a hopeful one.
+
+**One-offs are unaffected.** A one-off bundle has nothing to cancel, so none of this applies to it. Only the Pass has a funding source with a cancel button attached.
 
 Note `pass/refill.php` in particular: it creates a fresh subscription that takes over billing, which is a Stripe-only capability. An Apple subscription cannot be charged off-cycle, so an Apple-funded pool refills only on Apple's renewal. Record this against the management-asymmetry table in `portraitor_v3:docs/iap-stripe-accounts-and-subscriptions.md` section 7b.11, which lists cancel, resume and change-card but not refill.
 
@@ -1537,7 +1544,8 @@ Out of scope for this plan; listed so it is not lost.
 1. Send `client_conversation_ref` in the `verify.php` body (section 2b). One line in `billing_api.dart`.
 2. Collect a delivery email in the funnel and send it as `metadata.delivery_email` on the generation request, and in the `verify.php` body so the Pass backup can be sent (sections 2a and 2a-bis). Validate the address client-side; the server re-validates with `filter_var` and, outside testing mode, an MX check, matching `payment.php:123-144`. One field, used for both the portrait and the Pass backup, asked once.
 3. Point the entitlement read at `entitlements/current.php` and unblock the four items in handoff section 6, once Task 11 lands.
-4. Align the mobile `FakeBillingApi` product key from `pass_subscription` to `pass_monthly` (section 2d).
+4. **Make the profile screen provider-aware**, which is the mobile half of Task 21 and currently missing. `lib/features/settings/presentation/profile_screen.dart` renders `_StripeButton` and `_CancelSubscriptionButton` as toast stubs (`_openStripe()`, `_cancelSubscription()`) with no provider check at all. For an Apple-funded Pass both must be replaced by the already-built `ManageSubscriptionTile`, which opens Apple's own sheet through `ManageSubscriptionsPlugin` (commits `753e7ec`, `9169581`). That tile is built and tested but nothing renders it. Refill must be hidden too: `pass/refill.php` creates a fresh subscription that takes over billing, which Apple cannot do off-cycle. Spec Flow E.
+5. Align the mobile `FakeBillingApi` product key from `pass_subscription` to `pass_monthly` (section 2d).
 
 ---
 
