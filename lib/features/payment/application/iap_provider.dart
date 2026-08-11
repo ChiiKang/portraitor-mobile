@@ -8,6 +8,7 @@ import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provi
 import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/domain/purchase_outcome.dart';
 import 'package:portraitor_mobile/features/payment/services/billing_api.dart';
+import 'package:portraitor_mobile/features/payment/services/mock_stripe_billing_api.dart';
 import 'package:portraitor_mobile/features/payment/services/iap_service.dart';
 import 'package:portraitor_mobile/features/payment/services/pass_credential_store.dart';
 
@@ -66,7 +67,11 @@ const bool kFakeBilling = bool.fromEnvironment('FAKE_BILLING');
 final iapServiceProvider = Provider<IapService>((ref) => StoreKitIapService());
 
 final billingApiProvider = Provider<BillingApi>(
-  (ref) => kFakeBilling ? FakeBillingApi() : HttpBillingApi(),
+  // Demo builds drive the mock Stripe rail rather than fabricating a
+  // reference. FakeBillingApi's invented `credit-<uuid>` matched no server row,
+  // so generation was always refused at queue admission and the demo could
+  // never reach the thing it existed to show.
+  (ref) => kFakeBilling ? MockStripeBillingApi() : HttpBillingApi(),
 );
 final passCredentialStoreProvider =
     Provider<PassCredentialStore>((ref) => KeychainPassCredentialStore());
