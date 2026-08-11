@@ -100,13 +100,32 @@ The Flutter app collects no email anywhere (`grep -rni email lib/features/funnel
 
 So today, an Apple consumable would verify, write its `payments` row, queue, generate, and then be cancelled at delivery.
 
-There are two ways out and they are a product decision, not an implementation detail:
+**Decided 2026-08-11: collect a delivery email in the mobile funnel** and send it as `metadata.delivery_email`, which those four endpoints already read into `$transientPassEmail`.
+`lookupCustomerEmail` grows an Apple branch that returns it.
+Task 7 adds the server half; the mobile half is listed in section 6.
 
-- **(a) Collect a delivery email in the mobile funnel** and send it as `metadata.delivery_email`, which those four endpoints already read into `$transientPassEmail`. `lookupCustomerEmail` grows an Apple branch that returns it. This preserves the spec's claim that "the emailed portrait is the durable artifact" (spec 4.3a, 7.1).
-- **(b) Make delivery email optional for Apple** and capture on local delivery instead. This contradicts the durability posture the spec relies on to justify having no server-side record of a one-off buyer.
+This is not a new burden invented for Apple. It is what both existing rails already require:
 
-**This plan implements (a)**, because the spec's crash-safety argument depends on the email existing. Task 7 adds the server half. The mobile half is a client task and is listed in section 6 as out of scope here.
-If the user chooses (b), Task 7 changes and Task 10's end-to-end test changes with it. Nothing else moves.
+- **Web one-off requires an email at payment time.** `payment.php:123-127` rejects a request without a valid address, and `:139-144` runs an MX check to reject undeliverable domains before creating a Stripe session.
+- **A Pass-backed generation run requires one per run.** `SubscriptionGrantService::lookupDeliveryEmail():195-198` returns *only* the transient email when the grant is backed by a Pass. There is no stored fallback.
+
+So the delivery email applies to **both** product types, not to subscriptions alone. Both hit the same delivery path and both currently die in it.
+
+**The privacy posture is unaffected.** The raw address is never stored: it transits per request as `$transientPassEmail`, and what persists on the `payments` row is `email_recipient_masked` plus a SHA-256 `email_recipient_hash` (`migrations/026:19-24`, written at `PostProcessing.php:367-368`). That is exactly what the web flow already does, so an Apple one-off buyer stays no more identifiable server-side than a web one.
+
+The rejected alternative was to make delivery email optional for Apple and capture on local delivery instead. It contradicts the durability posture that spec 4.3a and 7.1 rely on to justify keeping no server-side record of a one-off buyer, and it would have made the emailed portrait, the spec's stated durable artifact, not exist.
+
+### 2a-bis. Having an email closes the unrecoverable-Pass hole
+
+A consequence worth taking deliberately rather than discovering later.
+
+Spec 6.2 notes the web flow survives a lost verify response because `pass/confirm` also emails the raw code, and 6.4 then accepts that Apple has no equivalent: "If the verify response is lost, the buyer holds a working session on that device and no Pass code. They can never use that Pass on the web or a second device."
+Codes are stored as a peppered HMAC and are not reconstructable (`PassService.php:464`).
+
+`EmailServiceInterface::sendPassBackup(string $email, string $code, string $redeemUrl, int $usesTotal): bool` is real and implemented on the live service (`EmailServiceInterface.php:61`, `EmailService.php:96`).
+
+Once a delivery email is collected, the same address can receive the Pass backup, and spec 6.4's accepted loss stops being a loss.
+**Task 18 sends it on first Apple Pass mint.** Rotation stays cut from V1; this is recovery of the original code, not reissue of a new one, so it needs none of the ownership model that 6.4 says the schema lacks.
 
 ### 2b. The `payments` row must carry `client_conversation_ref` or generation cannot queue
 
@@ -1440,7 +1459,11 @@ Required identity fields, all mandatory, fail closed if any is absent (spec 5, F
 
 The `appTransactionId` requirement is the one most likely to be missed, because SQL uniqueness permits multiple NULLs: a NULL `provider_account_ref` silently voids `uq_provider_account_product` and the one-Apple-funded-Pass rule then enforces nothing.
 
-Delivery state per spec 6.3: `pass_code` returned exactly once, on first mint. A replay returns `pass_code: null`, `pass_code_delivered: false`, and a **fresh working session**, because `createPassSession` generates a new random token rather than deriving one from the code (`UserSessionService.php:41`), which is what makes the endpoint safely idempotent. Codes are stored as a peppered HMAC and are not recoverable (`PassService.php:464`), so a lost reveal has no recovery path. Rotation is cut from V1 (spec 6.4).
+Delivery state per spec 6.3: `pass_code` returned exactly once, on first mint. A replay returns `pass_code: null`, `pass_code_delivered: false`, and a **fresh working session**, because `createPassSession` generates a new random token rather than deriving one from the code (`UserSessionService.php:41`), which is what makes the endpoint safely idempotent. Codes are stored as a peppered HMAC and are not recoverable (`PassService.php:464`). Rotation is cut from V1 (spec 6.4).
+
+**Send the Pass backup email on first mint** (section 2a-bis), using `EmailServiceInterface::sendPassBackup($email, $code, $redeemUrl, $usesTotal)` (`EmailServiceInterface.php:61`) with the delivery email the client already supplies. This closes the case spec 6.4 records as unrecoverable.
+
+Send it **after** the database transaction commits, never inside it. An email send that fails must not roll back a Pass the buyer has already paid Apple for, and an email that succeeds against a transaction that then rolls back would reveal a code for a Pass that does not exist. Test both orderings.
 
 Initial verification fetches current state from Apple rather than manufacturing `active` from the client transaction alone.
 
@@ -1503,7 +1526,7 @@ None of these stops implementation. All of them stop launch, and they are the us
 | **`billing_entitlements_mode`** | `legacy`. Reaching `central` needs the Stripe backfill plus a staging soak. Writes reach the legacy mirrors and `PassService::redeem()` accepts any non-expired Pass, so Apple works in `legacy`. Release gate. |
 | **`billing_entitlements.service_token_current`** | Probably unset. Both internal endpoints throw `billing_service_auth_not_configured` if so. Check before relying on the drain endpoint. |
 | **No workflow triggers on `portraitor_pass`** | Deploying needs a merge or a manual dispatch. Also means CI runs nothing on this branch, so every suite must be run locally. |
-| **The delivery-email decision (section 2a)** | Blocks Task 10 and the first real Apple purchase producing a portrait. Everything before Task 10 proceeds regardless. |
+| **The delivery-email decision (section 2a)** | **Decided 2026-08-11: collect it.** No longer a gate. Task 7 and Task 10 build against it, and the mobile funnel change is section 6 item 2. |
 
 ---
 
@@ -1512,7 +1535,7 @@ None of these stops implementation. All of them stop launch, and they are the us
 Out of scope for this plan; listed so it is not lost.
 
 1. Send `client_conversation_ref` in the `verify.php` body (section 2b). One line in `billing_api.dart`.
-2. Collect a delivery email in the funnel and send it as `metadata.delivery_email`, if the user chooses option (a) in section 2a.
+2. Collect a delivery email in the funnel and send it as `metadata.delivery_email` on the generation request, and in the `verify.php` body so the Pass backup can be sent (sections 2a and 2a-bis). Validate the address client-side; the server re-validates with `filter_var` and, outside testing mode, an MX check, matching `payment.php:123-144`. One field, used for both the portrait and the Pass backup, asked once.
 3. Point the entitlement read at `entitlements/current.php` and unblock the four items in handoff section 6, once Task 11 lands.
 4. Align the mobile `FakeBillingApi` product key from `pass_subscription` to `pass_monthly` (section 2d).
 
