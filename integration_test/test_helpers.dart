@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:portraitor_mobile/features/onboarding/presentation/onboarding_flow.dart';
 import 'package:portraitor_mobile/features/import/presentation/home_screen.dart';
 import 'package:portraitor_mobile/features/setup/presentation/setup_screen.dart';
-import 'package:portraitor_mobile/features/payment/presentation/payment_screen.dart';
 import 'package:portraitor_mobile/features/settings/presentation/settings_screen.dart';
 import 'package:portraitor_mobile/features/library/presentation/library_screen.dart';
 import 'package:portraitor_mobile/features/settings/presentation/faq_screen.dart';
@@ -28,19 +27,6 @@ Widget buildTestApp({String initialRoute = '/onboarding'}) {
             detectedNames: (extra['detectedNames'] as List<String>?) ?? [],
             messageCount: extra['messageCount'] as int? ?? 0,
             dateRange: extra['dateRange'] as Map<String, DateTime?>?,
-          );
-        },
-      ),
-      GoRoute(
-        path: '/payment',
-        builder: (_, state) {
-          final extra = state.extra as Map<String, dynamic>? ?? {};
-          return PaymentScreen(
-            normalizedText: extra['normalizedText'] as String? ?? '',
-            targetName: extra['targetName'] as String? ?? '',
-            tokenEstimate: extra['tokenEstimate'] as int? ?? 0,
-            conversationId: extra['conversationId'] as String?,
-            dateRange: extra['dateRange'] as String?,
           );
         },
       ),
@@ -90,19 +76,6 @@ Widget buildSetupTestApp({
             detectedNames: (e['detectedNames'] as List<String>?) ?? [],
             messageCount: e['messageCount'] as int? ?? 0,
             dateRange: e['dateRange'] as Map<String, DateTime?>?,
-          );
-        },
-      ),
-      GoRoute(
-        path: '/payment',
-        builder: (_, state) {
-          final e = state.extra as Map<String, dynamic>? ?? {};
-          return PaymentScreen(
-            normalizedText: e['normalizedText'] as String? ?? '',
-            targetName: e['targetName'] as String? ?? '',
-            tokenEstimate: e['tokenEstimate'] as int? ?? 0,
-            conversationId: e['conversationId'] as String?,
-            dateRange: e['dateRange'] as String?,
           );
         },
       ),
