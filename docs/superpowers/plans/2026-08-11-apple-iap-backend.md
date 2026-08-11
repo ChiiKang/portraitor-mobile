@@ -166,9 +166,21 @@ If `notifications.php` copies that gate, every Apple notification is silently dr
 Read these before writing code that depends on them.
 
 1. **Apple Root CA G3 bytes and fingerprint.** Download from `https://www.apple.com/certificateauthority/` and record the fingerprint from Apple's own page. Do not accept a copy from anywhere else, and do not let an agent transcribe one from memory.
-2. **The exact claim names and shapes in a real `JWSTransactionDecodedPayload` and `JWSRenewalInfoDecodedPayload`.** Field names in this plan come from Apple's published documentation, not from an observed payload. Task 5 must be written against a captured sandbox payload or against Apple's current reference page, whichever is available first.
+2. ~~**The exact claim names and shapes in a real `JWSTransactionDecodedPayload`.**~~ **RESOLVED 2026-08-11** against Apple's own documentation data (`developer.apple.com/tutorials/data/documentation/appstoreserverapi/jwstransactiondecodedpayload.json`, the JSON the docs site renders from). Every field this plan assumed exists. Verified literals, which matter because a wrong one fails every purchase closed:
+
+   | Item | Verified value |
+   |---|---|
+   | `inAppOwnershipType` | `PURCHASED`, `FAMILY_SHARED` |
+   | `environment` | `Sandbox`, `Production` - **capitalised**, unlike our lowercase `BillingEnvironment`. Comparing them directly would reject every purchase, so the decoder must map. |
+   | `type` | `Consumable`, `Non-Consumable`, `Auto-Renewable Subscription`, `Non-Renewing Subscription` |
+   | `price` | milliunits. One currency unit is 1000 milliunits, so `amount_cents = price / 10`. |
+   | `purchaseDate`, `expiresDate`, `revocationDate`, `signedDate` | UNIX time in **milliseconds** |
+
+   Fields present beyond those the plan named: `originalPurchaseDate`, `signedDate`, `transactionReason`, `webOrderLineItemId`, `subscriptionGroupIdentifier`, `offerType`, `offerIdentifier`, `offerPeriod`, `offerDiscountType`, `isUpgraded`, `storefrontId`, `revocationPercentage`, `revocationType`, `billingPlanType`, `advancedCommerceTransactionInfo`.
+
+   `JWSRenewalInfoDecodedPayload` is still unverified and is only needed from Task 16.
 3. **PHP version and OpenSSL build on Hostinger.** `openssl_x509_verify` needs PHP 8.0+. Task 1 Step 1 checks it on the target host before anything is built on top.
-4. **`payments.pack_total` semantics per tier.** `payment.php:203` passes a `$packTotal` computed earlier in that file. Read `public/api/payment.php` around `:100-145` and mirror the values exactly rather than inventing them.
+4. ~~**`payments.pack_total` semantics per tier.**~~ **RESOLVED 2026-08-11.** `payment.php:109` derives it from `PackProgressTracker::capForTier(?string $tier): int` (`src/Proxy/PackProgressTracker.php:57`), which reads `TIER_CAPS` and honours admin overrides. The Apple catalogue therefore maps product id to **tier only** and calls `capForTier()` for the count. Do not restate the numbers in `config/apple-products.php`; that would be a second source of truth that silently ignores an admin override.
 5. **Whether `config/apple-products.php` needs adding to `DEPLOY_PATHS`.** Only the named `config/*.php` files deploy (`ftp-deploy.py:38-42`). A new config file that is not listed silently deploys nothing. Task 6 adds it to the list; confirm the list is what production actually runs.
 6. **`billing_entitlements.service_token_current`** may be unset on the server, which makes both internal endpoints throw `billing_service_auth_not_configured`. Only matters from Task 15 onward.
 
