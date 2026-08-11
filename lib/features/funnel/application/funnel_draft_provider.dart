@@ -72,15 +72,21 @@ extension FunnelTierX on FunnelTier {
     }
   }
 
-  /// Display price for UI (IAP product mapping comes later).
+  /// Fallback price, shown only until StoreKit reports the real one.
+  ///
+  /// These mirror the web prices in `config/tiers.php` so the two storefronts
+  /// read the same on a US device. They are NOT what the user is charged:
+  /// Apple charges the App Store Connect price for the product id, in the
+  /// buyer's own storefront currency. Every screen prefers
+  /// `IapState.priceFor(tier)` and reaches this only before products load.
   String get priceLabel {
     switch (this) {
       case FunnelTier.you:
-        return '\$10';
+        return '\$29';
       case FunnelTier.partner:
-        return '\$20';
+        return '\$49';
       case FunnelTier.family:
-        return '\$40';
+        return '\$79';
       case FunnelTier.pass:
         return '\$50';
     }

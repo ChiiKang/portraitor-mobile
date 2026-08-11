@@ -3,7 +3,7 @@
   "nonRenewingSubscriptions" : [],
   "products" : [
     {
-      "displayPrice" : "10.00",
+      "displayPrice" : "29.00",
       "familyShareable" : false,
       "internalID" : "portrait-you",
       "localizations" : [
@@ -18,7 +18,7 @@
       "type" : "Consumable"
     },
     {
-      "displayPrice" : "20.00",
+      "displayPrice" : "49.00",
       "familyShareable" : false,
       "internalID" : "portrait-partner",
       "localizations" : [
@@ -33,7 +33,7 @@
       "type" : "Consumable"
     },
     {
-      "displayPrice" : "40.00",
+      "displayPrice" : "79.00",
       "familyShareable" : false,
       "internalID" : "portrait-family",
       "localizations" : [

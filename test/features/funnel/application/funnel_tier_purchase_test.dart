@@ -34,18 +34,25 @@ void main() {
     test('one-off tiers mirror the prototype product rows', () {
       expect(FunnelTier.you.iapProductTitle, 'Portraitor · You');
       expect(FunnelTier.you.iapProductKind, 'One-time purchase');
-      expect(FunnelTier.you.iapPriceLabel, r'$10.00');
       expect(FunnelTier.you.iapPriceCaption, 'one-time · 1 portrait');
 
       expect(
         FunnelTier.partner.iapProductTitle,
         'Portraitor · You + a partner',
       );
-      expect(FunnelTier.partner.iapPriceLabel, r'$20.00');
       expect(FunnelTier.partner.iapPriceCaption, 'one-time · 2 portraits');
 
-      expect(FunnelTier.family.iapPriceLabel, r'$40.00');
       expect(FunnelTier.family.iapPriceCaption, 'one-time · 5 portraits');
+    });
+
+    // These are the pre-load fallbacks, not what Apple charges. They mirror
+    // the web prices in portraitor_v3 config/tiers.php so the two storefronts
+    // read the same on a US device; drifting from that file is the bug this
+    // catches. The charged amount always comes from App Store Connect.
+    test('fallback prices mirror the web tier prices', () {
+      expect(FunnelTier.you.iapPriceLabel, r'$29.00');
+      expect(FunnelTier.partner.iapPriceLabel, r'$49.00');
+      expect(FunnelTier.family.iapPriceLabel, r'$79.00');
     });
 
     test('Pass renders as a monthly subscription', () {
