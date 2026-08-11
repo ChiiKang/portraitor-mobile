@@ -849,6 +849,22 @@ Apple purchases have no email.
 
 Four products, one subscription group, Family Sharing disabled, and ASSN v2 URLs for both production and sandbox.
 
+**The first product of each type must be submitted with an app version**, so the four products cannot be launched in stages.
+Apple requires the first consumable and the first auto-renewable subscription to each ride along with a binary submission; only once a type is approved may further products of that type be submitted alone.
+Concretely: `portrait.you` and `pass.monthly` must both be attached to the initial submission.
+Partner and Family are consumables too, so they can follow on their own once You is approved - but deferring the Pass to "after launch" costs a second binary review.
+
+Which later edits are review-gated matters for how quickly each field can respond:
+
+| Field | App Review | Takes effect |
+|---|---|---|
+| Price, availability | No | Immediately |
+| Reference name (internal) | No | Immediately |
+| Display name, description | **Yes** | Old text stays live until approved |
+
+Pricing is therefore nearly as responsive as the web admin panel; the product *copy* is not.
+Wording that may need to move quickly belongs in the app's own UI rather than in the App Store product metadata.
+
 Server authentication uses an **In-App Purchase key**, not a generic App Store Connect API key.
 It comprises an Issuer ID, a Key ID, and a downloaded `.p8` private key.
 
