@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/funnel/presentation/confirm_pay_screen.dart';
 import 'package:portraitor_mobile/features/import/services/chat_normalizer.dart';
+import 'package:portraitor_mobile/shared/widgets/gradient_button.dart';
 
 // This suite exercises the simulated App Store sheet, so it only applies in
 // demo mode. With real StoreKit, Apple renders the sheet out of process and
@@ -78,10 +79,20 @@ void main() {
   final partnerPrice = FunnelTier.partner.priceLabel;
   final familyPrice = FunnelTier.family.priceLabel;
 
+
+  /// The pay CTA is gated on a delivery address, so every purchase test has to
+  /// supply one first. That ordering is the point: asking after Apple's sheet
+  /// would mean taking money with no way to deliver against it.
+  Future<void> enterEmail(WidgetTester tester, [String email = 'buyer@example.com']) async {
+    await tester.enterText(find.byType(TextField).first, email);
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('the pay CTA on the partner bundle opens the Apple IAP sheet', (
     tester,
   ) async {
     await pumpConfirm(tester, FunnelTier.partner);
+    await enterEmail(tester);
 
     expect(find.text('Pay $partnerPrice'), findsOneWidget);
 
@@ -106,6 +117,7 @@ void main() {
     tester,
   ) async {
     await pumpConfirm(tester, FunnelTier.partner);
+    await enterEmail(tester);
 
     await tester.tap(find.text('Pay $partnerPrice'));
     await tester.pumpAndSettle();
@@ -118,11 +130,54 @@ void main() {
 
   testWidgets('the family bundle is payable too', (tester) async {
     await pumpConfirm(tester, FunnelTier.family);
+    await enterEmail(tester);
 
     await tester.tap(find.text('Pay $familyPrice'));
     await tester.pumpAndSettle();
 
     expect(find.text('Portraitor · Family'), findsOneWidget);
     expect(find.text('one-time · 5 portraits'), findsOneWidget);
+  });
+
+  testWidgets('the pay CTA is disabled until a valid email is entered', (
+    tester,
+  ) async {
+    await pumpConfirm(tester, FunnelTier.partner);
+
+    // GradientButton, not ElevatedButton. Naming the wrong type would make this
+    // find nothing and pass vacuously, which is why the finder is asserted to
+    // match before anything is read from it.
+    final cta = find.widgetWithText(GradientButton, 'Pay $partnerPrice');
+    expect(cta, findsOneWidget, reason: 'the CTA must be found for this to test anything');
+
+    expect(
+      tester.widget<GradientButton>(cta).onPressed,
+      isNull,
+      reason: 'with no delivery address we could take money we cannot deliver '
+          'against, and a one-off buyer has no account to recover through',
+    );
+
+    await enterEmail(tester, 'not-an-email');
+    expect(
+      tester.widget<GradientButton>(cta).onPressed,
+      isNull,
+      reason: 'a malformed address is no better than none',
+    );
+
+    await enterEmail(tester);
+    expect(tester.widget<GradientButton>(cta).onPressed, isNotNull);
+  });
+
+  testWidgets('the email is asked for before Apple\'s sheet, not after', (
+    tester,
+  ) async {
+    await pumpConfirm(tester, FunnelTier.partner);
+
+    expect(
+      find.text('Where should we send it?'),
+      findsOneWidget,
+      reason: 'the field is on the confirm screen, ahead of the purchase',
+    );
+    expect(find.text('App Store'), findsNothing);
   });
 }

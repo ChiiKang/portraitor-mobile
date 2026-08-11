@@ -28,6 +28,26 @@ class ConfirmPayScreen extends ConsumerStatefulWidget {
 class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
   bool _passOpen = false;
 
+  /// Where the finished portrait is sent, and for a Pass also where the
+  /// one-time code is backed up.
+  ///
+  /// Collected BEFORE Apple's sheet opens, deliberately. Asking afterwards
+  /// means a buyer can pay and close the app, leaving us with their money and
+  /// no way to deliver - and a one-off buyer has no account to recover through.
+  final _emailController = TextEditingController();
+  bool _emailTouched = false;
+
+  String get _email => _emailController.text.trim();
+
+  bool get _emailValid =>
+      RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(_email);
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -67,11 +87,20 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
                   ? 'Subscribe ${_priceFor(FunnelTier.pass)}'
                   : 'Subscribe — coming soon')
               : 'Pay ${_priceFor(draft.selectedTier)}',
-      ctaEnabled: !showPass && draft.selectedTier.canPurchase,
+      // The email gates the purchase. The server re-validates it, but letting
+      // StoreKit open without one would take money we cannot deliver against.
+      ctaEnabled: !showPass && draft.selectedTier.canPurchase && _emailValid,
       onCta: () => _onCta(context),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _DeliveryEmailField(
+            controller: _emailController,
+            showError: _emailTouched && !_emailValid,
+            isSubscription: showPass,
+            onChanged: (_) => setState(() => _emailTouched = true),
+          ),
+          const SizedBox(height: 14),
           AnimatedSize(
             duration: const Duration(milliseconds: 280),
             curve: Curves.easeInOutCubic,
@@ -191,6 +220,7 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     final outcome = await ref.read(iapProvider.notifier).buy(
           tier,
           clientConversationRef: conversationId,
+          deliveryEmail: _email,
         );
     if (!context.mounted) return;
 
@@ -449,6 +479,73 @@ class _SummaryRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Where the portrait is sent.
+///
+/// One field, asked once, used for two things: the finished portrait, and for a
+/// Pass the one-time code backup. That backup is what closes the case the
+/// design spec records as unrecoverable - a lost verify response otherwise
+/// strands the Pass forever, because codes are stored as a peppered HMAC and
+/// cannot be re-derived.
+class _DeliveryEmailField extends StatelessWidget {
+  const _DeliveryEmailField({
+    required this.controller,
+    required this.showError,
+    required this.isSubscription,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final bool showError;
+  final bool isSubscription;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Where should we send it?',
+          style: TextStyle(
+            fontFamily: PortraitorTokens.fontFamily,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: PortraitorTokens.onboardingInk,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          onChanged: onChanged,
+          keyboardType: TextInputType.emailAddress,
+          autocorrect: false,
+          textInputAction: TextInputAction.done,
+          decoration: InputDecoration(
+            hintText: 'you@example.com',
+            errorText: showError ? 'Enter a valid email address' : null,
+            border: const OutlineInputBorder(),
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          isSubscription
+              ? 'Your portraits and your Pass code are emailed here. Keep it - '
+                  'the code is the only way to use this Pass elsewhere.'
+              : 'Your portrait is emailed here. The app keeps a copy on this '
+                  'device only, so the email is what survives.',
+          style: const TextStyle(
+            fontFamily: PortraitorTokens.fontFamily,
+            fontSize: 12,
+            height: 1.35,
+            color: Color(0xFF6B6580),
+          ),
+        ),
+      ],
     );
   }
 }
