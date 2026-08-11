@@ -20,30 +20,23 @@ class SessionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(18),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Ink(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0x12211A37)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x59211A37),
-                blurRadius: 22,
-                offset: Offset(0, 8),
-                spreadRadius: -14,
-              ),
-            ],
-          ),
+    return _SessionCardSurface(
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
-                padding: EdgeInsets.fromLTRB(14, compact ? 12 : 14, 14, compact ? 12 : 13),
+                padding: EdgeInsets.fromLTRB(
+                  14,
+                  compact ? 12 : 14,
+                  14,
+                  compact ? 12 : 13,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -133,6 +126,32 @@ class SessionCard extends StatelessWidget {
   }
 }
 
+class _SessionCardSurface extends StatelessWidget {
+  const _SessionCardSurface({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x12211A37)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1A211A37),
+            blurRadius: 14,
+            offset: Offset(0, 5),
+            spreadRadius: -8,
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
 class _BundleChip extends StatelessWidget {
   const _BundleChip({required this.label});
 
@@ -174,10 +193,7 @@ class _AvatarStack extends StatelessWidget {
       child: Stack(
         children: [
           for (var i = 0; i < shown.length; i++)
-            Positioned(
-              left: i * 24.0,
-              child: _SessionAvatar(person: shown[i]),
-            ),
+            Positioned(left: i * 24.0, child: _SessionAvatar(person: shown[i])),
         ],
       ),
     );

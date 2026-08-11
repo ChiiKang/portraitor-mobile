@@ -111,38 +111,7 @@ class _HomeHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        ClipOval(
-          child: Image.asset(
-            'assets/brand/portraitor-logo.png',
-            width: 32,
-            height: 32,
-            fit: BoxFit.cover,
-            errorBuilder:
-                (_, __, ___) => Container(
-                  width: 32,
-                  height: 32,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFF9475E1), Color(0xFFE8B4A6)],
-                    ),
-                  ),
-                ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        const Text(
-          'Portraitor',
-          style: TextStyle(
-            fontFamily: PortraitorTokens.fontFamily,
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.3,
-            color: PortraitorTokens.onboardingInk,
-          ),
-        ),
+        const _PortraitorBrand(),
         const Spacer(),
         Semantics(
           button: true,
@@ -184,6 +153,49 @@ class _HomeHeader extends StatelessWidget {
   }
 }
 
+class _PortraitorBrand extends StatelessWidget {
+  const _PortraitorBrand();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF9475E1), Color(0xFFE8B4A6)],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Color(0x1F46375F),
+                blurRadius: 2,
+                offset: Offset(0, 1),
+              ),
+            ],
+          ),
+          child: SizedBox(width: 28, height: 28),
+        ),
+        SizedBox(width: 9),
+        Text(
+          'Portraitor',
+          style: TextStyle(
+            fontFamily: PortraitorTokens.fontFamily,
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.4,
+            height: 1.1,
+            color: PortraitorTokens.onboardingInk,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _PassChip extends StatelessWidget {
   const _PassChip({required this.onManage});
 
@@ -193,7 +205,7 @@ class _PassChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: 'Pass, 7 of 10 left. Manage pass.',
+      label: 'Pass, 9 of 10 left. Manage pass.',
       child: InkWell(
         onTap: onManage,
         borderRadius: BorderRadius.circular(14),
@@ -213,7 +225,7 @@ class _PassChip extends StatelessWidget {
               SvgPicture.string(_passSvg, width: 16, height: 16),
               const SizedBox(width: 8),
               const Text(
-                'Pass · 7 of 10 left',
+                'Pass · 9 of 10 left',
                 style: TextStyle(
                   fontFamily: PortraitorTokens.fontFamily,
                   fontSize: 14,

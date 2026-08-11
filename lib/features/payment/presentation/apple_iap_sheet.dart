@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 
-/// Native-style App Store purchase sheet (UI shell).
-/// Confirm → [onConfirm] (You path bridges to legacy `/payment` until StoreKit).
+/// Native-style App Store purchase sheet (UI shell), mirroring the prototype's
+/// `#iap-sheet`. Face ID confirm → [onConfirm]; there is no second review step.
+///
+/// StoreKit is not wired yet, so this simulates the purchase. Replace the
+/// confirm button's action with a real StoreKit transaction when products ship.
 Future<void> showAppleIapSheet({
   required BuildContext context,
   required String productTitle,
+  required String productKind,
   required String priceLabel,
+  required String priceCaption,
   required bool isSubscription,
   required VoidCallback onConfirm,
 }) {
@@ -17,7 +22,9 @@ Future<void> showAppleIapSheet({
     builder:
         (context) => _AppleIapSheet(
           productTitle: productTitle,
+          productKind: productKind,
           priceLabel: priceLabel,
+          priceCaption: priceCaption,
           isSubscription: isSubscription,
           onConfirm: onConfirm,
         ),
@@ -27,13 +34,17 @@ Future<void> showAppleIapSheet({
 class _AppleIapSheet extends StatefulWidget {
   const _AppleIapSheet({
     required this.productTitle,
+    required this.productKind,
     required this.priceLabel,
+    required this.priceCaption,
     required this.isSubscription,
     required this.onConfirm,
   });
 
   final String productTitle;
+  final String productKind;
   final String priceLabel;
+  final String priceCaption;
   final bool isSubscription;
   final VoidCallback onConfirm;
 
@@ -95,37 +106,20 @@ class _AppleIapSheetState extends State<_AppleIapSheet> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      gradient: PortraitorTokens.onboardingBrandGradient,
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Image.asset(
-                      'assets/brand/portraitor-logo.png',
-                      fit: BoxFit.cover,
-                      errorBuilder:
-                          (_, __, ___) => const Icon(
-                            Icons.auto_awesome,
-                            color: Colors.white,
-                          ),
-                    ),
-                  ),
+                  const _IapAppIcon(),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Portraitor',
+                          widget.productTitle,
                           style: PortraitorTokens.titleMd.copyWith(
                             color: PortraitorTokens.onboardingInk,
                           ),
                         ),
                         Text(
-                          widget.productTitle,
+                          widget.productKind,
                           style: PortraitorTokens.bodySm.copyWith(
                             color: PortraitorTokens.onboardingMuted,
                           ),
@@ -154,7 +148,8 @@ class _AppleIapSheetState extends State<_AppleIapSheet> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      widget.isSubscription ? 'per month · USD' : 'one-time · USD',
+                      widget.priceCaption,
+                      textAlign: TextAlign.center,
                       style: PortraitorTokens.bodySm.copyWith(
                         color: PortraitorTokens.onboardingMuted,
                       ),
@@ -252,13 +247,73 @@ class _AppleIapSheetState extends State<_AppleIapSheet> {
               ),
               const SizedBox(height: 8),
               Text(
-                'StoreKit charges replace this shell when products are live.',
+                widget.isSubscription
+                    ? 'Subscription renews monthly. Cancel at least 24 hours '
+                        'before renewal in Settings → Apple ID → Subscriptions.'
+                    : 'One-time App Store purchase. Portrait generation starts '
+                        'after payment is confirmed.',
                 style: PortraitorTokens.bodySm.copyWith(
+                  fontSize: 12,
+                  height: 1.4,
                   color: PortraitorTokens.onboardingMuted,
                 ),
                 textAlign: TextAlign.center,
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// App Store product tile — prototype `.iap-app-icon` + `.iap-app-orb`.
+/// A white rounded square holding the brand **circle** mark, not the
+/// rounded-square app icon (see `brand-spec.md`, observed rule 6).
+class _IapAppIcon extends StatelessWidget {
+  const _IapAppIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0A000000), offset: Offset(0, 1)),
+          BoxShadow(
+            color: Color(0x1A211A37),
+            offset: Offset(0, 8),
+            blurRadius: 20,
+          ),
+        ],
+      ),
+      child: Center(
+        child: Container(
+          width: 34,
+          height: 34,
+          clipBehavior: Clip.antiAlias,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFC4B5FD), Color(0xFF7C5CFF), Color(0xFFF9A8D4)],
+              stops: [0.0, 0.48, 1.0],
+            ),
+          ),
+          // Approximates the prototype's `inset 0 1px 0 rgba(255,255,255,.45)`.
+          child: const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0x73FFFFFF), Color(0x00FFFFFF)],
+                stops: [0.0, 0.14],
+              ),
+            ),
           ),
         ),
       ),
@@ -289,11 +344,16 @@ class _IapRow extends StatelessWidget {
               color: PortraitorTokens.onboardingMuted,
             ),
           ),
-          const Spacer(),
-          Text(
-            value,
-            style: PortraitorTokens.bodyMd.copyWith(
-              color: PortraitorTokens.onboardingInk,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: PortraitorTokens.bodyMd.copyWith(
+                color: PortraitorTokens.onboardingInk,
+              ),
             ),
           ),
           if (trailing != null) ...[const SizedBox(width: 4), trailing!],
