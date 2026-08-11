@@ -218,18 +218,9 @@ class PendingJobRecoveryNotifier
       debugPrint('[Recovery] queue release failed (ignored): $e');
     }
 
-    // Best-effort payment cancel — only attempt if we have a payment session.
-    // Stale rows might not.
-    if (job.paymentSessionId.isNotEmpty) {
-      try {
-        await _api.cancelPayment(
-          paymentIntentId: job.paymentSessionId,
-          clientConversationRef: job.clientConversationRef,
-        );
-      } catch (e) {
-        debugPrint('[Recovery] payment cancel failed (ignored): $e');
-      }
-    }
+    // No payment cancel: Apple charges at purchase, so there is no
+    // authorization hold to release. Abandoning a job forfeits the generation,
+    // not the money - a refund is Apple's to issue, not ours.
 
     await _storage.deletePendingJob(job.id);
 

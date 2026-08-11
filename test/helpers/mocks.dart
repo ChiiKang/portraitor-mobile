@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:mocktail/mocktail.dart';
 
 import 'package:portraitor_mobile/core/api/api_service.dart';
-import 'package:portraitor_mobile/features/payment/services/stripe_service.dart';
 
 // ── Mock classes ─────────────────────────────────────────────
 
@@ -14,21 +13,8 @@ class MockDio extends Mock {}
 /// we create a fake that implements the same interface via method overrides.
 class FakeApiService extends Fake implements ApiService {
   // Payment
-  Future<Map<String, dynamic>> Function({
-    required String clientConversationRef,
-    required String customerEmail,
-    String? inputHash,
-  })?
-  onCreatePayment;
 
-  Future<Map<String, dynamic>> Function({required String paymentIntentId})?
-  onVerifyPayment;
 
-  Future<Map<String, dynamic>> Function({
-    required String paymentIntentId,
-    String? clientConversationRef,
-  })?
-  onCancelPayment;
 
   // Queue
   Future<Map<String, dynamic>> Function({
@@ -90,55 +76,6 @@ class FakeApiService extends Fake implements ApiService {
 
   // Job status
   Future<Map<String, dynamic>> Function(String)? onGetJobStatus;
-
-  @override
-  Future<Map<String, dynamic>> createPayment({
-    required String clientConversationRef,
-    required String customerEmail,
-    String? inputHash,
-  }) {
-    if (onCreatePayment != null) {
-      return onCreatePayment!(
-        clientConversationRef: clientConversationRef,
-        customerEmail: customerEmail,
-        inputHash: inputHash,
-      );
-    }
-    return Future.value({
-      'status': 'ok',
-      'data': {
-        'client_secret': 'pi_test_secret_abc123',
-        'payment_intent_id': 'pi_test_123',
-        'publishable_key': 'pk_test_abc123456789012345',
-      },
-    });
-  }
-
-  @override
-  Future<Map<String, dynamic>> verifyPayment({
-    required String paymentIntentId,
-  }) {
-    if (onVerifyPayment != null) {
-      return onVerifyPayment!(paymentIntentId: paymentIntentId);
-    }
-    return Future.value({
-      'data': {'paid': true, 'status': 'requires_capture'},
-    });
-  }
-
-  @override
-  Future<Map<String, dynamic>> cancelPayment({
-    required String paymentIntentId,
-    String? clientConversationRef,
-  }) {
-    if (onCancelPayment != null) {
-      return onCancelPayment!(
-        paymentIntentId: paymentIntentId,
-        clientConversationRef: clientConversationRef,
-      );
-    }
-    return Future.value({'status': 'ok'});
-  }
 
   @override
   Future<Map<String, dynamic>> enqueue({
@@ -308,4 +245,3 @@ class FakeApiService extends Fake implements ApiService {
   }
 }
 
-class MockStripeService extends Mock implements StripeService {}

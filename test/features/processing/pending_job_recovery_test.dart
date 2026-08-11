@@ -322,12 +322,8 @@ void main() {
       );
     });
 
-    test('cancel calls payment cancel and queue release with right args',
-        () async {
+    test('cancel releases the queue slot and cancels no payment', () async {
       var releaseCalled = false;
-      var cancelPaymentCalled = false;
-      String? capturedPaymentIntent;
-      String? capturedConvRef;
       fakeApi.onReleaseQueue = ({
         required clientConversationRef,
         required paymentSessionId,
@@ -336,67 +332,47 @@ void main() {
         releaseCalled = true;
         return {'status': 'ok'};
       };
-      fakeApi.onCancelPayment = ({
-        required paymentIntentId,
-        clientConversationRef,
-      }) async {
-        cancelPaymentCalled = true;
-        capturedPaymentIntent = paymentIntentId;
-        capturedConvRef = clientConversationRef;
-        return {'status': 'ok'};
-      };
 
       await notifier.cancel(_resumableJob());
 
       expect(releaseCalled, isTrue);
-      expect(cancelPaymentCalled, isTrue);
-      expect(capturedPaymentIntent, 'pi_conv_resumable');
-      // Critical: backend at payment.php:277 SELECTs by both
-      // stripe_session_id AND client_conversation_ref. Sending only the PI
-      // returns 404 and Stripe is NEVER cancelled — exactly the bug we
-      // shipped in the original Phase 3.
-      expect(capturedConvRef, 'conv_resumable',
-          reason: 'client_conversation_ref must be sent so backend can match '
-              'the payments row and call Stripe cancel.');
+      // Apple charges at purchase, so there is no authorization hold to
+      // release. Abandoning a job forfeits the generation, not the money -
+      // a refund is Apple's to issue, not ours.
+      expect(
+        await StorageService.instance.getPendingJobById('conv_resumable'),
+        isNull,
+      );
     });
 
-    test('cancel still deletes locally when payment cancel network-fails',
+    test('cancel still deletes locally when queue release network-fails',
         () async {
       await StorageService.instance.savePendingJobRecord(_resumableJob());
-      fakeApi.onCancelPayment = ({
-        required paymentIntentId,
-        clientConversationRef,
+      fakeApi.onReleaseQueue = ({
+        required clientConversationRef,
+        required paymentSessionId,
+        leaseToken,
       }) async {
-        throw ApiException('Payment service unavailable', statusCode: 500);
+        throw ApiException('Queue service unavailable', statusCode: 500);
       };
 
-      // Should not throw.
+      // Should not throw: a server failure must not strand the local row.
       await notifier.cancel(_resumableJob());
 
       expect(
         await StorageService.instance.getPendingJobById('conv_resumable'),
         isNull,
-        reason:
-            'Offline-cancel parity with web (app.js:2999): local row is '
-            'deleted even when payment cancel fails.',
       );
     });
 
-    test('cancel skips payment cancel for stale row without payment_session_id',
-        () async {
-      var cancelPaymentCalled = false;
-      fakeApi.onCancelPayment = ({
-        required paymentIntentId,
-        clientConversationRef,
-      }) async {
-        cancelPaymentCalled = true;
-        return {'status': 'ok'};
-      };
-
+    test('cancel handles a stale row with no payment reference', () async {
       await notifier.cancel(_legacyStaleJob());
 
-      expect(cancelPaymentCalled, isFalse,
-          reason: 'do not POST a payment cancel with an empty intent id');
+      expect(
+        await StorageService.instance.getPendingJobById(_legacyStaleJob().id),
+        isNull,
+        reason: 'a stale row is cleaned up regardless of what it carries',
+      );
     });
   });
 }

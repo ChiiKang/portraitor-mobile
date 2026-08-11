@@ -12,7 +12,6 @@ import 'package:portraitor_mobile/features/import/presentation/paste_chat_screen
 import 'package:portraitor_mobile/features/import/presentation/whatsapp_export_guide_screen.dart';
 import 'package:portraitor_mobile/features/library/presentation/library_screen.dart';
 import 'package:portraitor_mobile/features/onboarding/presentation/onboarding_flow.dart';
-import 'package:portraitor_mobile/features/payment/presentation/payment_screen.dart';
 import 'package:portraitor_mobile/features/processing/presentation/processing_screen.dart';
 import 'package:portraitor_mobile/features/results/presentation/result_screen.dart';
 import 'package:portraitor_mobile/features/settings/presentation/faq_screen.dart';
@@ -106,20 +105,6 @@ final router = GoRouter(
           detectedNames: (extra['detectedNames'] as List<String>?) ?? [],
           messageCount: extra['messageCount'] as int? ?? 0,
           dateRange: extra['dateRange'] as Map<String, DateTime?>?,
-        );
-      },
-    ),
-    GoRoute(
-      path: '/payment',
-      name: 'payment',
-      builder: (context, state) {
-        final extra = state.extra as Map<String, dynamic>? ?? {};
-        return PaymentScreen(
-          normalizedText: extra['normalizedText'] as String? ?? '',
-          targetName: extra['targetName'] as String? ?? '',
-          tokenEstimate: extra['tokenEstimate'] as int? ?? 0,
-          conversationId: extra['conversationId'] as String?,
-          dateRange: extra['dateRange'] as String?,
         );
       },
     ),

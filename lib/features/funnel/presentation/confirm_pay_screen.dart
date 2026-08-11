@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
-import 'package:portraitor_mobile/features/payment/application/payment_provider.dart';
 import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/domain/purchase_outcome.dart';
 import 'package:portraitor_mobile/features/payment/presentation/apple_iap_sheet.dart';
@@ -163,7 +163,7 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
         priceLabel: tier.iapPriceLabel,
         priceCaption: tier.iapPriceCaption,
         isSubscription: !tier.isOneOff,
-        onConfirm: () => _completeIapPurchase(context),
+        onConfirm: () => _completeDemoPurchase(context),
       );
       return;
     }
@@ -248,48 +248,25 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     };
   }
 
-  /// Apple IAP is the only purchase path. Face ID authorises the purchase, so
-  /// the funnel goes straight to `/processing` — matching the prototype's
-  /// `iap-confirm → go("processing", {replace: true})`. There is no second
-  /// review-and-pay step to confirm the same charge twice.
+  /// Demo path. Simulates an authorised purchase locally so the funnel can be
+  /// walked without StoreKit or the payments backend.
   ///
-  /// StoreKit is not wired yet, so the receipt is provisioned locally the same
-  /// way the demo path does; swap `initiateDemo` for StoreKit verification when
-  /// the products go live.
-  Future<void> _completeIapPurchase(BuildContext context) async {
+  /// Deliberately self-contained: it borrows nothing from the Stripe provider,
+  /// so removing that code cannot break the demo.
+  Future<void> _completeDemoPurchase(BuildContext context) async {
     final payload = _funnelPayload(context);
     if (payload == null) return;
-
-    final paymentNotifier = ref.read(paymentProvider.notifier);
-    final authorized = await paymentNotifier.initiateDemo();
     if (!context.mounted) return;
 
-    if (!authorized) {
-      final error = ref.read(paymentProvider).error ?? 'Purchase failed';
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error)));
-      return;
-    }
-
-    final paymentState = ref.read(paymentProvider);
+    const uuid = Uuid();
     context.pushReplacement(
       '/processing',
       extra: {
         ...payload,
-        'conversationId': paymentState.clientConversationRef ?? '',
-        'paymentReference': paymentState.paymentIntentId ?? '',
+        'conversationId': uuid.v4(),
+        'paymentReference': 'demo_${uuid.v4()}',
       },
     );
-  }
-
-  /// Retained for the Stripe web checkout path (`/payment` → `PaymentScreen`).
-  /// Unused while the funnel is Apple-IAP-only; do not delete.
-  // ignore: unused_element
-  void _bridgeToLegacyPayment(BuildContext context) {
-    final payload = _funnelPayload(context);
-    if (payload == null) return;
-    context.push('/payment', extra: payload);
   }
 
   String _fmt(DateTime d) => DateFormat('MMM yyyy').format(d);

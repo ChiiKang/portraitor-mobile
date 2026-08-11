@@ -41,28 +41,6 @@ void main() {
       expect(source, isNot(contains('/api/admin/config.php')));
     });
 
-    test('createPayment accepts required fields', () {
-      // Verifies the method signature matches backend POST /api/payment.php
-      // Expected body: { customer_email, client_conversation_ref, source: "mobile" }
-      expect(
-        () => ApiService.instance.createPayment(
-          clientConversationRef: 'test-ref',
-          customerEmail: 'test@example.com',
-          inputHash: 'abc123',
-        ),
-        // Will throw because no server — but proves the method exists with correct params
-        throwsA(anything),
-      );
-    });
-
-    test('verifyPayment accepts paymentIntentId', () {
-      // Verifies method signature matches GET /api/payment.php?payment_intent_id=...
-      expect(
-        () => ApiService.instance.verifyPayment(paymentIntentId: 'pi_test'),
-        throwsA(anything),
-      );
-    });
-
     test('enqueue accepts paymentSessionId and conversationRef', () {
       // Verifies method matches POST /api/queue/enqueue.php
       // Expected body: { payment_session_id, client_conversation_ref }

@@ -54,64 +54,6 @@ class ApiService {
     ),
   )..interceptors.add(_RetryInterceptor());
 
-  // ── Payment ─────────────────────────────────────────────────
-
-  /// POST /api/payment.php — create PaymentIntent (manual capture)
-  Future<Map<String, dynamic>> createPayment({
-    required String clientConversationRef,
-    required String customerEmail,
-    String? inputHash,
-  }) async {
-    final response = await _post('/api/payment.php', {
-      'customer_email': customerEmail,
-      'client_conversation_ref': clientConversationRef,
-      if (inputHash != null) 'input_hash': inputHash,
-      'source': 'production',
-    });
-    return response;
-  }
-
-  /// GET /api/payment.php?payment_intent_id=... — verify payment status
-  Future<Map<String, dynamic>> verifyPayment({
-    required String paymentIntentId,
-  }) async {
-    try {
-      final response = await _dio.get(
-        '/api/payment.php',
-        queryParameters: {'payment_intent_id': paymentIntentId},
-      );
-      return _handleResponse(response);
-    } on DioException catch (e) {
-      throw _dioToApiException(e);
-    }
-  }
-
-  /// DELETE /api/payment.php — cancel payment hold.
-  ///
-  /// Backend (payment.php:277) requires BOTH `payment_intent_id` and
-  /// `client_conversation_ref` to match an `authorized` row before Stripe
-  /// cancellation runs. Sending only the PI silently 404s and leaves the
-  /// authorization to either timeout-charge or get auto-released a week
-  /// later — exactly the bug the cancel flow is supposed to prevent.
-  Future<Map<String, dynamic>> cancelPayment({
-    required String paymentIntentId,
-    String? clientConversationRef,
-  }) async {
-    try {
-      final response = await _dio.delete(
-        '/api/payment.php',
-        data: jsonEncode({
-          'payment_intent_id': paymentIntentId,
-          if (clientConversationRef != null && clientConversationRef.isNotEmpty)
-            'client_conversation_ref': clientConversationRef,
-        }),
-      );
-      return _handleResponse(response);
-    } on DioException catch (e) {
-      throw _dioToApiException(e);
-    }
-  }
-
   // ── Queue ───────────────────────────────────────────────────
 
   /// POST /api/queue/enqueue.php — join processing queue
