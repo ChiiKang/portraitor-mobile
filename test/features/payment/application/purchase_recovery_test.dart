@@ -43,7 +43,10 @@ void main() {
 
       await buildRecovery(iap: iap, store: store).runAtLaunch();
 
-      expect(await store.readSessionToken(), isNotEmpty);
+      // A one-off mints no session, so a replay of one stores nothing. The
+      // guard matters: overwriting with the empty echo would sign out a Pass
+      // holder whose unfinished bundle happened to drain at launch.
+      expect(await store.readSessionToken(), isNull);
       expect(
         await store.readPassCode(),
         isNull,
@@ -140,6 +143,8 @@ class _CountingApi extends FakeBillingApi {
     required String jws,
     required String publicUuid,
     required String productId,
+    required String clientConversationRef,
+    String? deliveryEmail,
     String? sessionToken,
   }) {
     verifyCount++;
@@ -147,6 +152,8 @@ class _CountingApi extends FakeBillingApi {
       jws: jws,
       publicUuid: publicUuid,
       productId: productId,
+      clientConversationRef: clientConversationRef,
+      deliveryEmail: deliveryEmail,
       sessionToken: sessionToken,
     );
   }

@@ -107,7 +107,11 @@ class IapNotifier extends StateNotifier<IapState> {
   /// The ordering is the contract: prepare (only if a Pass exists), purchase,
   /// verify, store, then finish. Finishing earlier loses a paid purchase on a
   /// crash, because Apple will not replay a finished transaction.
-  Future<PurchaseOutcome> buy(FunnelTier tier) async {
+  Future<PurchaseOutcome> buy(
+    FunnelTier tier, {
+    required String clientConversationRef,
+    String? deliveryEmail,
+  }) async {
     final productId = IapProductCatalog.productIdFor(tier);
     final isSubscription = IapProductCatalog.isSubscription(tier);
     final sessionToken = await _store.readSessionToken();
@@ -171,13 +175,23 @@ class IapNotifier extends StateNotifier<IapState> {
         jws: txn.jws,
         publicUuid: prepared.publicUuid,
         productId: productId,
+        clientConversationRef: clientConversationRef,
+        deliveryEmail: deliveryEmail,
         sessionToken: sessionToken,
       );
 
       if (verified.passCode != null) {
         await _store.writePassCode(verified.passCode!);
       }
-      await _store.writeSessionToken(verified.sessionToken);
+      // Guarded, not unconditional. A one-off has no Pass and therefore no
+      // session to mint, so the server echoes back whatever the caller sent -
+      // empty when it had none. Writing that empty value would sign a Pass
+      // holder out of a subscription they are still paying for, and '' is not
+      // null, so the next subscription purchase would then send an empty Bearer
+      // to prepare.php.
+      if (verified.sessionToken.isNotEmpty) {
+        await _store.writeSessionToken(verified.sessionToken);
+      }
 
       // Durable everywhere it matters. Only now may StoreKit forget it.
       //

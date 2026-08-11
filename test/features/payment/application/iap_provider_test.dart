@@ -60,7 +60,7 @@ void main() {
       final notifier = buildNotifier(store: store);
       await notifier.loadPrices();
 
-      final outcome = await notifier.buy(FunnelTier.you);
+      final outcome = await notifier.buy(FunnelTier.you, clientConversationRef: 'conv_test');
 
       expect(outcome, isA<PurchaseVerified>());
       final verified = outcome as PurchaseVerified;
@@ -72,7 +72,10 @@ void main() {
             'create a Pass, so there is no code to save',
       );
       expect(await store.readPassCode(), isNull);
-      expect(await store.readSessionToken(), isNotEmpty);
+      // No Pass means no session to mint. The server echoes the caller's token
+      // back and the client refuses to store an empty one, so a buyer who held
+      // no session still holds none - and one who did keeps it.
+      expect(await store.readSessionToken(), isNull);
       expect(notifier.state.status, IapStatus.success);
     });
 
@@ -81,7 +84,7 @@ void main() {
       final notifier = buildNotifier(store: store);
       await notifier.loadPrices();
 
-      final outcome = await notifier.buy(FunnelTier.pass);
+      final outcome = await notifier.buy(FunnelTier.pass, clientConversationRef: 'conv_test');
 
       expect(outcome, isA<PurchaseVerified>());
       final verified = outcome as PurchaseVerified;
@@ -102,7 +105,11 @@ void main() {
       final notifier = buildNotifier(iap: iap, store: store);
       await notifier.loadPrices();
 
-      await notifier.buy(FunnelTier.you);
+      // The Pass, not a one-off. A one-off stores no credential at all now:
+      // it mints no Pass and the server issues no session for it, so there is
+      // no write whose ordering could be observed. The subscription is where
+      // the ordering guarantee actually has something to guard.
+      await notifier.buy(FunnelTier.pass, clientConversationRef: 'conv_test');
 
       expect(
         store.wroteBeforeComplete,
@@ -110,7 +117,7 @@ void main() {
         reason: 'completePurchase is irreversible: Apple will not replay a '
             'finished transaction, so the credential must be durable first',
       );
-      expect(iap.finished, contains(_youSku));
+      expect(iap.finished, contains(_passSku));
     });
 
     test('a purchase that verifies but cannot be finished still succeeds',
@@ -121,7 +128,7 @@ void main() {
       final notifier = buildNotifier(iap: iap, store: store);
       await notifier.loadPrices();
 
-      final outcome = await notifier.buy(FunnelTier.you);
+      final outcome = await notifier.buy(FunnelTier.you, clientConversationRef: 'conv_test');
 
       expect(
         outcome,
@@ -129,7 +136,8 @@ void main() {
         reason: 'the user paid and the server recorded it; failing to finish '
             'the StoreKit transaction only means it replays',
       );
-      expect(await store.readSessionToken(), isNotEmpty);
+      // A one-off's durable credential is the payment reference, not a code.
+      expect((outcome as PurchaseVerified).paymentReference, isNotEmpty);
     });
 
     test('a failed verification leaves the transaction unfinished', () async {
@@ -138,7 +146,7 @@ void main() {
       final notifier = buildNotifier(iap: iap, api: api);
       await notifier.loadPrices();
 
-      final outcome = await notifier.buy(FunnelTier.you);
+      final outcome = await notifier.buy(FunnelTier.you, clientConversationRef: 'conv_test');
 
       expect(outcome, isA<PurchaseFailed>());
       expect(
@@ -154,7 +162,7 @@ void main() {
       final notifier = buildNotifier(api: api);
       await notifier.loadPrices();
 
-      await notifier.buy(FunnelTier.you);
+      await notifier.buy(FunnelTier.you, clientConversationRef: 'conv_test');
 
       expect(
         api.prepareCallCount,
@@ -171,7 +179,7 @@ void main() {
       final notifier = buildNotifier(api: api, store: store);
       await notifier.loadPrices();
 
-      await notifier.buy(FunnelTier.you);
+      await notifier.buy(FunnelTier.you, clientConversationRef: 'conv_test');
 
       expect(api.prepareCallCount, 1);
     });
@@ -185,7 +193,7 @@ void main() {
       final notifier = buildNotifier(iap: iap, api: api, store: store);
       await notifier.loadPrices();
 
-      final outcome = await notifier.buy(FunnelTier.pass);
+      final outcome = await notifier.buy(FunnelTier.pass, clientConversationRef: 'conv_test');
 
       expect(outcome, isA<PurchaseFailed>());
       expect(
@@ -203,7 +211,7 @@ void main() {
       final notifier = buildNotifier(api: api, store: store);
       await notifier.loadPrices();
 
-      final outcome = await notifier.buy(FunnelTier.you);
+      final outcome = await notifier.buy(FunnelTier.you, clientConversationRef: 'conv_test');
 
       expect(outcome, isA<PurchaseVerified>());
     });
@@ -212,7 +220,7 @@ void main() {
       final iap = buildIap();
       final notifier = buildNotifier(iap: iap);
 
-      final outcome = await notifier.buy(FunnelTier.you);
+      final outcome = await notifier.buy(FunnelTier.you, clientConversationRef: 'conv_test');
 
       expect(outcome, isA<PurchaseFailed>());
       expect(iap.pending, isEmpty);

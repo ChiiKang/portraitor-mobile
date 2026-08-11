@@ -17,6 +17,10 @@ import 'package:portraitor_mobile/features/payment/services/pass_credential_stor
 /// Restoration is automatic during normal operation. The user-initiated
 /// Restore Purchases action exists only as a fallback, because
 /// `AppStore.sync()` can prompt for Apple credentials.
+/// Placeholder conversation reference for a replayed purchase. Distinctive so
+/// it is greppable in the payments table when support has to reconcile one.
+const String _replayConversationRef = 'storekit_replay_unbound';
+
 class PurchaseRecovery {
   PurchaseRecovery({
     required IapService iap,
@@ -69,13 +73,30 @@ class PurchaseRecovery {
         // inside the JWS; the request field is only a correlation hint.
         publicUuid: '',
         productId: txn.productId,
+        // KNOWN GAP. StoreKit transactions carry no conversation reference, so
+        // a replay cannot restate the one the purchase was made against.
+        //
+        // Harmless for the common case: the server deduplicates on Apple's
+        // transaction id and returns the original reference, so a replay of an
+        // already-recorded purchase never consults this value.
+        //
+        // It matters only when the FIRST verify never reached the server. The
+        // row is then created against this placeholder and the queue will refuse
+        // it, so the credit is recoverable by support but not by the app.
+        // Closing it properly means persisting the ref at purchase time and
+        // looking it up here; see the backend plan, section 6.
+        clientConversationRef: _replayConversationRef,
         sessionToken: sessionToken,
       );
 
       if (verified.passCode != null) {
         await _store.writePassCode(verified.passCode!);
       }
-      await _store.writeSessionToken(verified.sessionToken);
+      // Same guard as the purchase path: never overwrite a working Pass
+      // session with the empty echo a consumable returns.
+      if (verified.sessionToken.isNotEmpty) {
+        await _store.writeSessionToken(verified.sessionToken);
+      }
 
       await _iap.complete(txn);
     } catch (e) {

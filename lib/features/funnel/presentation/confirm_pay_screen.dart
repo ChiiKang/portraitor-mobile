@@ -180,7 +180,18 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     final payload = _funnelPayload(context);
     if (payload == null) return;
 
-    final outcome = await ref.read(iapProvider.notifier).buy(tier);
+    // Generated BEFORE the purchase, not by the processing screen afterwards.
+    // The server stores this on the payments row and the generation queue
+    // refuses a payment whose stored ref does not match the run being queued,
+    // so the id has to exist before the money moves. The same value is then
+    // handed to /processing so both sides agree.
+    final conversationId = 'conv_${DateTime.now().millisecondsSinceEpoch}_'
+        '${const Uuid().v4().substring(0, 8)}';
+
+    final outcome = await ref.read(iapProvider.notifier).buy(
+          tier,
+          clientConversationRef: conversationId,
+        );
     if (!context.mounted) return;
 
     switch (outcome) {
@@ -201,7 +212,11 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
         }
         context.pushReplacement(
           '/processing',
-          extra: {...payload, 'paymentReference': paymentReference ?? ''},
+          extra: {
+            ...payload,
+            'conversationId': conversationId,
+            'paymentReference': paymentReference ?? '',
+          },
         );
       case PurchaseCancelled():
         break;

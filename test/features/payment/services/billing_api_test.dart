@@ -40,11 +40,14 @@ void main() {
       final result = await api.verifyPurchase(
         jws: 'signed',
         publicUuid: 'uuid-1',
-        productId: 'com.portraitor.portrait.you',
+productId: 'com.portraitor.portrait.you',
+        clientConversationRef: 'conv_test',
       );
 
       expect(result.paymentReference, isNotEmpty);
-      expect(result.sessionToken, isNotEmpty);
+      // A one-off has no Pass, so the server mints no session and echoes back
+      // whatever the caller sent. Empty here because this caller sent none.
+      expect(result.sessionToken, isEmpty);
       expect(
         result.passCode,
         isNull,
@@ -60,7 +63,8 @@ void main() {
       final result = await api.verifyPurchase(
         jws: 'signed',
         publicUuid: 'uuid-1',
-        productId: 'com.portraitor.pass.monthly',
+productId: 'com.portraitor.pass.monthly',
+        clientConversationRef: 'conv_test',
       );
 
       expect(result.passCode, isNotNull);
@@ -72,11 +76,17 @@ void main() {
       final api = FakeBillingApi();
       const pass = 'com.portraitor.pass.monthly';
       await api.verifyPurchase(
-        jws: 'signed', publicUuid: 'uuid-1', productId: pass,
+        jws: 'signed',
+        publicUuid: 'uuid-1',
+        productId: pass,
+        clientConversationRef: 'conv_test',
       );
 
       final replay = await api.verifyPurchase(
-        jws: 'signed', publicUuid: 'uuid-1', productId: pass,
+        jws: 'signed',
+        publicUuid: 'uuid-1',
+        productId: pass,
+        clientConversationRef: 'conv_test',
       );
 
       expect(replay.passCode, isNull);
@@ -89,12 +99,49 @@ void main() {
       );
     });
 
+    test('a one-off echoes an existing session rather than replacing it',
+        () async {
+      // The regression this exists to prevent: the client writes the returned
+      // token unconditionally, so a fresh-or-empty value would sign a Pass
+      // holder out of a subscription they are still paying for.
+      final api = FakeBillingApi();
+      const existing = 'existing-session-token';
+
+      final result = await api.verifyPurchase(
+        jws: 'signed',
+        publicUuid: 'uuid-1',
+        productId: 'com.portraitor.portrait.you',
+        clientConversationRef: 'conv_1',
+        sessionToken: existing,
+      );
+
+      expect(result.sessionToken, existing);
+    });
+
+    test('verify carries the conversation ref the server requires', () async {
+      final api = FakeBillingApi();
+
+      await api.verifyPurchase(
+        jws: 'signed',
+        publicUuid: 'uuid-1',
+        productId: 'com.portraitor.portrait.you',
+        clientConversationRef: 'conv_abc',
+      );
+
+      // Without it the server writes a payments row the generation queue will
+      // refuse, so the credit could never be spent.
+      expect(api.lastConversationRef, 'conv_abc');
+    });
+
     test('a rejected purchase throws rather than returning a partial', () async {
       final api = FakeBillingApi()..rejectVerification = true;
       expect(
         () => api.verifyPurchase(
-          jws: 'bad', publicUuid: 'uuid-1', productId: 'sku',
-        ),
+        jws: 'bad',
+        publicUuid: 'uuid-1',
+        productId: 'sku',
+        clientConversationRef: 'conv_test',
+      ),
         throwsA(isA<PurchaseNotVerifiedException>()),
       );
     });

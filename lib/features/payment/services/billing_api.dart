@@ -58,10 +58,19 @@ abstract class BillingApi {
     bool isSubscription = false,
   });
 
+  /// [clientConversationRef] is required by the server: the generation queue
+  /// refuses a payment whose stored reference does not match the run being
+  /// queued, so a purchase recorded without one is a credit that can never be
+  /// spent.
+  ///
+  /// [deliveryEmail] is the address the portrait is emailed to, and for a Pass
+  /// also receives the one-time code as a backup.
   Future<VerifiedPurchase> verifyPurchase({
     required String jws,
     required String publicUuid,
     required String productId,
+    required String clientConversationRef,
+    String? deliveryEmail,
     String? sessionToken,
   });
 }
@@ -104,12 +113,20 @@ class HttpBillingApi implements BillingApi {
     required String jws,
     required String publicUuid,
     required String productId,
+    required String clientConversationRef,
+    String? deliveryEmail,
     String? sessionToken,
   }) async {
     try {
       final response = await _dio.post<Map<String, dynamic>>(
         '/api/apple/purchase/verify.php',
-        data: {'jws': jws, 'public_uuid': publicUuid, 'product_id': productId},
+        data: {
+          'jws': jws,
+          'public_uuid': publicUuid,
+          'product_id': productId,
+          'client_conversation_ref': clientConversationRef,
+          if (deliveryEmail != null) 'delivery_email': deliveryEmail,
+        },
         options: _auth(sessionToken),
       );
       final data = response.data?['data'] as Map<String, dynamic>? ?? {};
@@ -143,6 +160,15 @@ class FakeBillingApi implements BillingApi {
 
   bool rejectVerification = false;
 
+  /// What the last verify call carried. The server requires both, so a client
+  /// that stops sending them must fail a test rather than a purchase.
+  String? lastConversationRef;
+  String? lastDeliveryEmail;
+
+  /// Mirrors the real endpoint: a consumable has no Pass, so no session is
+  /// minted and the caller's own token is echoed back (empty when it had none).
+  String? echoSessionToken;
+
   @override
   Future<PreparedPurchase> preparePurchase({
     required String? sessionToken,
@@ -162,8 +188,12 @@ class FakeBillingApi implements BillingApi {
     required String jws,
     required String publicUuid,
     required String productId,
+    required String clientConversationRef,
+    String? deliveryEmail,
     String? sessionToken,
   }) async {
+    lastConversationRef = clientConversationRef;
+    lastDeliveryEmail = deliveryEmail;
     if (rejectVerification) {
       throw const PurchaseNotVerifiedException('Purchase could not be verified');
     }
@@ -175,8 +205,10 @@ class FakeBillingApi implements BillingApi {
     final isSubscription = productId == IapProductCatalog.passMonthly;
 
     return VerifiedPurchase(
-      sessionToken: 'a' * 64,
-      productKey: isSubscription ? 'pass_subscription' : 'portrait_you',
+      sessionToken: isSubscription ? 'a' * 64 : (echoSessionToken ?? sessionToken ?? ''),
+      // Matches the server's canonical key. uq_provider_account_product includes
+      // provider, so Apple reuses the key Stripe already uses.
+      productKey: isSubscription ? 'pass_monthly' : 'portrait_you',
       passCodeDelivered: isSubscription && first,
       paymentReference: isSubscription ? null : 'credit-$publicUuid',
       passCode: (isSubscription && first) ? 'PASS-CODE-1' : null,
