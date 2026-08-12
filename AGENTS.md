@@ -1,3 +1,22 @@
+## no-mistakes policy
+
+Treat `no-mistakes` as a final quality and release gate, not as part of the
+normal development loop.
+
+Run `no-mistakes` only when the agent is confident that a major feature is
+complete. Before invoking it, the implementation must be stable, requirements
+must no longer be changing, direct tests and static analysis must pass, required
+builds must succeed, and no known failures may remain.
+
+Do not invoke `no-mistakes` during planning, active implementation, exploration,
+routine debugging, or ordinary targeted testing. Use direct tests, analysis, and
+build commands during those stages.
+
+Invocation also requires an explicit user request such as `/no-mistakes` or
+"run the final gate." Run one repository at a time. Ask the user before rerunning
+a failed gate. Small UI, copy, documentation, and low-risk refactoring changes do
+not require `no-mistakes` unless the user explicitly requests it.
+
 <claude-mem-context>
 # Memory Context
 

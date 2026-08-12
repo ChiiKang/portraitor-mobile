@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -77,6 +78,7 @@ void main() {
   testWidgets('shows feedback when subscription management cannot open', (
     tester,
   ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(ManageSubscriptionsChannel.channel, (
           _,
@@ -91,6 +93,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('manage_subscription')));
     await tester.pump();
+    debugDefaultTargetPlatformOverride = null;
 
     expect(
       find.text('Could not open subscription management. Try again.'),

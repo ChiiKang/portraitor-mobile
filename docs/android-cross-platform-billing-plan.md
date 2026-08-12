@@ -18,9 +18,9 @@ Live Play purchase launch is gated by `--dart-define=GOOGLE_PLAY_BILLING_ENABLED
 
 Implementation validation completed locally:
 
-- 421 Flutter tests pass, including provider adapters, replay, idempotency, storage migration, multi-person checkpoints, profile controls, and failure paths;
-- all backend feature scripts and Google billing suites pass, including MariaDB migration, OIDC, RTDN lifecycle, duplicate delivery, and token-redaction coverage;
-- debug APK and release AAB builds pass with Play billing both disabled and enabled;
+- 434 Flutter tests pass, including provider adapters, replay, idempotency, storage migration, multi-person checkpoints, profile controls, and failure paths;
+- all 37 backend feature scripts and Google billing suites pass, including MariaDB migration, OIDC, RTDN lifecycle, duplicate delivery, concurrency retry, and token-redaction coverage;
+- debug APK and securely signed release AAB builds pass, including a Play-enabled release build using an ephemeral validation upload key;
 - the installed debug APK launches cleanly on a Pixel 8 Google Play emulator with no app fatal error or ANR in the smoke log;
 - all 22 Android device integration tests pass across onboarding, home/import routing, setup-to-shared-funnel routing, settings, and backend PDF download.
 
