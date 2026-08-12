@@ -36,22 +36,18 @@ class PendingJobRecoveryState {
   const PendingJobRecoveryState({
     this.isLoading = false,
     this.classifications = const [],
-    this.hasShownSheet = false,
   });
 
   final bool isLoading;
   final List<RecoveryClassification> classifications;
-  final bool hasShownSheet;
 
   PendingJobRecoveryState copyWith({
     bool? isLoading,
     List<RecoveryClassification>? classifications,
-    bool? hasShownSheet,
   }) {
     return PendingJobRecoveryState(
       isLoading: isLoading ?? this.isLoading,
       classifications: classifications ?? this.classifications,
-      hasShownSheet: hasShownSheet ?? this.hasShownSheet,
     );
   }
 
@@ -182,12 +178,6 @@ class PendingJobRecoveryNotifier
     }
   }
 
-  /// Mark the sheet as shown for this app launch so home_screen does not
-  /// re-show it after user dismisses.
-  void markSheetShown() {
-    state = state.copyWith(hasShownSheet: true);
-  }
-
   /// Drop a single classification after the user finishes interacting with it
   /// (resume started or cancel completed). The next launch (or next refresh)
   /// repopulates state.
@@ -196,7 +186,6 @@ class PendingJobRecoveryNotifier
       classifications: state.classifications
           .where((c) => c.job.id != jobId)
           .toList(growable: false),
-      hasShownSheet: false,
     );
   }
 

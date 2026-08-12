@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/features/processing/application/pending_job_recovery_provider.dart';
 import 'package:portraitor_mobile/features/processing/application/processing_provider.dart';
-import 'package:portraitor_mobile/features/processing/presentation/pending_job_resume_sheet.dart';
+import 'package:portraitor_mobile/features/processing/presentation/pending_job_resume_card.dart';
 import 'package:portraitor_mobile/features/results/application/portraits_provider.dart';
 import 'package:portraitor_mobile/shared/models/portrait_session.dart';
 import 'package:portraitor_mobile/shared/widgets/main_tab_shell.dart';
@@ -46,17 +46,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ref.read(portraitsProvider.notifier).loadPortraits();
       }
     });
-    ref.listen(pendingJobRecoveryProvider, (previous, next) {
-      if (next.isLoading || next.hasShownSheet) return;
-      final classification = next.nextToShow;
-      if (classification == null) return;
-      ref.read(pendingJobRecoveryProvider.notifier).markSheetShown();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) {
-          showPendingJobResumeSheet(context, classification: classification);
-        }
-      });
-    });
+    // Rendered inline rather than shown as a modal. See PendingJobResumeCard
+    // for why: the floating tab dock paints over anything the shell navigator
+    // puts on screen, and a launch-blocking modal is the wrong weight for
+    // what is usually just housekeeping.
+    final recovery = ref.watch(pendingJobRecoveryProvider).nextToShow;
 
     return Scaffold(
       backgroundColor: PortraitorTokens.onboardingSurface,
@@ -73,6 +67,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               const SizedBox(height: 14),
               _PassChip(onManage: () => context.go('/profile')),
               const SizedBox(height: 14),
+              // Above the hero: an unfinished portrait is more pressing than
+              // starting a new one, and it must be reachable without scrolling.
+              if (recovery != null) ...[
+                PendingJobResumeCard(
+                  key: ValueKey('pending_job_card_${recovery.job.id}'),
+                  classification: recovery,
+                ),
+                const SizedBox(height: 14),
+              ],
               _NewPortraitCard(onStart: _openAddConversation),
               const SizedBox(height: 26),
               _RecentSection(
