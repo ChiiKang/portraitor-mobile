@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
@@ -298,6 +300,49 @@ void main() {
       expect(outcome, isA<PurchaseFailed>());
       expect(iap.pending, isEmpty);
     });
+
+    test('a rejected store launch clears recovery context and fails', () async {
+      final iap = FakeIapService(
+        products: const {_youSku: r'HK$78.00'},
+        purchaseLaunches: false,
+      );
+      final pendingStore = InMemoryPendingPurchaseStore();
+      final notifier = buildNotifier(iap: iap, pendingStore: pendingStore);
+      await notifier.loadPrices();
+
+      final outcome = await notifier.buy(
+        FunnelTier.you,
+        clientConversationRef: 'conv_test',
+      );
+
+      expect(outcome, isA<PurchaseFailed>());
+      expect(notifier.state.status, IapStatus.failed);
+      expect(await pendingStore.readAll(), isEmpty);
+    });
+
+    test(
+      'rejects a concurrent purchase while the first is launching',
+      () async {
+        final iap = _BlockingLaunchIapService();
+        final notifier = buildNotifier(iap: iap);
+        await notifier.loadPrices();
+
+        final first = notifier.buy(
+          FunnelTier.you,
+          clientConversationRef: 'conv_first',
+        );
+        await Future<void>.delayed(Duration.zero);
+        final second = await notifier.buy(
+          FunnelTier.you,
+          clientConversationRef: 'conv_second',
+        );
+
+        expect(second, isA<PurchaseFailed>());
+        expect(notifier.state.status, IapStatus.purchasing);
+        iap.allowLaunch.complete();
+        expect(await first, isA<PurchaseVerified>());
+      },
+    );
   });
 }
 
@@ -321,14 +366,34 @@ class _ContextObservingIapService extends FakeIapService {
   bool contextExistedWhenStoreOpened = false;
 
   @override
-  Future<void> buy({
+  Future<bool> buy({
     required String productId,
     required String appAccountToken,
     required bool isConsumable,
   }) async {
     contextExistedWhenStoreOpened =
         await pendingStore.read(appAccountToken) != null;
-    await super.buy(
+    return super.buy(
+      productId: productId,
+      appAccountToken: appAccountToken,
+      isConsumable: isConsumable,
+    );
+  }
+}
+
+class _BlockingLaunchIapService extends FakeIapService {
+  _BlockingLaunchIapService() : super(products: const {_youSku: r'HK$78.00'});
+
+  final allowLaunch = Completer<void>();
+
+  @override
+  Future<bool> buy({
+    required String productId,
+    required String appAccountToken,
+    required bool isConsumable,
+  }) async {
+    await allowLaunch.future;
+    return super.buy(
       productId: productId,
       appAccountToken: appAccountToken,
       isConsumable: isConsumable,

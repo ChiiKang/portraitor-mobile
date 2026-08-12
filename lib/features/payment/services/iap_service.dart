@@ -39,7 +39,7 @@ abstract class IapService {
   StoreProvider get provider;
   Future<bool> isAvailable();
   Future<List<IapProduct>> loadProducts(Set<String> productIds);
-  Future<void> buy({
+  Future<bool> buy({
     required String productId,
     required String appAccountToken,
     required bool isConsumable,
@@ -55,6 +55,7 @@ class FakeIapService implements IapService {
   FakeIapService({
     required Map<String, String> products,
     this.provider = StoreProvider.apple,
+    this.purchaseLaunches = true,
   }) : _products = products;
 
   final Map<String, String> _products;
@@ -63,6 +64,7 @@ class FakeIapService implements IapService {
 
   @override
   final StoreProvider provider;
+  final bool purchaseLaunches;
   final List<String> finished = [];
   final List<IapTransaction> pending = [];
   IapTransaction? lastTransaction;
@@ -92,7 +94,7 @@ class FakeIapService implements IapService {
   }
 
   @override
-  Future<void> buy({
+  Future<bool> buy({
     required String productId,
     required String appAccountToken,
     required bool isConsumable,
@@ -100,6 +102,7 @@ class FakeIapService implements IapService {
     if (!_loaded.contains(productId)) {
       throw StateError('Product $productId was not loaded before purchase.');
     }
+    if (!purchaseLaunches) return false;
     final transaction = IapTransaction(
       provider: provider,
       productId: productId,
@@ -112,6 +115,7 @@ class FakeIapService implements IapService {
     lastTransaction = transaction;
     pending.add(transaction);
     _controller.add(transaction);
+    return true;
   }
 
   @override

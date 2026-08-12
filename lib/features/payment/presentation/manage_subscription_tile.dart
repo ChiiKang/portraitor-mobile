@@ -85,8 +85,20 @@ class ManageSubscriptionTile extends StatelessWidget {
             height: PortraitorTokens.buttonHeightMd,
             child: OutlinedButton(
               key: const Key('manage_subscription'),
-              onPressed:
-                  () => const ManageSubscriptionsChannel().show(provider),
+              onPressed: () async {
+                try {
+                  await const ManageSubscriptionsChannel().show(provider);
+                } catch (_) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Could not open subscription management. Try again.',
+                      ),
+                    ),
+                  );
+                }
+              },
               child: const Text('Manage subscription'),
             ),
           ),

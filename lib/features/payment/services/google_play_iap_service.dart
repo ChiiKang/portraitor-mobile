@@ -80,7 +80,7 @@ class GooglePlayIapService implements IapService {
   }
 
   @override
-  Future<void> buy({
+  Future<bool> buy({
     required String productId,
     required String appAccountToken,
     required bool isConsumable,
@@ -101,10 +101,12 @@ class GooglePlayIapService implements IapService {
       offerToken: offerToken,
     );
     if (isConsumable) {
-      await _plugin.buyConsumable(purchaseParam: parameter, autoConsume: false);
-    } else {
-      await _plugin.buyNonConsumable(purchaseParam: parameter);
+      return _plugin.buyConsumable(
+        purchaseParam: parameter,
+        autoConsume: false,
+      );
     }
+    return _plugin.buyNonConsumable(purchaseParam: parameter);
   }
 
   void _onPurchases(List<PurchaseDetails> purchases) {

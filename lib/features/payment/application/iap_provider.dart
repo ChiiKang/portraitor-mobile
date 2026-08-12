@@ -110,6 +110,7 @@ class IapNotifier extends StateNotifier<IapState> {
   final BillingApi _api;
   final PassCredentialStore _store;
   final PendingPurchaseStore _pendingStore;
+  bool _purchaseInFlight = false;
 
   Future<void> loadPrices() async {
     state = state.copyWith(status: IapStatus.loadingProducts);
@@ -130,23 +131,42 @@ class IapNotifier extends StateNotifier<IapState> {
     required String clientConversationRef,
     String? deliveryEmail,
   }) async {
+    if (_purchaseInFlight) {
+      return const PurchaseFailed('A purchase is already in progress.');
+    }
+    _purchaseInFlight = true;
+    state = state.copyWith(status: IapStatus.purchasing, error: null);
+    try {
+      return await _buy(
+        tier,
+        clientConversationRef: clientConversationRef,
+        deliveryEmail: deliveryEmail,
+      );
+    } finally {
+      _purchaseInFlight = false;
+    }
+  }
+
+  Future<PurchaseOutcome> _buy(
+    FunnelTier tier, {
+    required String clientConversationRef,
+    String? deliveryEmail,
+  }) async {
     final productId = IapProductCatalog.productIdFor(tier);
     final isSubscription = IapProductCatalog.isSubscription(tier);
     final sessionToken = await _store.readSessionToken();
 
     final PreparedPurchase prepared;
     try {
-      state = state.copyWith(status: IapStatus.purchasing, error: null);
       // No Pass yet means no round trip: the UUID is a correlation hint, and
       // the server derives every billing fact from the verified JWS anyway.
-      prepared =
-          sessionToken == null
-              ? PreparedPurchase(publicUuid: const Uuid().v4())
-              : await _api.preparePurchase(
-                sessionToken: sessionToken,
-                isSubscription: isSubscription,
-                provider: _iap.provider,
-              );
+      prepared = sessionToken == null
+          ? PreparedPurchase(publicUuid: const Uuid().v4())
+          : await _api.preparePurchase(
+              sessionToken: sessionToken,
+              isSubscription: isSubscription,
+              provider: _iap.provider,
+            );
     } on PassAlreadyFundedException {
       state = state.copyWith(
         status: IapStatus.failed,
@@ -180,11 +200,17 @@ class IapNotifier extends StateNotifier<IapState> {
           createdAt: DateTime.now().toUtc(),
         ),
       );
-      await _iap.buy(
+      final launched = await _iap.buy(
         productId: productId,
         appAccountToken: prepared.publicUuid,
         isConsumable: !isSubscription,
       );
+      if (!launched) {
+        await _pendingStore.remove(prepared.publicUuid);
+        const message = 'The store did not start the purchase.';
+        state = state.copyWith(status: IapStatus.failed, error: message);
+        return const PurchaseFailed(message);
+      }
       final txn = await completer.future;
       transactionReceived = true;
 

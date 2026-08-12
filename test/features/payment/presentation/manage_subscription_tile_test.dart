@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/features/payment/presentation/manage_subscription_tile.dart';
+import 'package:portraitor_mobile/features/payment/services/manage_subscriptions_channel.dart';
 
 void main() {
   Future<void> pumpTile(
@@ -70,5 +72,29 @@ void main() {
 
     await pumpTile(tester, usesRemaining: 0);
     expect(find.textContaining('0 portraits left'), findsOneWidget);
+  });
+
+  testWidgets('shows feedback when subscription management cannot open', (
+    tester,
+  ) async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(ManageSubscriptionsChannel.channel, (
+          _,
+        ) async {
+          throw PlatformException(code: 'unavailable');
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(ManageSubscriptionsChannel.channel, null),
+    );
+    await pumpTile(tester);
+
+    await tester.tap(find.byKey(const Key('manage_subscription')));
+    await tester.pump();
+
+    expect(
+      find.text('Could not open subscription management. Try again.'),
+      findsOneWidget,
+    );
   });
 }

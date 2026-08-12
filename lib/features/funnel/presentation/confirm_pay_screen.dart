@@ -70,24 +70,33 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
   @override
   Widget build(BuildContext context) {
     final draft = ref.watch(funnelDraftProvider);
-    final name =
-        draft.selectedNames.isNotEmpty ? draft.selectedNames.first : 'Someone';
+    final iapState = ref.watch(iapProvider);
+    final name = draft.selectedNames.isNotEmpty
+        ? draft.selectedNames.first
+        : 'Someone';
     final messages = draft.normalized?.messageCount ?? 0;
     final showPass = _passOpen;
+    final purchaseBusy =
+        iapState.status == IapStatus.purchasing ||
+        iapState.status == IapStatus.verifying;
 
     return FunnelChrome(
       step: 4,
       title: 'Confirm & pay',
       lead: 'Review what you’re about to generate.',
-      ctaLabel:
-          showPass
-              ? (FunnelTier.pass.canPurchase
-                  ? 'Subscribe ${_priceFor(FunnelTier.pass)}'
-                  : 'Subscribe — coming soon')
-              : 'Pay ${_priceFor(draft.selectedTier)}',
+      ctaLabel: showPass
+          ? (FunnelTier.pass.canPurchase
+                ? 'Subscribe ${_priceFor(FunnelTier.pass)}'
+                : 'Subscribe — coming soon')
+          : 'Pay ${_priceFor(draft.selectedTier)}',
       // The email gates the purchase. The server re-validates it, but letting
       // StoreKit open without one would take money we cannot deliver against.
-      ctaEnabled: !showPass && draft.selectedTier.canPurchase && _emailValid,
+      ctaEnabled:
+          !showPass &&
+          !purchaseBusy &&
+          draft.selectedTier.canPurchase &&
+          _emailValid,
+      ctaLoading: purchaseBusy,
       onCta: () => _onCta(context),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -102,67 +111,65 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
           AnimatedSize(
             duration: const Duration(milliseconds: 280),
             curve: Curves.easeInOutCubic,
-            child:
-                showPass
-                    ? const SizedBox.shrink()
-                    : Column(
-                      children: [
-                        _SummaryCard(
-                          children: [
+            child: showPass
+                ? const SizedBox.shrink()
+                : Column(
+                    children: [
+                      _SummaryCard(
+                        children: [
+                          _SummaryRow(
+                            label: 'Bundle',
+                            value: draft.selectedTier.label,
+                          ),
+                          _SummaryRow(label: 'Portrait for', value: name),
+                          _SummaryRow(label: 'Messages', value: '$messages'),
+                          if (draft.rangeStart != null &&
+                              draft.rangeEnd != null)
                             _SummaryRow(
-                              label: 'Bundle',
-                              value: draft.selectedTier.label,
+                              label: 'Range',
+                              value:
+                                  '${_fmt(draft.rangeStart!)} – ${_fmt(draft.rangeEnd!)}',
                             ),
-                            _SummaryRow(label: 'Portrait for', value: name),
-                            _SummaryRow(label: 'Messages', value: '$messages'),
-                            if (draft.rangeStart != null &&
-                                draft.rangeEnd != null)
-                              _SummaryRow(
-                                label: 'Range',
-                                value:
-                                    '${_fmt(draft.rangeStart!)} – ${_fmt(draft.rangeEnd!)}',
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.88),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: PortraitorTokens.borderSoft,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'TOTAL',
+                              style: PortraitorTokens.labelMd.copyWith(
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.06,
+                                color: PortraitorTokens.onboardingMuted,
                               ),
+                            ),
+                            Text(
+                              _priceFor(draft.selectedTier),
+                              style: PortraitorTokens.displaySm.copyWith(
+                                fontSize: 28,
+                              ),
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 16),
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.88),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: PortraitorTokens.borderSoft,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'TOTAL',
-                                style: PortraitorTokens.labelMd.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.06,
-                                  color: PortraitorTokens.onboardingMuted,
-                                ),
-                              ),
-                              Text(
-                                _priceFor(draft.selectedTier),
-                                style: PortraitorTokens.displaySm.copyWith(
-                                  fontSize: 28,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                  ),
           ),
           _PassInsteadCard(
-            priceCaption:
-                FunnelTier.pass.canPurchase
-                    ? '${_priceFor(FunnelTier.pass)}/month'
-                    : '\$50/month · Coming soon',
+            priceCaption: FunnelTier.pass.canPurchase
+                ? '${_priceFor(FunnelTier.pass)}/month'
+                : '\$50/month · Coming soon',
             open: showPass,
             onToggle: () => setState(() => _passOpen = !_passOpen),
             onShowOneOff: () => setState(() => _passOpen = false),
@@ -234,11 +241,10 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
         if (IapProductCatalog.isSubscription(tier)) {
           await Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder:
-                  (_) => SavePassScreen(
-                    passCode: passCode,
-                    onContinue: () => Navigator.of(context).pop(),
-                  ),
+              builder: (_) => SavePassScreen(
+                passCode: passCode,
+                onContinue: () => Navigator.of(context).pop(),
+              ),
             ),
           );
           if (!context.mounted) return;
@@ -422,8 +428,9 @@ class _PassInsteadCard extends StatelessWidget {
                 ],
               ),
             ),
-            crossFadeState:
-                open ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            crossFadeState: open
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 240),
           ),
         ],
@@ -538,9 +545,9 @@ class _DeliveryEmailField extends StatelessWidget {
         Text(
           isSubscription
               ? 'Your portraits and your Pass code are emailed here. Keep it - '
-                  'the code is the only way to use this Pass elsewhere.'
+                    'the code is the only way to use this Pass elsewhere.'
               : 'Your portrait is emailed here. The app keeps a copy on this '
-                  'device only, so the email is what survives.',
+                    'device only, so the email is what survives.',
           style: const TextStyle(
             fontFamily: PortraitorTokens.fontFamily,
             fontSize: 12,

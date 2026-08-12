@@ -83,10 +83,12 @@ class HttpBillingApi implements BillingApi {
 
   final Dio _dio;
 
-  static Options? _auth(String? sessionToken) =>
-      sessionToken == null
-          ? null
-          : Options(headers: {'Authorization': 'Bearer $sessionToken'});
+  static Options _auth(String? sessionToken) => Options(
+    headers: sessionToken == null
+        ? null
+        : {'Authorization': 'Bearer $sessionToken'},
+    validateStatus: (status) => status != null && status >= 200 && status < 300,
+  );
 
   @override
   Future<PreparedPurchase> preparePurchase({
@@ -147,10 +149,9 @@ class HttpBillingApi implements BillingApi {
       );
     } on DioException catch (e) {
       final body = e.response?.data;
-      final message =
-          body is Map<String, dynamic>
-              ? (body['message'] as String? ?? 'Purchase could not be verified')
-              : 'Purchase could not be verified';
+      final message = body is Map<String, dynamic>
+          ? (body['message'] as String? ?? 'Purchase could not be verified')
+          : 'Purchase could not be verified';
       throw PurchaseNotVerifiedException(message);
     }
   }
@@ -218,8 +219,9 @@ class FakeBillingApi implements BillingApi {
     final isSubscription = productId == IapProductCatalog.passMonthly;
 
     return VerifiedPurchase(
-      sessionToken:
-          isSubscription ? 'a' * 64 : (echoSessionToken ?? sessionToken ?? ''),
+      sessionToken: isSubscription
+          ? 'a' * 64
+          : (echoSessionToken ?? sessionToken ?? ''),
       // Matches the server's canonical key. uq_provider_account_product includes
       // provider, so Apple reuses the key Stripe already uses.
       productKey: isSubscription ? 'pass_monthly' : 'portrait_you',

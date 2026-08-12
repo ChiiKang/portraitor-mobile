@@ -41,18 +41,62 @@ void main() {
     expect(requests.single.data['jws'], 'apple-jws');
     expect(requests.single.data.containsKey('purchase_token'), isFalse);
   });
+
+  test('verification rejects HTTP failures accepted by the shared Dio', () {
+    final dio = Dio();
+    dio.options.validateStatus = (_) => true;
+    dio.httpClientAdapter = _BillingAdapter(
+      [],
+      statusCode: 422,
+      body: '{"message":"receipt rejected"}',
+    );
+
+    expect(
+      () => HttpBillingApi(dio: dio).verifyPurchase(
+        verificationData: 'invalid-jws',
+        publicUuid: 'uuid-1',
+        productId: 'sku',
+        clientConversationRef: 'conv-1',
+      ),
+      throwsA(
+        isA<PurchaseNotVerifiedException>().having(
+          (error) => error.message,
+          'message',
+          'receipt rejected',
+        ),
+      ),
+    );
+  });
+
+  test('prepare maps HTTP 409 to an already-funded Pass', () {
+    final dio = Dio();
+    dio.options.validateStatus = (_) => true;
+    dio.httpClientAdapter = _BillingAdapter([], statusCode: 409);
+
+    expect(
+      () => HttpBillingApi(dio: dio).preparePurchase(sessionToken: 'session'),
+      throwsA(isA<PassAlreadyFundedException>()),
+    );
+  });
 }
 
 class _BillingAdapter implements HttpClientAdapter {
-  _BillingAdapter(this.requests);
+  _BillingAdapter(
+    this.requests, {
+    this.statusCode = 200,
+    this.body =
+        '{"status":"ok","data":{"session_token":"","product_key":"portrait_you","pass_code_delivered":true,"payment_reference":"google-test"}}',
+  });
   final List<RequestOptions> requests;
+  final int statusCode;
+  final String body;
 
   @override
   Future<ResponseBody> fetch(RequestOptions options, _, __) async {
     requests.add(options);
     return ResponseBody.fromString(
-      '{"status":"ok","data":{"session_token":"","product_key":"portrait_you","pass_code_delivered":true,"payment_reference":"google-test"}}',
-      200,
+      body,
+      statusCode,
       headers: {
         Headers.contentTypeHeader: [Headers.jsonContentType],
       },

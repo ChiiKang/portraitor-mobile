@@ -48,7 +48,7 @@ class StoreKitIapService implements IapService {
   }
 
   @override
-  Future<void> buy({
+  Future<bool> buy({
     required String productId,
     required String appAccountToken,
     required bool isConsumable,
@@ -57,7 +57,7 @@ class StoreKitIapService implements IapService {
     if (details == null) {
       throw StateError('Product $productId was not loaded before purchase.');
     }
-    await _plugin.buyNonConsumable(
+    return _plugin.buyNonConsumable(
       purchaseParam: Sk2PurchaseParam(
         productDetails: details,
         applicationUserName: appAccountToken,
@@ -125,8 +125,9 @@ class StoreKitIapService implements IapService {
           productId: purchase.productID,
           serverVerificationData:
               purchase.verificationData.serverVerificationData,
-          accountToken:
-              purchase is SK2PurchaseDetails ? purchase.appAccountToken : null,
+          accountToken: purchase is SK2PurchaseDetails
+              ? purchase.appAccountToken
+              : null,
           status: switch (purchase.status) {
             PurchaseStatus.purchased => IapTransactionStatus.purchased,
             PurchaseStatus.restored => IapTransactionStatus.restored,
