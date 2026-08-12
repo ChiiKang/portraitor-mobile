@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
@@ -7,16 +8,17 @@ import 'package:portraitor_mobile/features/payment/application/iap_provider.dart
 void main() {
   test('kDemoIapPurchase is off unless explicitly defined', () {
     const defined = bool.fromEnvironment('DEMO_IAP');
-    expect(kDemoIapPurchase, defined);
+    expect(kDemoIapPurchase, !kReleaseMode && defined);
   });
 
   test('kFakeBilling is off unless explicitly defined', () {
     const defined = bool.fromEnvironment('FAKE_BILLING');
-    expect(kFakeBilling, defined);
+    expect(kFakeBilling, !kReleaseMode && defined);
   });
 
   test('a default build fakes nothing', () {
-    const anyDefine = bool.fromEnvironment('DEMO_IAP') ||
+    const anyDefine =
+        bool.fromEnvironment('DEMO_IAP') ||
         bool.fromEnvironment('FAKE_BILLING');
     if (anyDefine) return;
 

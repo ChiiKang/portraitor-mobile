@@ -436,7 +436,9 @@ class StorageService {
     String? paymentSessionId,
   }) async {
     final db = _db;
-    if (db == null) return;
+    if (db == null) {
+      throw StateError('Pending-job storage is unavailable.');
+    }
 
     final updates = <String, dynamic>{};
     if (chunksCompleted != null) updates['chunks_completed'] = chunksCompleted;
@@ -446,13 +448,14 @@ class StorageService {
     }
     updates['updated_at'] = DateTime.now().toUtc().toIso8601String();
 
-    if (updates.isNotEmpty) {
-      await db.update(
-        'pending_jobs',
-        updates,
-        where: 'id = ?',
-        whereArgs: [id],
-      );
+    final updated = await db.update(
+      'pending_jobs',
+      updates,
+      where: 'id = ? AND device_id = ?',
+      whereArgs: [id, _deviceId],
+    );
+    if (updated != 1) {
+      throw StateError('Expected one pending job for $id, updated $updated.');
     }
   }
 
@@ -479,12 +482,26 @@ class StorageService {
 
   Future<void> savePendingJobRecord(PendingJob job) async {
     final db = _db;
-    if (db == null) return;
-    await db.insert(
-      'pending_jobs',
-      job.toDbMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    if (db == null) {
+      throw StateError('Pending-job storage is unavailable.');
+    }
+    await db.transaction((txn) async {
+      await txn.insert(
+        'pending_jobs',
+        job.toDbMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      final rows = await txn.rawQuery(
+        'SELECT COUNT(*) FROM pending_jobs WHERE id = ? AND device_id = ?',
+        [job.id, job.deviceId],
+      );
+      final count = Sqflite.firstIntValue(rows) ?? 0;
+      if (count != 1) {
+        throw StateError(
+          'Expected one pending job for ${job.id}, found $count.',
+        );
+      }
+    });
   }
 
   /// Append a chunk result `{index, content}` to a pending job. Replaces an

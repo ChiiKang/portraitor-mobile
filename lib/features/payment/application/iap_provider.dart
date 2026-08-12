@@ -63,7 +63,7 @@ class IapState {
 ///
 /// Defaults off, like [kDemoIapPurchase], and must never be enabled in a release
 /// build because it authorizes portraits without a real store payment.
-const bool kFakeBilling = bool.fromEnvironment('FAKE_BILLING');
+const bool kFakeBilling = !kReleaseMode && bool.fromEnvironment('FAKE_BILLING');
 
 final iapServiceProvider = Provider<IapService>((ref) {
   return defaultTargetPlatform == TargetPlatform.android
@@ -120,11 +120,19 @@ class IapNotifier extends StateNotifier<IapState> {
 
   Future<void> loadPrices() async {
     state = state.copyWith(status: IapStatus.loadingProducts);
-    final products = await _iap.loadProducts(IapProductCatalog.allProductIds);
-    state = state.copyWith(
-      status: IapStatus.idle,
-      products: {for (final p in products) p.productId: p},
-    );
+    try {
+      final products = await _iap.loadProducts(IapProductCatalog.allProductIds);
+      state = state.copyWith(
+        status: IapStatus.idle,
+        products: {for (final p in products) p.productId: p},
+      );
+    } catch (_) {
+      state = state.copyWith(
+        status: IapStatus.failed,
+        error:
+            'Store products are unavailable. Check your connection and retry.',
+      );
+    }
   }
 
   /// Buy [tier].
@@ -166,14 +174,13 @@ class IapNotifier extends StateNotifier<IapState> {
     try {
       // No Pass yet means no round trip: the UUID is a correlation hint, and
       // the server derives every billing fact from the verified JWS anyway.
-      prepared =
-          sessionToken == null
-              ? PreparedPurchase(publicUuid: const Uuid().v4())
-              : await _api.preparePurchase(
-                sessionToken: sessionToken,
-                isSubscription: isSubscription,
-                provider: _iap.provider,
-              );
+      prepared = sessionToken == null
+          ? PreparedPurchase(publicUuid: const Uuid().v4())
+          : await _api.preparePurchase(
+              sessionToken: sessionToken,
+              isSubscription: isSubscription,
+              provider: _iap.provider,
+            );
     } on PassAlreadyFundedException {
       state = state.copyWith(
         status: IapStatus.failed,

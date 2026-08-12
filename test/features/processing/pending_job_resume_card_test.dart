@@ -74,15 +74,11 @@ Widget _harness({
     routes: [
       GoRoute(
         path: '/home',
-        builder:
-            (_, __) => Scaffold(
-              body: PendingJobResumeCard(
-                classification: RecoveryClassification(
-                  job: _job(),
-                  status: status,
-                ),
-              ),
-            ),
+        builder: (_, __) => Scaffold(
+          body: PendingJobResumeCard(
+            classification: RecoveryClassification(job: _job(), status: status),
+          ),
+        ),
       ),
       GoRoute(
         path: '/processing',
@@ -107,6 +103,17 @@ Widget _harness({
 
 void main() {
   group('what each state offers', () {
+    testWidgets('a deferred store purchase waits without destructive actions', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_harness(status: RecoveryStatus.storePending));
+
+      expect(find.text('Waiting for purchase approval'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(TextButton), findsNothing);
+      expect(find.byType(FilledButton), findsNothing);
+    });
+
     testWidgets('a resumable portrait offers Resume and Later', (tester) async {
       await tester.pumpWidget(_harness(status: RecoveryStatus.resumable));
 

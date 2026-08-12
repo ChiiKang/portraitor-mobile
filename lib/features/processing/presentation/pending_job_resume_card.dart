@@ -81,6 +81,8 @@ class PendingJobResumeCardState extends ConsumerState<PendingJobResumeCard> {
 
   String get _title {
     switch (_status) {
+      case RecoveryStatus.storePending:
+        return 'Waiting for purchase approval';
       case RecoveryStatus.resumable:
         return 'Unfinished portrait';
       case RecoveryStatus.serverFinalizing:
@@ -96,6 +98,11 @@ class PendingJobResumeCardState extends ConsumerState<PendingJobResumeCard> {
     final target = _job.targetName?.trim();
     final targetText = (target == null || target.isEmpty) ? null : target;
     switch (_status) {
+      case RecoveryStatus.storePending:
+        return targetText == null
+            ? 'The store is still processing this purchase. Your portrait will be ready to continue after approval.'
+            : 'The store is still processing the purchase for $targetText. '
+                  'The portrait will be ready to continue after approval.';
       case RecoveryStatus.resumable:
         return targetText == null
             ? 'Continue where you left off, or keep it for later.'
@@ -104,12 +111,12 @@ class PendingJobResumeCardState extends ConsumerState<PendingJobResumeCard> {
         return targetText == null
             ? 'The server is finishing this portrait. Check back shortly.'
             : 'The server is finishing the portrait for $targetText. '
-                'Check back shortly.';
+                  'Check back shortly.';
       case RecoveryStatus.cancelOnly:
         return targetText == null
             ? 'This portrait can no longer be resumed. Clear it to continue.'
             : 'The portrait for $targetText can no longer be resumed. '
-                'Clear it to continue.';
+                  'Clear it to continue.';
       case RecoveryStatus.serverCompleted:
         return 'You can find it in your library.';
     }
@@ -127,16 +134,14 @@ class PendingJobResumeCardState extends ConsumerState<PendingJobResumeCard> {
       label: '$_title. $_body',
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color:
-              _isAccent
-                  ? PortraitorTokens.brandSoft
-                  : PortraitorTokens.surfaceMuted,
+          color: _isAccent
+              ? PortraitorTokens.brandSoft
+              : PortraitorTokens.surfaceMuted,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color:
-                _isAccent
-                    ? PortraitorTokens.onboardingPrimary.withValues(alpha: 0.32)
-                    : PortraitorTokens.borderSoft,
+            color: _isAccent
+                ? PortraitorTokens.onboardingPrimary.withValues(alpha: 0.32)
+                : PortraitorTokens.borderSoft,
           ),
         ),
         child: Padding(
@@ -190,6 +195,8 @@ class PendingJobResumeCardState extends ConsumerState<PendingJobResumeCard> {
 
   List<Widget> _buttonsFor(RecoveryStatus status) {
     switch (status) {
+      case RecoveryStatus.storePending:
+        return const [];
       case RecoveryStatus.resumable:
         return [
           TextButton(
@@ -241,7 +248,8 @@ class _StatusGlyph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (status == RecoveryStatus.serverFinalizing) {
+    if (status == RecoveryStatus.storePending ||
+        status == RecoveryStatus.serverFinalizing) {
       return const SizedBox(
         width: 14,
         height: 14,
@@ -256,10 +264,9 @@ class _StatusGlyph extends StatelessWidget {
       height: 8,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color:
-            status == RecoveryStatus.resumable
-                ? PortraitorTokens.onboardingPrimary
-                : PortraitorTokens.onboardingMutedLight,
+        color: status == RecoveryStatus.resumable
+            ? PortraitorTokens.onboardingPrimary
+            : PortraitorTokens.onboardingMutedLight,
       ),
     );
   }

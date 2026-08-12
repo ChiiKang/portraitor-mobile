@@ -11,9 +11,10 @@ void main() {
 
   setUp(() {
     TestWidgetsFlutterBinding
-        .instance
-        .platformDispatcher
-        .textScaleFactorTestValue = 1;
+            .instance
+            .platformDispatcher
+            .textScaleFactorTestValue =
+        1;
   });
 
   tearDown(() {
@@ -72,20 +73,19 @@ void main() {
     expect(find.text('Cancel subscription'), findsOneWidget);
     expect(
       find.text(
-        'We store no chat content — only payment records, keyed to Stripe.',
+        'We store no chat content — only billing records for this Pass.',
       ),
       findsOneWidget,
     );
-    final passHeaderTop =
-        tester.getTopLeft(find.byKey(const ValueKey('profile-pass-header'))).dy;
-    final privacyTop =
-        tester
-            .getTopLeft(find.byKey(const ValueKey('profile-privacy-banner')))
-            .dy;
-    final membershipTop =
-        tester
-            .getTopLeft(find.byKey(const ValueKey('profile-membership-card')))
-            .dy;
+    final passHeaderTop = tester
+        .getTopLeft(find.byKey(const ValueKey('profile-pass-header')))
+        .dy;
+    final privacyTop = tester
+        .getTopLeft(find.byKey(const ValueKey('profile-privacy-banner')))
+        .dy;
+    final membershipTop = tester
+        .getTopLeft(find.byKey(const ValueKey('profile-membership-card')))
+        .dy;
 
     expect(passHeaderTop, lessThan(privacyTop));
     expect(privacyTop, lessThan(membershipTop));
@@ -143,52 +143,46 @@ class _ProfileTestApp extends StatelessWidget {
         routes: [
           GoRoute(
             path: '/profile',
-            builder:
-                (context, state) => ProfileScreen(
-                  credentialStore: store,
-                  entitlementApi: FakeEntitlementApi(
-                    entitlement: const Entitlement(
-                      state: 'active',
-                      grantsAccess: true,
-                      usesRemaining: 8,
-                      usesTotal: 10,
-                      accessUntil: '2026-09-05T00:00:00Z',
-                      fundingProvider: 'stripe',
-                    ),
-                  ),
+            builder: (context, state) => ProfileScreen(
+              credentialStore: store,
+              entitlementApi: FakeEntitlementApi(
+                entitlement: const Entitlement(
+                  state: 'active',
+                  grantsAccess: true,
+                  usesRemaining: 8,
+                  usesTotal: 10,
+                  accessUntil: '2026-09-05T00:00:00Z',
+                  fundingProvider: 'stripe',
                 ),
+              ),
+            ),
           ),
           GoRoute(
             path: '/home',
-            builder:
-                (context, state) =>
-                    const Scaffold(body: Center(child: Text('Home'))),
+            builder: (context, state) =>
+                const Scaffold(body: Center(child: Text('Home'))),
           ),
           GoRoute(
             path: '/library',
-            builder:
-                (context, state) =>
-                    const Scaffold(body: Center(child: Text('Portraits'))),
+            builder: (context, state) =>
+                const Scaffold(body: Center(child: Text('Portraits'))),
           ),
         ],
       ),
       GoRoute(
         path: '/settings',
-        builder:
-            (context, state) =>
-                const Scaffold(body: Center(child: Text('Settings'))),
+        builder: (context, state) =>
+            const Scaffold(body: Center(child: Text('Settings'))),
       ),
       GoRoute(
         path: '/settings/faq',
-        builder:
-            (context, state) =>
-                const Scaffold(body: Center(child: Text('FAQ'))),
+        builder: (context, state) =>
+            const Scaffold(body: Center(child: Text('FAQ'))),
       ),
       GoRoute(
         path: '/settings/gdpr',
-        builder:
-            (context, state) =>
-                const Scaffold(body: Center(child: Text('Data & Privacy'))),
+        builder: (context, state) =>
+            const Scaffold(body: Center(child: Text('Data & Privacy'))),
       ),
     ],
   );

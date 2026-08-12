@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
+import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/domain/purchase_outcome.dart';
 import 'package:portraitor_mobile/features/payment/services/billing_api.dart';
 import 'package:portraitor_mobile/features/payment/services/iap_service.dart';
@@ -21,12 +22,15 @@ IapNotifier buildNotifier({
   FakeBillingApi? api,
   PassCredentialStore? store,
   PendingPurchaseStore? pendingStore,
+  Future<void> Function(String conversationRef, String paymentReference)?
+  onConsumableVerified,
 }) {
   return IapNotifier(
     iap: iap ?? buildIap(),
     api: api ?? FakeBillingApi(),
     store: store ?? InMemoryPassCredentialStore(),
     pendingStore: pendingStore,
+    onConsumableVerified: onConsumableVerified ?? (_, __) async {},
   );
 }
 
@@ -91,6 +95,22 @@ void main() {
 
       expect(notifier.state.priceFor(FunnelTier.you), r'HK$78.00');
       expect(notifier.state.priceFor(FunnelTier.pass), r'HK$388.00');
+    });
+
+    test('loadPrices fails cleanly and can be retried', () async {
+      final iap = _FlakyProductIapService();
+      final notifier = buildNotifier(iap: iap);
+
+      await notifier.loadPrices();
+
+      expect(notifier.state.status, IapStatus.failed);
+      expect(notifier.state.error, contains('retry'));
+      expect(notifier.state.products, isEmpty);
+
+      await notifier.loadPrices();
+
+      expect(notifier.state.status, IapStatus.idle);
+      expect(notifier.state.priceFor(FunnelTier.you), r'HK$78.00');
     });
 
     test('a one-off bundle mints no Pass and reveals no code', () async {
@@ -432,5 +452,18 @@ class _BlockingLaunchIapService extends FakeIapService {
       appAccountToken: appAccountToken,
       isConsumable: isConsumable,
     );
+  }
+}
+
+class _FlakyProductIapService extends FakeIapService {
+  _FlakyProductIapService() : super(products: const {_youSku: r'HK$78.00'});
+
+  int attempts = 0;
+
+  @override
+  Future<List<IapProduct>> loadProducts(Set<String> productIds) {
+    attempts++;
+    if (attempts == 1) throw StateError('offline');
+    return super.loadProducts(productIds);
   }
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:portraitor_mobile/features/import/services/chat_normalizer.dart';
@@ -16,7 +17,7 @@ enum FunnelTier { you, partner, family, pass }
 /// billing policy.
 ///
 /// With the flag off, the platform-selected store handles all four products.
-const bool kDemoIapPurchase = bool.fromEnvironment('DEMO_IAP');
+const bool kDemoIapPurchase = !kReleaseMode && bool.fromEnvironment('DEMO_IAP');
 
 extension FunnelTierX on FunnelTier {
   /// Short badge / receipt label.

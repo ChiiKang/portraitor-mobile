@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:portraitor_mobile/features/payment/services/entitlement_api.dart';
 import 'package:portraitor_mobile/features/payment/services/pass_credential_store.dart';
+import 'package:portraitor_mobile/features/payment/services/pass_session_api.dart';
 import 'package:portraitor_mobile/features/settings/presentation/profile_screen.dart';
 
 /// Whoever took the money owns the billing controls.
@@ -16,13 +17,15 @@ void main() {
     Entitlement? entitlement,
     bool hasSession = true,
     Future<void> Function()? onRestore,
+    PassCredentialStore? credentialStore,
+    PassSessionApi? passSessionApi,
   }) async {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    final store = InMemoryPassCredentialStore();
+    final store = credentialStore ?? InMemoryPassCredentialStore();
     if (hasSession) {
       await store.writeSessionToken('session');
       await store.writePassCode('PORT-TEST-CODE');
@@ -32,6 +35,7 @@ void main() {
         home: ProfileScreen(
           entitlementApi: FakeEntitlementApi(entitlement: entitlement),
           credentialStore: store,
+          passSessionApi: passSessionApi,
           onRestorePurchases: onRestore,
         ),
       ),
@@ -121,6 +125,58 @@ void main() {
     expect(find.byKey(const ValueKey('profile-membership-card')), findsNothing);
     expect(find.byKey(const ValueKey('profile-cancel')), findsNothing);
     expect(find.byKey(const ValueKey('profile-stripe')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('profile-pass-code-input')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('profile-attach-pass')), findsOneWidget);
+  });
+
+  testWidgets('a Pass code attaches a cross-platform session', (tester) async {
+    final store = InMemoryPassCredentialStore();
+    final sessionApi = FakePassSessionApi(sessionToken: 'attached-session');
+    await pumpProfile(
+      tester,
+      hasSession: false,
+      credentialStore: store,
+      passSessionApi: sessionApi,
+      entitlement: const Entitlement(
+        state: 'active',
+        grantsAccess: true,
+        usesRemaining: 6,
+        usesTotal: 10,
+        fundingProvider: 'apple',
+      ),
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('profile-pass-code-input')),
+      'PORT-CROSS-PLATFORM',
+    );
+    await tester.tap(find.byKey(const ValueKey('profile-attach-pass')));
+    await tester.pumpAndSettle();
+
+    expect(sessionApi.attachedPassCode, 'PORT-CROSS-PLATFORM');
+    expect(await store.readPassCode(), 'PORT-CROSS-PLATFORM');
+    expect(await store.readSessionToken(), 'attached-session');
+    expect(find.text('Active Pass'), findsOneWidget);
+  });
+
+  testWidgets('active Pass copy is provider-neutral', (tester) async {
+    await pumpProfile(
+      tester,
+      entitlement: const Entitlement(
+        state: 'active',
+        grantsAccess: true,
+        usesRemaining: 8,
+        usesTotal: 10,
+        fundingProvider: 'google',
+      ),
+    );
+
+    expect(find.text('Google Play'), findsOneWidget);
+    expect(find.text(r'$50'), findsNothing);
+    expect(find.textContaining('keyed to Stripe'), findsNothing);
   });
 
   testWidgets('Google-funded Pass uses Google Play management', (tester) async {

@@ -31,8 +31,8 @@ enum PostPurchaseDestination { processing, profile }
 
 PostPurchaseDestination postPurchaseDestinationFor(FunnelTier tier) =>
     IapProductCatalog.isSubscription(tier)
-        ? PostPurchaseDestination.profile
-        : PostPurchaseDestination.processing;
+    ? PostPurchaseDestination.profile
+    : PostPurchaseDestination.processing;
 
 class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
   bool _passOpen = false;
@@ -73,15 +73,20 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
   /// Demo renders its own copy; real builds render what the store reports.
   String _priceFor(FunnelTier tier) {
     if (kDemoIapPurchase) return tier.priceLabel;
-    return ref.watch(iapProvider).priceFor(tier) ?? 'Loading…';
+    final state = ref.watch(iapProvider);
+    if (state.status == IapStatus.failed && state.priceFor(tier) == null) {
+      return 'Unavailable';
+    }
+    return state.priceFor(tier) ?? 'Loading…';
   }
 
   @override
   Widget build(BuildContext context) {
     final draft = ref.watch(funnelDraftProvider);
     final iapState = ref.watch(iapProvider);
-    final name =
-        draft.selectedNames.isNotEmpty ? draft.selectedNames.first : 'Someone';
+    final name = draft.selectedNames.isNotEmpty
+        ? draft.selectedNames.first
+        : 'Someone';
     final messages = draft.normalized?.messageCount ?? 0;
     final showPass = _passOpen;
     final purchaseBusy =
@@ -95,12 +100,11 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
       step: 4,
       title: 'Confirm & pay',
       lead: 'Review what you’re about to generate.',
-      ctaLabel:
-          showPass
-              ? (FunnelTier.pass.canPurchase
-                  ? 'Subscribe ${_priceFor(FunnelTier.pass)}'
-                  : 'Subscribe — coming soon')
-              : 'Pay ${_priceFor(draft.selectedTier)}',
+      ctaLabel: showPass
+          ? (FunnelTier.pass.canPurchase
+                ? 'Subscribe ${_priceFor(FunnelTier.pass)}'
+                : 'Subscribe — coming soon')
+          : 'Pay ${_priceFor(draft.selectedTier)}',
       // The email gates the purchase. The server re-validates it, but letting
       // Opening the store without one would take money we cannot deliver against.
       ctaEnabled:
@@ -119,71 +123,92 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
             isSubscription: showPass,
             onChanged: (_) => setState(() => _emailTouched = true),
           ),
+          if (!kDemoIapPurchase &&
+              iapState.status == IapStatus.failed &&
+              iapState.products.isEmpty) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    iapState.error ?? 'Store products are unavailable.',
+                    key: const ValueKey('iap-products-error'),
+                    style: PortraitorTokens.bodySm.copyWith(
+                      color: PortraitorTokens.onboardingInkSoft,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  key: const ValueKey('iap-products-retry'),
+                  onPressed: ref.read(iapProvider.notifier).loadPrices,
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 14),
           AnimatedSize(
             duration: const Duration(milliseconds: 280),
             curve: Curves.easeInOutCubic,
-            child:
-                showPass
-                    ? const SizedBox.shrink()
-                    : Column(
-                      children: [
-                        _SummaryCard(
-                          children: [
+            child: showPass
+                ? const SizedBox.shrink()
+                : Column(
+                    children: [
+                      _SummaryCard(
+                        children: [
+                          _SummaryRow(
+                            label: 'Bundle',
+                            value: draft.selectedTier.label,
+                          ),
+                          _SummaryRow(label: 'Portrait for', value: name),
+                          _SummaryRow(label: 'Messages', value: '$messages'),
+                          if (draft.rangeStart != null &&
+                              draft.rangeEnd != null)
                             _SummaryRow(
-                              label: 'Bundle',
-                              value: draft.selectedTier.label,
+                              label: 'Range',
+                              value:
+                                  '${_fmt(draft.rangeStart!)} – ${_fmt(draft.rangeEnd!)}',
                             ),
-                            _SummaryRow(label: 'Portrait for', value: name),
-                            _SummaryRow(label: 'Messages', value: '$messages'),
-                            if (draft.rangeStart != null &&
-                                draft.rangeEnd != null)
-                              _SummaryRow(
-                                label: 'Range',
-                                value:
-                                    '${_fmt(draft.rangeStart!)} – ${_fmt(draft.rangeEnd!)}',
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.88),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: PortraitorTokens.borderSoft,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'TOTAL',
+                              style: PortraitorTokens.labelMd.copyWith(
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.06,
+                                color: PortraitorTokens.onboardingMuted,
                               ),
+                            ),
+                            Text(
+                              _priceFor(draft.selectedTier),
+                              style: PortraitorTokens.displaySm.copyWith(
+                                fontSize: 28,
+                              ),
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 16),
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.88),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: PortraitorTokens.borderSoft,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'TOTAL',
-                                style: PortraitorTokens.labelMd.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.06,
-                                  color: PortraitorTokens.onboardingMuted,
-                                ),
-                              ),
-                              Text(
-                                _priceFor(draft.selectedTier),
-                                style: PortraitorTokens.displaySm.copyWith(
-                                  fontSize: 28,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                  ),
           ),
           _PassInsteadCard(
-            priceCaption:
-                FunnelTier.pass.canPurchase
-                    ? '${_priceFor(FunnelTier.pass)}/month'
-                    : '\$50/month · Coming soon',
+            priceCaption: FunnelTier.pass.canPurchase
+                ? '${_priceFor(FunnelTier.pass)}/month'
+                : '\$50/month · Coming soon',
             open: showPass,
             onToggle: () => setState(() => _passOpen = !_passOpen),
             onShowOneOff: () => setState(() => _passOpen = false),
@@ -227,10 +252,9 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     FunnelTier tier,
   ) async {
     final destination = postPurchaseDestinationFor(tier);
-    final payload =
-        destination == PostPurchaseDestination.processing
-            ? _funnelPayload(context)
-            : null;
+    final payload = destination == PostPurchaseDestination.processing
+        ? _funnelPayload(context)
+        : null;
     if (destination == PostPurchaseDestination.processing && payload == null) {
       return;
     }
@@ -245,10 +269,22 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
         '${const Uuid().v4().substring(0, 8)}';
 
     if (destination == PostPurchaseDestination.processing) {
-      await _stagePendingGeneration(
-        conversationId: conversationId,
-        payload: payload!,
-      );
+      try {
+        await _stagePendingGeneration(
+          conversationId: conversationId,
+          payload: payload!,
+        );
+      } catch (_) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Purchase could not start safely. Free some storage and try again.',
+            ),
+          ),
+        );
+        return;
+      }
     }
 
     final outcome = await ref
@@ -268,11 +304,10 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
         if (IapProductCatalog.isSubscription(tier)) {
           await Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder:
-                  (_) => SavePassScreen(
-                    passCode: passCode,
-                    onContinue: () => Navigator.of(context).pop(),
-                  ),
+              builder: (_) => SavePassScreen(
+                passCode: passCode,
+                onContinue: () => Navigator.of(context).pop(),
+              ),
             ),
           );
           if (!context.mounted) return;
@@ -509,8 +544,9 @@ class _PassInsteadCard extends StatelessWidget {
                 ],
               ),
             ),
-            crossFadeState:
-                open ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            crossFadeState: open
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 240),
           ),
         ],
@@ -625,9 +661,9 @@ class _DeliveryEmailField extends StatelessWidget {
         Text(
           isSubscription
               ? 'Your portraits and your Pass code are emailed here. Keep it - '
-                  'the code is the only way to use this Pass elsewhere.'
+                    'the code is the only way to use this Pass elsewhere.'
               : 'Your portrait is emailed here. The app keeps a copy on this '
-                  'device only, so the email is what survives.',
+                    'device only, so the email is what survives.',
           style: const TextStyle(
             fontFamily: PortraitorTokens.fontFamily,
             fontSize: 12,

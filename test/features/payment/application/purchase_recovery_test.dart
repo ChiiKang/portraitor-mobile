@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/features/payment/application/purchase_recovery.dart';
 import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
@@ -31,7 +33,7 @@ PurchaseRecovery buildRecovery({
     api: api ?? FakeBillingApi(),
     store: store ?? InMemoryPassCredentialStore(),
     pendingStore: pendingStore ?? InMemoryPendingPurchaseStore(),
-    onConsumableVerified: onConsumableVerified,
+    onConsumableVerified: onConsumableVerified ?? (_, __) async {},
   );
 }
 
@@ -244,7 +246,62 @@ void main() {
 
       expect(iap.syncCalled, isTrue);
     });
+
+    test('waits for restored transactions to finish reconciling', () async {
+      final transaction = const IapTransaction(
+        provider: StoreProvider.apple,
+        productId: 'sku',
+        serverVerificationData: 'signed',
+        accountToken: 'uuid-restore',
+        status: IapTransactionStatus.restored,
+        isPendingCompletion: true,
+        isConsumable: true,
+      );
+      final iap = _SyncEmittingIapService(transaction);
+      final pendingStore = InMemoryPendingPurchaseStore();
+      await pendingStore.write(
+        PendingPurchaseContext(
+          provider: StoreProvider.apple,
+          productId: 'sku',
+          publicUuid: 'uuid-restore',
+          clientConversationRef: 'conv-restore',
+          deliveryEmail: '',
+          createdAt: DateTime.utc(2026),
+        ),
+      );
+      final allowDurableWrite = Completer<void>();
+      final recovery = buildRecovery(
+        iap: iap,
+        pendingStore: pendingStore,
+        onConsumableVerified: (_, __) => allowDurableWrite.future,
+      );
+      var completed = false;
+
+      final restoring = recovery.restoreOnUserRequest().then(
+        (_) => completed = true,
+      );
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(completed, isFalse);
+      allowDurableWrite.complete();
+      await restoring;
+      expect(iap.finished, contains('sku'));
+    });
   });
+}
+
+class _SyncEmittingIapService extends FakeIapService {
+  _SyncEmittingIapService(this.transaction)
+    : super(products: const {'sku': r'$1'});
+
+  final IapTransaction transaction;
+
+  @override
+  Future<void> syncWithStore() async {
+    syncCalled = true;
+    emit(transaction);
+  }
 }
 
 class _CountingApi extends FakeBillingApi {

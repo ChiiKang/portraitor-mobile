@@ -43,9 +43,10 @@ class PurchaseRecovery {
   final Future<void> Function(String conversationRef, String paymentReference)
   _onConsumableVerified;
   StreamSubscription<IapTransaction>? _sub;
+  final Set<Future<void>> _reconciliations = {};
 
   Future<void> runAtLaunch() async {
-    _sub ??= _iap.transactions.listen(_reconcile);
+    _ensureListening();
 
     // Consumables never appear in currentEntitlements, so they need their own
     // sweep. A paid portrait can be sitting here after a crash.
@@ -59,7 +60,36 @@ class PurchaseRecovery {
   }
 
   /// Explicit user action only: the platform may display account UI.
-  Future<void> restoreOnUserRequest() => _iap.syncWithStore();
+  Future<void> restoreOnUserRequest() async {
+    _ensureListening();
+    await _iap.syncWithStore();
+    await _drainReconciliations();
+  }
+
+  void _ensureListening() {
+    _sub ??= _iap.transactions.listen(_trackReconciliation);
+  }
+
+  void _trackReconciliation(IapTransaction transaction) {
+    late final Future<void> task;
+    task = _reconcile(
+      transaction,
+    ).whenComplete(() => _reconciliations.remove(task));
+    _reconciliations.add(task);
+  }
+
+  Future<void> _drainReconciliations() async {
+    while (true) {
+      await Future<void>.delayed(Duration.zero);
+      final current = _reconciliations.toList(growable: false);
+      if (current.isEmpty) {
+        await Future<void>.delayed(Duration.zero);
+        if (_reconciliations.isEmpty) return;
+        continue;
+      }
+      await Future.wait(current);
+    }
+  }
 
   Future<void> _reconcile(IapTransaction txn) async {
     final restoringSubscription =

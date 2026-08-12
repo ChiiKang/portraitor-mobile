@@ -12,6 +12,7 @@ import 'package:portraitor_mobile/features/payment/application/purchase_recovery
 import 'package:portraitor_mobile/features/payment/presentation/manage_subscription_tile.dart';
 import 'package:portraitor_mobile/features/payment/services/entitlement_api.dart';
 import 'package:portraitor_mobile/features/payment/services/pass_credential_store.dart';
+import 'package:portraitor_mobile/features/payment/services/pass_session_api.dart';
 import 'package:portraitor_mobile/shared/widgets/main_tab_shell.dart';
 
 /// Profile tab root, ported from the `portraitor-ios.html` prototype
@@ -21,11 +22,13 @@ class ProfileScreen extends ConsumerStatefulWidget {
     super.key,
     this.entitlementApi,
     this.credentialStore,
+    this.passSessionApi,
     this.onRestorePurchases,
   });
 
   final EntitlementApi? entitlementApi;
   final PassCredentialStore? credentialStore;
+  final PassSessionApi? passSessionApi;
   final Future<void> Function()? onRestorePurchases;
 
   @override
@@ -47,9 +50,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _passHidden = false;
   bool _entitlementLoading = true;
   bool _restoreBusy = false;
+  bool _attachBusy = false;
   String? _entitlementError;
   String? _passId;
   Entitlement? _entitlement;
+  final _passCodeController = TextEditingController();
 
   @override
   void initState() {
@@ -60,8 +65,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   PassCredentialStore get _credentialStore =>
       widget.credentialStore ?? KeychainPassCredentialStore();
 
+  PassSessionApi get _passSessionApi =>
+      widget.passSessionApi ?? HttpPassSessionApi();
+
   EntitlementApi get _entitlementApi =>
       widget.entitlementApi ?? HttpEntitlementApi();
+
+  @override
+  void dispose() {
+    _passCodeController.dispose();
+    super.dispose();
+  }
 
   Future<void> _loadEntitlement() async {
     try {
@@ -281,10 +295,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               const SizedBox(height: 6),
               Text(
                 _entitlementError ??
-                    'Subscribe or restore a purchase made with this store account.',
+                    'Use a Pass code from any platform, or restore a purchase made with this store account.',
                 style: PortraitorTokens.bodySm.copyWith(
                   color: PortraitorTokens.onboardingInkSoft,
                 ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                key: const ValueKey('profile-pass-code-input'),
+                controller: _passCodeController,
+                autocorrect: false,
+                enableSuggestions: false,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(labelText: 'Pass code'),
+                onSubmitted: (_) => _attachPass(),
+              ),
+              const SizedBox(height: 8),
+              FilledButton(
+                key: const ValueKey('profile-attach-pass'),
+                onPressed: _attachBusy ? null : _attachPass,
+                child: Text(_attachBusy ? 'Attaching…' : 'Use Pass code'),
               ),
               Align(
                 alignment: Alignment.centerLeft,
@@ -409,13 +439,35 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           widget.onRestorePurchases ??
           ref.read(purchaseRecoveryProvider).restoreOnUserRequest;
       await action();
-      await Future<void>.delayed(const Duration(milliseconds: 50));
       await _loadEntitlement();
       if (mounted) _toast('Store purchases restored');
     } catch (_) {
       if (mounted) _toast('Purchases could not be restored. Try again later.');
     } finally {
       if (mounted) setState(() => _restoreBusy = false);
+    }
+  }
+
+  Future<void> _attachPass() async {
+    if (_attachBusy) return;
+    final code = _passCodeController.text.trim();
+    if (code.isEmpty) {
+      _toast('Enter a Pass code');
+      return;
+    }
+    setState(() => _attachBusy = true);
+    try {
+      final session = await _passSessionApi.attach(passCode: code);
+      await _credentialStore.writePassCode(code);
+      await _credentialStore.writeSessionToken(session);
+      await _loadEntitlement();
+      if (mounted) _toast('Pass attached');
+    } on PassSessionException catch (error) {
+      if (mounted) _toast(error.message);
+    } catch (_) {
+      if (mounted) _toast('That Pass code could not be attached.');
+    } finally {
+      if (mounted) setState(() => _attachBusy = false);
     }
   }
 
@@ -497,6 +549,12 @@ class _MembershipCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final remaining = total - used;
+    final billingSource = switch (fundingProvider) {
+      'apple' => 'App Store',
+      'google' => 'Google Play',
+      'stripe' => 'Portraitor',
+      _ => 'Monthly',
+    };
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -541,12 +599,12 @@ class _MembershipCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              const Column(
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '\$50',
-                    style: TextStyle(
+                    billingSource,
+                    style: const TextStyle(
                       fontFamily: PortraitorTokens.fontFamily,
                       fontSize: 22,
                       height: 1.05,
@@ -556,8 +614,8 @@ class _MembershipCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    '/mo',
-                    style: TextStyle(
+                    'billing',
+                    style: const TextStyle(
                       fontFamily: PortraitorTokens.fontBody,
                       fontSize: 11,
                       height: 1.4,
@@ -618,10 +676,9 @@ class _MembershipCard extends StatelessWidget {
                   height: 10,
                   margin: EdgeInsets.only(right: index == total - 1 ? 0 : 3),
                   decoration: BoxDecoration(
-                    color:
-                        isRemaining
-                            ? PortraitorTokens.onboardingPrimary
-                            : _ProfileScreenState._segUsed,
+                    color: isRemaining
+                        ? PortraitorTokens.onboardingPrimary
+                        : _ProfileScreenState._segUsed,
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ),
@@ -682,10 +739,9 @@ class _MembershipCard extends StatelessWidget {
               const SizedBox(width: 8),
               _PassIconButton(
                 key: const ValueKey('profile-hide-pass'),
-                icon:
-                    passHidden
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
+                icon: passHidden
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
                 semanticLabel: passHidden ? 'Show pass code' : 'Hide pass code',
                 accent: true,
                 onTap: onToggleVisibility,
@@ -790,8 +846,7 @@ class _MembershipCard extends StatelessWidget {
               SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'We store no chat content — only payment records, keyed to '
-                  'Stripe.',
+                  'We store no chat content — only billing records for this Pass.',
                   style: TextStyle(
                     fontFamily: PortraitorTokens.fontBody,
                     fontSize: 12,
@@ -827,10 +882,9 @@ class _SectionLabel extends StatelessWidget {
           height: 1.3,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.88, // 0.08em
-          color:
-              accent
-                  ? PortraitorTokens.onboardingPrimary
-                  : PortraitorTokens.onboardingMuted,
+          color: accent
+              ? PortraitorTokens.onboardingPrimary
+              : PortraitorTokens.onboardingMuted,
         ),
       ),
     );
@@ -901,20 +955,18 @@ class _PassIconButton extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color:
-                    accent
-                        ? _ProfileScreenState._accentBorder
-                        : PortraitorTokens.borderStrong,
+                color: accent
+                    ? _ProfileScreenState._accentBorder
+                    : PortraitorTokens.borderStrong,
                 width: 1.5,
               ),
             ),
             child: Icon(
               icon,
               size: 18,
-              color:
-                  accent
-                      ? PortraitorTokens.onboardingPrimary
-                      : PortraitorTokens.onboardingInkSoft,
+              color: accent
+                  ? PortraitorTokens.onboardingPrimary
+                  : PortraitorTokens.onboardingInkSoft,
             ),
           ),
         ),

@@ -61,6 +61,14 @@ PendingJob _legacyStaleJob({String id = 'conv_legacy'}) {
   );
 }
 
+PendingJob _awaitingPurchaseJob({String id = 'conv_store_pending'}) {
+  return PendingJob.fromDbMap({
+    ..._resumableJob(id: id).toDbMap(),
+    'payment_session_id': '',
+    'status': 'awaiting_purchase',
+  });
+}
+
 void main() {
   setUpAll(() {
     sqfliteFfiInit();
@@ -82,23 +90,41 @@ void main() {
   });
 
   group('PendingJobRecoveryNotifier.refresh classification', () {
+    test('preserves a deferred store purchase without probing', () async {
+      await StorageService.instance.savePendingJobRecord(
+        _awaitingPurchaseJob(),
+      );
+      var probeCount = 0;
+      fakeApi.onGetJobStatus = (_) async {
+        probeCount++;
+        return {'status': 'ok'};
+      };
+
+      await notifier.refresh();
+
+      expect(probeCount, 0);
+      expect(
+        notifier.state.classifications.single.status,
+        RecoveryStatus.storePending,
+      );
+    });
+
     test(
       'returns resumable when local fields complete and server says mid-flight',
       () async {
         await StorageService.instance.savePendingJobRecord(_resumableJob());
 
         // Server: payment captured but not yet final (e.g. requires_capture).
-        fakeApi.onGetJobStatus =
-            (ref) async => {
-              'status': 'ok',
-              'data': {
-                'chunks_completed': 1,
-                'chunks_total': 3,
-                'chunking_mode': 'map-reduce',
-                'payment_status': 'requires_capture',
-                'email_sent': false,
-              },
-            };
+        fakeApi.onGetJobStatus = (ref) async => {
+          'status': 'ok',
+          'data': {
+            'chunks_completed': 1,
+            'chunks_total': 3,
+            'chunking_mode': 'map-reduce',
+            'payment_status': 'requires_capture',
+            'email_sent': false,
+          },
+        };
 
         await notifier.refresh();
 
@@ -139,11 +165,10 @@ void main() {
       'deletes pending row when server reports payment_status=completed && email_sent=true',
       () async {
         await StorageService.instance.savePendingJobRecord(_resumableJob());
-        fakeApi.onGetJobStatus =
-            (ref) async => {
-              'status': 'ok',
-              'data': {'payment_status': 'completed', 'email_sent': true},
-            };
+        fakeApi.onGetJobStatus = (ref) async => {
+          'status': 'ok',
+          'data': {'payment_status': 'completed', 'email_sent': true},
+        };
 
         await notifier.refresh();
 
@@ -163,11 +188,10 @@ void main() {
       'hides Resume (shows serverFinalizing) when server says completed but email not yet sent',
       () async {
         await StorageService.instance.savePendingJobRecord(_resumableJob());
-        fakeApi.onGetJobStatus =
-            (ref) async => {
-              'status': 'ok',
-              'data': {'payment_status': 'completed', 'email_sent': false},
-            };
+        fakeApi.onGetJobStatus = (ref) async => {
+          'status': 'ok',
+          'data': {'payment_status': 'completed', 'email_sent': false},
+        };
 
         await notifier.refresh();
 
@@ -236,11 +260,10 @@ void main() {
         'updated_at': DateTime.utc(2026, 6, 8).toIso8601String(),
       });
 
-      fakeApi.onGetJobStatus =
-          (ref) async => {
-            'status': 'ok',
-            'data': {'payment_status': 'requires_capture', 'email_sent': false},
-          };
+      fakeApi.onGetJobStatus = (ref) async => {
+        'status': 'ok',
+        'data': {'payment_status': 'requires_capture', 'email_sent': false},
+      };
 
       await notifier.refresh();
 
@@ -298,11 +321,10 @@ void main() {
       await StorageService.instance.savePendingJobRecord(older);
       await StorageService.instance.savePendingJobRecord(newer);
 
-      fakeApi.onGetJobStatus =
-          (ref) async => {
-            'status': 'ok',
-            'data': {'payment_status': 'requires_capture', 'email_sent': false},
-          };
+      fakeApi.onGetJobStatus = (ref) async => {
+        'status': 'ok',
+        'data': {'payment_status': 'requires_capture', 'email_sent': false},
+      };
 
       await notifier.refresh();
 
@@ -316,18 +338,26 @@ void main() {
   });
 
   group('PendingJobRecoveryNotifier.cancel', () {
+    test('dismissing a deferred purchase keeps its staged payload', () async {
+      final job = _awaitingPurchaseJob();
+      await StorageService.instance.savePendingJobRecord(job);
+
+      await notifier.cancel(job);
+
+      expect(
+        await StorageService.instance.getPendingJobById(job.id),
+        isNotNull,
+      );
+    });
+
     test(
       'keeps a paid pending row and only drops it from current UI',
       () async {
         await StorageService.instance.savePendingJobRecord(_resumableJob());
-        fakeApi.onGetJobStatus =
-            (ref) async => {
-              'status': 'ok',
-              'data': {
-                'payment_status': 'requires_capture',
-                'email_sent': false,
-              },
-            };
+        fakeApi.onGetJobStatus = (ref) async => {
+          'status': 'ok',
+          'data': {'payment_status': 'requires_capture', 'email_sent': false},
+        };
         await notifier.refresh();
         expect(notifier.state.classifications, hasLength(1));
 
@@ -344,14 +374,15 @@ void main() {
     test('cancel releases the queue slot and cancels no payment', () async {
       var releaseCalled = false;
       await StorageService.instance.savePendingJobRecord(_resumableJob());
-      fakeApi.onReleaseQueue = ({
-        required clientConversationRef,
-        required paymentSessionId,
-        leaseToken,
-      }) async {
-        releaseCalled = true;
-        return {'status': 'ok'};
-      };
+      fakeApi.onReleaseQueue =
+          ({
+            required clientConversationRef,
+            required paymentSessionId,
+            leaseToken,
+          }) async {
+            releaseCalled = true;
+            return {'status': 'ok'};
+          };
 
       await notifier.cancel(_resumableJob());
 
@@ -368,13 +399,14 @@ void main() {
       'paid job remains resumable when queue release network-fails',
       () async {
         await StorageService.instance.savePendingJobRecord(_resumableJob());
-        fakeApi.onReleaseQueue = ({
-          required clientConversationRef,
-          required paymentSessionId,
-          leaseToken,
-        }) async {
-          throw ApiException('Queue service unavailable', statusCode: 500);
-        };
+        fakeApi.onReleaseQueue =
+            ({
+              required clientConversationRef,
+              required paymentSessionId,
+              leaseToken,
+            }) async {
+              throw ApiException('Queue service unavailable', statusCode: 500);
+            };
 
         // Should not throw or discard the paid request.
         await notifier.cancel(_resumableJob());

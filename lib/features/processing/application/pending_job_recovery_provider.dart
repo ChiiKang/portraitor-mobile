@@ -10,6 +10,8 @@ import 'package:portraitor_mobile/core/storage/storage_service.dart';
 /// Mirrors web's `checkForPendingJobs` classification at
 /// `portraitor/public/assets/app.js:2670-2691`.
 enum RecoveryStatus {
+  storePending,
+
   /// Local row is recoverable AND the server still thinks the job is mid-flight.
   resumable,
 
@@ -58,10 +60,9 @@ class PendingJobRecoveryState {
     if (classifications.isEmpty) return null;
     // serverCompleted entries are auto-deleted in refresh() so they should
     // never appear here; defensively filter them out anyway.
-    final candidates =
-        classifications
-            .where((c) => c.status != RecoveryStatus.serverCompleted)
-            .toList();
+    final candidates = classifications
+        .where((c) => c.status != RecoveryStatus.serverCompleted)
+        .toList();
     if (candidates.isEmpty) return null;
     candidates.sort((a, b) {
       final priorityCompare = _priority(
@@ -77,12 +78,14 @@ class PendingJobRecoveryState {
     switch (status) {
       case RecoveryStatus.resumable:
         return 0;
-      case RecoveryStatus.serverFinalizing:
+      case RecoveryStatus.storePending:
         return 1;
-      case RecoveryStatus.cancelOnly:
+      case RecoveryStatus.serverFinalizing:
         return 2;
-      case RecoveryStatus.serverCompleted:
+      case RecoveryStatus.cancelOnly:
         return 3;
+      case RecoveryStatus.serverCompleted:
+        return 4;
     }
   }
 }
@@ -107,6 +110,12 @@ class PendingJobRecoveryNotifier
     final classifications = <RecoveryClassification>[];
 
     for (final job in localJobs) {
+      if (job.status == 'awaiting_purchase') {
+        classifications.add(
+          RecoveryClassification(job: job, status: RecoveryStatus.storePending),
+        );
+        continue;
+      }
       // Stale rows (legacy v4 or missing required fields) cannot be probed
       // meaningfully and are offered as cancel-only.
       if (job.status == 'stale' || !job.isResumable) {
@@ -193,6 +202,10 @@ class PendingJobRecoveryNotifier
   /// customer. Such a job stays durable and resumable; deleting it would throw
   /// away paid value. Only legacy rows with no payment handle are safe to clear.
   Future<void> cancel(PendingJob job) async {
+    if (job.status == 'awaiting_purchase') {
+      dropClassification(job.id);
+      return;
+    }
     // Best-effort queue release. The job's in-memory lease died with the app;
     // a fresh release call without lease_token is still useful because the
     // backend can clean up the slot keyed by payment_session_id.
