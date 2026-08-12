@@ -19,53 +19,50 @@ void main() {
       expect(find.textContaining('NEW PORTRAIT'), findsOneWidget);
       expect(find.text('Start'), findsOneWidget);
 
-      // Privacy footer
-      expect(find.textContaining('stored'), findsWidgets);
+      expect(find.text('Share a chat or upload an\nexport'), findsOneWidget);
     });
 
-    testWidgets('tapping Start opens import sheet', (tester) async {
+    testWidgets('tapping Start opens the add-conversation step', (
+      tester,
+    ) async {
       await tester.pumpWidget(buildTestApp(initialRoute: '/home'));
       await tester.pump(const Duration(seconds: 2));
 
       await tester.tap(find.text('Start'));
       await tester.pump(const Duration(seconds: 2));
 
-      // Import sheet should appear
       expect(find.text('Add a conversation'), findsOneWidget);
-      expect(find.text('STEP 1 OF 3'), findsOneWidget);
-      expect(find.text('Share from WhatsApp'), findsOneWidget);
-      expect(find.text('Upload file'), findsOneWidget);
-      expect(find.text('Paste manually'), findsOneWidget);
+      expect(find.text('1/4'), findsOneWidget);
+      expect(
+        find.text('Upload an export or paste the chat below.'),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('import sheet can be dismissed', (tester) async {
+    testWidgets('add-conversation step can navigate back', (tester) async {
       await tester.pumpWidget(buildTestApp(initialRoute: '/home'));
       await tester.pump(const Duration(seconds: 2));
 
-      // Open import sheet
       await tester.tap(find.text('Start'));
       await tester.pump(const Duration(seconds: 2));
       expect(find.text('Add a conversation'), findsOneWidget);
 
-      // Dismiss by tapping outside (drag down)
-      await tester.drag(find.text('Add a conversation'), const Offset(0, 400));
+      await tester.tap(find.byIcon(Icons.chevron_left_rounded));
       await tester.pump(const Duration(seconds: 2));
 
-      // Should be back on home screen
       expect(find.text('Add a conversation'), findsNothing);
+      expect(find.text('Portraitor'), findsOneWidget);
     });
 
     testWidgets('settings icon navigates to settings', (tester) async {
       await tester.pumpWidget(buildTestApp(initialRoute: '/home'));
       await tester.pump(const Duration(seconds: 2));
 
-      // Find and tap settings (more_horiz icon)
-      final settingsButton = find.byIcon(Icons.more_horiz);
-      if (settingsButton.evaluate().isNotEmpty) {
-        await tester.tap(settingsButton);
-        await tester.pump(const Duration(seconds: 2));
-        expect(find.text('Settings'), findsOneWidget);
-      }
+      final settingsButton = find.text('···');
+      expect(settingsButton, findsOneWidget);
+      await tester.tap(settingsButton);
+      await tester.pump(const Duration(seconds: 2));
+      expect(find.text('Settings'), findsOneWidget);
     });
   });
 }

@@ -12,9 +12,8 @@ void main() {
       await tester.pumpWidget(buildTestApp());
       await tester.pump(const Duration(seconds: 2));
 
-      expect(find.textContaining('Understand someone'), findsOneWidget);
-      expect(find.text('Get started'), findsOneWidget);
-      expect(find.text('Skip'), findsOneWidget);
+      expect(find.text('Read between\nthe lines.'), findsOneWidget);
+      expect(find.text("Let's begin"), findsOneWidget);
     });
 
     testWidgets('can swipe through all 3 onboarding pages', (tester) async {
@@ -22,20 +21,14 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
 
       // Page 1: Welcome
-      expect(find.textContaining('Understand someone'), findsOneWidget);
+      expect(find.text('Read between\nthe lines.'), findsOneWidget);
 
-      // Tap "Get started" to go to page 2
-      await tester.tap(find.text('Get started'));
+      // Tap the primary action to go to page 2.
+      await tester.tap(find.text("Let's begin"));
       await tester.pump(const Duration(seconds: 2));
 
       // Page 2: How it works
-      expect(find.text('How it works?'), findsOneWidget);
-      expect(
-        find.text('Export a chat from WhatsApp or Telegram'),
-        findsOneWidget,
-      );
-      expect(find.text('Share it with Portraitor'), findsOneWidget);
-      expect(find.textContaining('personality portrait'), findsOneWidget);
+      expect(find.text('How it works'), findsOneWidget);
       expect(find.text('Continue'), findsOneWidget);
 
       // Tap "Continue" to go to page 3
@@ -46,11 +39,15 @@ void main() {
       expect(find.textContaining('privacy'), findsWidgets);
     });
 
-    testWidgets('skip button navigates to home', (tester) async {
+    testWidgets('privacy consent completes onboarding', (tester) async {
       await tester.pumpWidget(buildTestApp());
       await tester.pump(const Duration(seconds: 2));
 
-      await tester.tap(find.text('Skip'));
+      await tester.tap(find.text("Let's begin"));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.text('Continue'));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.text('I agree & continue'));
       await tester.pump(const Duration(seconds: 2));
 
       // Should be on home screen

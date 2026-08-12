@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -46,7 +45,7 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
 
       // Should show onboarding welcome
-      expect(find.textContaining('Understand someone'), findsOneWidget);
+      expect(find.text('Read between\nthe lines.'), findsOneWidget);
     });
 
     testWidgets('delete all data shows confirmation dialog', (tester) async {
@@ -54,20 +53,16 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
 
       // Scroll to find danger zone
-      await tester.drag(
-        find.byType(SingleChildScrollView).first,
-        const Offset(0, -300),
-      );
-      await tester.pump(const Duration(seconds: 2));
-
       final deleteButton = find.text('Delete all local data');
-      if (deleteButton.evaluate().isNotEmpty) {
-        await tester.tap(deleteButton);
-        await tester.pump(const Duration(seconds: 2));
+      await tester.ensureVisible(deleteButton);
+      await tester.pumpAndSettle();
+      expect(deleteButton, findsOneWidget);
+      await tester.tap(deleteButton);
+      await tester.pumpAndSettle();
 
-        // Confirmation dialog should appear
-        expect(find.textContaining('Delete'), findsWidgets);
-      }
+      expect(find.text('Delete all data?'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.text('Delete'), findsOneWidget);
     });
   });
 }

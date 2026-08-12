@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:portraitor_mobile/features/onboarding/presentation/onboarding_flow.dart';
+import 'package:portraitor_mobile/features/funnel/presentation/add_conversation_screen.dart';
+import 'package:portraitor_mobile/features/funnel/presentation/plan_screen.dart';
 import 'package:portraitor_mobile/features/import/presentation/home_screen.dart';
 import 'package:portraitor_mobile/features/setup/presentation/setup_screen.dart';
 import 'package:portraitor_mobile/features/settings/presentation/settings_screen.dart';
@@ -17,6 +19,10 @@ Widget buildTestApp({String initialRoute = '/onboarding'}) {
     routes: [
       GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingFlow()),
       GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
+      GoRoute(
+        path: '/funnel/add',
+        builder: (_, __) => const AddConversationScreen(),
+      ),
       GoRoute(
         path: '/setup',
         builder: (_, state) {
@@ -80,6 +86,7 @@ Widget buildSetupTestApp({
         },
       ),
       GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
+      GoRoute(path: '/funnel/plan', builder: (_, __) => const PlanScreen()),
     ],
   );
 

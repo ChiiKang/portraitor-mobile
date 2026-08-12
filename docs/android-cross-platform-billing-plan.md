@@ -21,7 +21,8 @@ Implementation validation completed locally:
 - 421 Flutter tests pass, including provider adapters, replay, idempotency, storage migration, multi-person checkpoints, profile controls, and failure paths;
 - all backend feature scripts and Google billing suites pass, including MariaDB migration, OIDC, RTDN lifecycle, duplicate delivery, and token-redaction coverage;
 - debug APK and release AAB builds pass with Play billing both disabled and enabled;
-- the installed debug APK launches cleanly on a Pixel 8 Google Play emulator with no app fatal error or ANR in the smoke log.
+- the installed debug APK launches cleanly on a Pixel 8 Google Play emulator with no app fatal error or ANR in the smoke log;
+- all 22 Android device integration tests pass across onboarding, home/import routing, setup-to-shared-funnel routing, settings, and backend PDF download.
 
 External sandbox validation remains intentionally pending. It needs a verified Google Play Console account, the first signed AAB uploaded to an internal test track, the four configured products, license testers, backend Google credentials, and an authenticated Pub/Sub push subscription targeting `/api/google/notifications.php`. Local builds do not prove a real Play purchase because Google Billing test transactions must originate from a Play-installed test-track build.
 

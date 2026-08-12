@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:uuid/uuid.dart';
 
 import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
+import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
+import 'package:portraitor_mobile/features/import/services/chat_normalizer.dart';
 import 'package:portraitor_mobile/features/setup/application/setup_provider.dart';
 import 'package:portraitor_mobile/features/import/services/date_parser.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
@@ -186,22 +187,26 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 
   void _navigateToPayment(SetupState setup) {
-    final conversationId = const Uuid().v4();
-    final dateRange =
-        (setup.rangeStart != null && setup.rangeEnd != null)
-            ? '${DateFormat('MMM yyyy').format(setup.rangeStart!)} – ${DateFormat('MMM yyyy').format(setup.rangeEnd!)}'
+    final range =
+        setup.rangeStart != null && setup.rangeEnd != null
+            ? DateRange(start: setup.rangeStart!, end: setup.rangeEnd!)
             : null;
-
-    context.push(
-      '/payment',
-      extra: {
-        'normalizedText': setup.filteredText,
-        'targetName': setup.targetName,
-        'tokenEstimate': setup.tokenEstimate,
-        'conversationId': conversationId,
-        'dateRange': dateRange,
-      },
+    final draft = ref.read(funnelDraftProvider.notifier);
+    draft.setFromImport(
+      normalized: NormalizationResult(
+        text: setup.filteredText,
+        format: ChatFormat.values.firstWhere(
+          (value) => value.name == widget.format,
+          orElse: () => ChatFormat.unknown,
+        ),
+        detectedNames: setup.detectedNames,
+        messageCount: setup.filteredMessages,
+      ),
+      dateRange: range,
+      tokenEstimate: setup.tokenEstimate,
     );
+    draft.setSelectedNames([setup.targetName]);
+    context.push('/funnel/plan');
   }
 }
 
