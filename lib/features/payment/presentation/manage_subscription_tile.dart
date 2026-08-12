@@ -15,6 +15,7 @@ class ManageSubscriptionTile extends StatelessWidget {
     required this.renewalDate,
     required this.usesRemaining,
     required this.cancelPending,
+    required this.provider,
   });
 
   final String status;
@@ -23,6 +24,7 @@ class ManageSubscriptionTile extends StatelessWidget {
 
   /// Auto-renew is off, so the pool stays usable until the paid period ends.
   final bool cancelPending;
+  final String provider;
 
   @override
   Widget build(BuildContext context) {
@@ -72,7 +74,7 @@ class ManageSubscriptionTile extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'Billing managed by Apple',
+            'Billing managed by ${provider == 'google' ? 'Google Play' : 'Apple'}',
             style: PortraitorTokens.labelSm.copyWith(
               color: PortraitorTokens.onboardingMuted,
             ),
@@ -83,7 +85,8 @@ class ManageSubscriptionTile extends StatelessWidget {
             height: PortraitorTokens.buttonHeightMd,
             child: OutlinedButton(
               key: const Key('manage_subscription'),
-              onPressed: () => const ManageSubscriptionsChannel().show(),
+              onPressed:
+                  () => const ManageSubscriptionsChannel().show(provider),
               child: const Text('Manage subscription'),
             ),
           ),

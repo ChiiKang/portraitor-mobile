@@ -33,9 +33,12 @@ class Entitlement {
   /// Null means no live funding source, which is not the same as Stripe but is
   /// equally safe to show our own controls for: there is nothing external to
   /// defer to.
-  bool get isSelfManaged => fundingProvider == null || fundingProvider == 'stripe';
+  bool get isSelfManaged =>
+      fundingProvider == null || fundingProvider == 'stripe';
 
   bool get isAppleFunded => fundingProvider == 'apple';
+  bool get isGoogleFunded => fundingProvider == 'google';
+  bool get isStoreFunded => isAppleFunded || isGoogleFunded;
 
   factory Entitlement.fromJson(Map<String, dynamic> json) {
     return Entitlement(

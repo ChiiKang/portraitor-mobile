@@ -1,13 +1,19 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/features/payment/application/purchase_recovery.dart';
+import 'package:portraitor_mobile/features/payment/domain/store_provider.dart';
 import 'package:portraitor_mobile/features/payment/services/billing_api.dart';
 import 'package:portraitor_mobile/features/payment/services/iap_service.dart';
 import 'package:portraitor_mobile/features/payment/services/pass_credential_store.dart';
+import 'package:portraitor_mobile/features/payment/services/pending_purchase_store.dart';
 
 Future<FakeIapService> iapWithUnfinishedPurchase() async {
   final iap = FakeIapService(products: const {'sku': r'$1'});
   await iap.loadProducts({'sku'});
-  await iap.buy(productId: 'sku', appAccountToken: 'uuid-1');
+  await iap.buy(
+    productId: 'sku',
+    appAccountToken: 'uuid-1',
+    isConsumable: true,
+  );
   return iap;
 }
 
@@ -15,11 +21,13 @@ PurchaseRecovery buildRecovery({
   required FakeIapService iap,
   FakeBillingApi? api,
   PassCredentialStore? store,
+  PendingPurchaseStore? pendingStore,
 }) {
   return PurchaseRecovery(
     iap: iap,
     api: api ?? FakeBillingApi(),
     store: store ?? InMemoryPassCredentialStore(),
+    pendingStore: pendingStore ?? InMemoryPendingPurchaseStore(),
   );
 }
 
@@ -27,15 +35,47 @@ void main() {
   group('PurchaseRecovery at launch', () {
     test('drains an unfinished consumable', () async {
       final iap = await iapWithUnfinishedPurchase();
+      final pendingStore = InMemoryPendingPurchaseStore();
+      await pendingStore.write(
+        PendingPurchaseContext(
+          provider: iap.provider,
+          productId: 'sku',
+          publicUuid: 'uuid-1',
+          clientConversationRef: 'conv-original',
+          deliveryEmail: 'buyer@example.com',
+          createdAt: DateTime.utc(2026, 8, 12),
+        ),
+      );
 
-      await buildRecovery(iap: iap).runAtLaunch();
+      final api = FakeBillingApi();
+      await buildRecovery(
+        iap: iap,
+        api: api,
+        pendingStore: pendingStore,
+      ).runAtLaunch();
 
       expect(
         iap.finished,
         contains('sku'),
         reason: 'a replay that verifies should be finished',
       );
+      expect(api.lastConversationRef, 'conv-original');
+      expect(api.lastDeliveryEmail, 'buyer@example.com');
+      expect(await pendingStore.read('uuid-1'), isNull);
     });
+
+    test(
+      'never verifies a first-time replay without its purchase context',
+      () async {
+        final iap = await iapWithUnfinishedPurchase();
+        final api = _CountingApi();
+
+        await buildRecovery(iap: iap, api: api).runAtLaunch();
+
+        expect(api.verifyCount, 0);
+        expect(await iap.unfinished(), hasLength(1));
+      },
+    );
 
     test('stores the session recovered from a replayed one-off', () async {
       final iap = await iapWithUnfinishedPurchase();
@@ -81,28 +121,32 @@ void main() {
       expect(await iap.unfinished(), hasLength(1));
     });
 
-    test('a transaction with no signed proof is never sent to the server',
-        () async {
-      final iap = FakeIapService(products: const {'sku': r'$1'});
-      final api = _CountingApi();
+    test(
+      'a transaction with no signed proof is never sent to the server',
+      () async {
+        final iap = FakeIapService(products: const {'sku': r'$1'});
+        final api = _CountingApi();
 
-      iap.emit(
-        const IapTransaction(
-          productId: 'sku',
-          jws: '',
-          status: IapTransactionStatus.purchased,
-          isPendingCompletion: true,
-        ),
-      );
-      await buildRecovery(iap: iap, api: api).runAtLaunch();
-      await Future<void>.delayed(Duration.zero);
+        iap.emit(
+          const IapTransaction(
+            provider: StoreProvider.apple,
+            productId: 'sku',
+            serverVerificationData: '',
+            accountToken: 'uuid-1',
+            status: IapTransactionStatus.purchased,
+            isPendingCompletion: true,
+          ),
+        );
+        await buildRecovery(iap: iap, api: api).runAtLaunch();
+        await Future<void>.delayed(Duration.zero);
 
-      expect(
-        api.verifyCount,
-        0,
-        reason: 'without a JWS there is nothing for the server to verify',
-      );
-    });
+        expect(
+          api.verifyCount,
+          0,
+          reason: 'without a JWS there is nothing for the server to verify',
+        );
+      },
+    );
 
     test('an already-finished transaction is ignored', () async {
       final iap = FakeIapService(products: const {'sku': r'$1'});
@@ -110,8 +154,10 @@ void main() {
 
       iap.emit(
         const IapTransaction(
+          provider: StoreProvider.apple,
           productId: 'sku',
-          jws: 'signed',
+          serverVerificationData: 'signed',
+          accountToken: 'uuid-1',
           status: IapTransactionStatus.purchased,
           isPendingCompletion: false,
         ),
@@ -140,21 +186,23 @@ class _CountingApi extends FakeBillingApi {
 
   @override
   Future<VerifiedPurchase> verifyPurchase({
-    required String jws,
+    required String verificationData,
     required String publicUuid,
     required String productId,
     required String clientConversationRef,
     String? deliveryEmail,
     String? sessionToken,
+    StoreProvider provider = StoreProvider.apple,
   }) {
     verifyCount++;
     return super.verifyPurchase(
-      jws: jws,
+      verificationData: verificationData,
       publicUuid: publicUuid,
       productId: productId,
       clientConversationRef: clientConversationRef,
       deliveryEmail: deliveryEmail,
       sessionToken: sessionToken,
+      provider: provider,
     );
   }
 }

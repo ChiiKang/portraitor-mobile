@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:portraitor_mobile/features/payment/presentation/manage_subscription_tile.dart';
 import 'package:flutter/services.dart';
@@ -5,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:portraitor_mobile/core/theme/tokens.dart';
+import 'package:portraitor_mobile/features/payment/services/entitlement_api.dart';
+import 'package:portraitor_mobile/features/payment/services/pass_credential_store.dart';
 import 'package:portraitor_mobile/shared/widgets/main_tab_shell.dart';
 
 /// Profile tab root, ported from the `portraitor-ios.html` prototype
@@ -34,6 +38,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
   static const _segUsed = Color(0xFFD7D6E4); // oklch(88% .02 290)
 
   bool _passHidden = false;
+  String? _liveFundingProvider;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadFundingProvider());
+  }
+
+  Future<void> _loadFundingProvider() async {
+    try {
+      final session = await KeychainPassCredentialStore().readSessionToken();
+      if (session == null || session.isEmpty) {
+        return;
+      }
+      final entitlement = await HttpEntitlementApi().current(
+        sessionToken: session,
+      );
+      if (mounted) {
+        setState(() => _liveFundingProvider = entitlement?.fundingProvider);
+      }
+    } catch (_) {
+      // Profile remains usable offline; billing actions still fail closed server-side.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -144,7 +172,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     Padding(
                       padding: EdgeInsets.only(top: 1),
-                      child: Icon(Icons.lock_outline, size: 16, color: _passGold),
+                      child: Icon(
+                        Icons.lock_outline,
+                        size: 16,
+                        color: _passGold,
+                      ),
                     ),
                     SizedBox(width: 8),
                     Expanded(
@@ -277,7 +309,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// exactly as before. Null is the safe default: it is what a Stripe-funded
   /// and an unfunded Pass both look like, and an Apple-funded Pass is refused
   /// server-side regardless of what this screen renders.
-  String? get _fundingProvider => null;
+  String? get _fundingProvider => _liveFundingProvider;
 
   void _openStripe() => _toast('Opening Stripe billing portal…');
 
@@ -285,10 +317,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _toast(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        content: Text(message),
-      ),
+      SnackBar(behavior: SnackBarBehavior.floating, content: Text(message)),
     );
   }
 }
@@ -315,6 +344,7 @@ class _MembershipCard extends StatelessWidget {
   final VoidCallback onToggleVisibility;
   final VoidCallback onCopy;
   final VoidCallback onShare;
+
   /// Who took the money: 'apple', 'stripe', later 'google', or null.
   ///
   /// Decides which controls may appear at all. Whoever took the money owns
@@ -448,9 +478,10 @@ class _MembershipCard extends StatelessWidget {
                   height: 10,
                   margin: EdgeInsets.only(right: index == total - 1 ? 0 : 3),
                   decoration: BoxDecoration(
-                    color: isRemaining
-                        ? PortraitorTokens.onboardingPrimary
-                        : _ProfileScreenState._segUsed,
+                    color:
+                        isRemaining
+                            ? PortraitorTokens.onboardingPrimary
+                            : _ProfileScreenState._segUsed,
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ),
@@ -476,7 +507,8 @@ class _MembershipCard extends StatelessWidget {
                   ),
                 ),
                 const TextSpan(
-                  text: ' · refills ${_ProfileScreenState._renewalDate}'
+                  text:
+                      ' · refills ${_ProfileScreenState._renewalDate}'
                       ' · shared pool',
                 ),
               ],
@@ -510,9 +542,10 @@ class _MembershipCard extends StatelessWidget {
               const SizedBox(width: 8),
               _PassIconButton(
                 key: const ValueKey('profile-hide-pass'),
-                icon: passHidden
-                    ? Icons.visibility_outlined
-                    : Icons.visibility_off_outlined,
+                icon:
+                    passHidden
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
                 semanticLabel: passHidden ? 'Show pass code' : 'Hide pass code',
                 accent: true,
                 onTap: onToggleVisibility,
@@ -577,13 +610,14 @@ class _MembershipCard extends StatelessWidget {
           // app, so a Stripe payment for it inside the iOS app would breach
           // App Store Guideline 3.1.1 even on a Stripe-funded Pass. That is
           // why there is no refill control here for ANY provider.
-          if (fundingProvider == 'apple')
-            const ManageSubscriptionTile(
-              key: ValueKey('profile-apple-managed'),
+          if (fundingProvider == 'apple' || fundingProvider == 'google')
+            ManageSubscriptionTile(
+              key: ValueKey('profile-$fundingProvider-managed'),
               status: 'Active',
               renewalDate: _ProfileScreenState._renewalDate,
               usesRemaining: 0,
               cancelPending: false,
+              provider: fundingProvider!,
             )
           else ...[
             _StripeButton(
@@ -651,9 +685,10 @@ class _SectionLabel extends StatelessWidget {
           height: 1.3,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.88, // 0.08em
-          color: accent
-              ? PortraitorTokens.onboardingPrimary
-              : PortraitorTokens.onboardingMuted,
+          color:
+              accent
+                  ? PortraitorTokens.onboardingPrimary
+                  : PortraitorTokens.onboardingMuted,
         ),
       ),
     );
@@ -724,18 +759,20 @@ class _PassIconButton extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: accent
-                    ? _ProfileScreenState._accentBorder
-                    : PortraitorTokens.borderStrong,
+                color:
+                    accent
+                        ? _ProfileScreenState._accentBorder
+                        : PortraitorTokens.borderStrong,
                 width: 1.5,
               ),
             ),
             child: Icon(
               icon,
               size: 18,
-              color: accent
-                  ? PortraitorTokens.onboardingPrimary
-                  : PortraitorTokens.onboardingInkSoft,
+              color:
+                  accent
+                      ? PortraitorTokens.onboardingPrimary
+                      : PortraitorTokens.onboardingInkSoft,
             ),
           ),
         ),

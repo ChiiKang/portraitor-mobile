@@ -5,23 +5,26 @@ import 'package:portraitor_mobile/features/payment/domain/purchase_outcome.dart'
 import 'package:portraitor_mobile/features/payment/services/billing_api.dart';
 import 'package:portraitor_mobile/features/payment/services/iap_service.dart';
 import 'package:portraitor_mobile/features/payment/services/pass_credential_store.dart';
+import 'package:portraitor_mobile/features/payment/services/pending_purchase_store.dart';
 
 const _youSku = 'com.portraitor.portrait.you';
 const _passSku = 'com.portraitor.pass.monthly';
 
 FakeIapService buildIap() => FakeIapService(
-      products: const {_youSku: r'HK$78.00', _passSku: r'HK$388.00'},
-    );
+  products: const {_youSku: r'HK$78.00', _passSku: r'HK$388.00'},
+);
 
 IapNotifier buildNotifier({
   FakeIapService? iap,
   FakeBillingApi? api,
   PassCredentialStore? store,
+  PendingPurchaseStore? pendingStore,
 }) {
   return IapNotifier(
     iap: iap ?? buildIap(),
     api: api ?? FakeBillingApi(),
     store: store ?? InMemoryPassCredentialStore(),
+    pendingStore: pendingStore,
   );
 }
 
@@ -60,7 +63,10 @@ void main() {
       final notifier = buildNotifier(store: store);
       await notifier.loadPrices();
 
-      final outcome = await notifier.buy(FunnelTier.you, clientConversationRef: 'conv_test');
+      final outcome = await notifier.buy(
+        FunnelTier.you,
+        clientConversationRef: 'conv_test',
+      );
 
       expect(outcome, isA<PurchaseVerified>());
       final verified = outcome as PurchaseVerified;
@@ -68,7 +74,8 @@ void main() {
       expect(
         verified.passCode,
         isNull,
-        reason: 'a one-off buys portraits of one conversation; it does not '
+        reason:
+            'a one-off buys portraits of one conversation; it does not '
             'create a Pass, so there is no code to save',
       );
       expect(await store.readPassCode(), isNull);
@@ -84,7 +91,10 @@ void main() {
       final notifier = buildNotifier(store: store);
       await notifier.loadPrices();
 
-      final outcome = await notifier.buy(FunnelTier.pass, clientConversationRef: 'conv_test');
+      final outcome = await notifier.buy(
+        FunnelTier.pass,
+        clientConversationRef: 'conv_test',
+      );
 
       expect(outcome, isA<PurchaseVerified>());
       final verified = outcome as PurchaseVerified;
@@ -98,55 +108,82 @@ void main() {
       expect(await store.readPassCode(), 'PASS-CODE-1');
     });
 
-    test('the credential is stored before the transaction is completed',
-        () async {
-      final iap = buildIap();
-      final store = _OrderingStore(iap);
-      final notifier = buildNotifier(iap: iap, store: store);
-      await notifier.loadPrices();
+    test(
+      'the credential is stored before the transaction is completed',
+      () async {
+        final iap = buildIap();
+        final store = _OrderingStore(iap);
+        final notifier = buildNotifier(iap: iap, store: store);
+        await notifier.loadPrices();
 
-      // The Pass, not a one-off. A one-off stores no credential at all now:
-      // it mints no Pass and the server issues no session for it, so there is
-      // no write whose ordering could be observed. The subscription is where
-      // the ordering guarantee actually has something to guard.
-      await notifier.buy(FunnelTier.pass, clientConversationRef: 'conv_test');
+        // The Pass, not a one-off. A one-off stores no credential at all now:
+        // it mints no Pass and the server issues no session for it, so there is
+        // no write whose ordering could be observed. The subscription is where
+        // the ordering guarantee actually has something to guard.
+        await notifier.buy(FunnelTier.pass, clientConversationRef: 'conv_test');
 
-      expect(
-        store.wroteBeforeComplete,
-        isTrue,
-        reason: 'completePurchase is irreversible: Apple will not replay a '
-            'finished transaction, so the credential must be durable first',
-      );
-      expect(iap.finished, contains(_passSku));
-    });
+        expect(
+          store.wroteBeforeComplete,
+          isTrue,
+          reason:
+              'completePurchase is irreversible: Apple will not replay a '
+              'finished transaction, so the credential must be durable first',
+        );
+        expect(iap.finished, contains(_passSku));
+      },
+    );
 
-    test('a purchase that verifies but cannot be finished still succeeds',
-        () async {
-      final iap = _UnfinishableIapService();
-      await iap.loadProducts({_youSku});
-      final store = InMemoryPassCredentialStore();
-      final notifier = buildNotifier(iap: iap, store: store);
-      await notifier.loadPrices();
+    test(
+      'a purchase that verifies but cannot be finished still succeeds',
+      () async {
+        final iap = _UnfinishableIapService();
+        final pendingStore = InMemoryPendingPurchaseStore();
+        await iap.loadProducts({_youSku});
+        final store = InMemoryPassCredentialStore();
+        final notifier = buildNotifier(
+          iap: iap,
+          store: store,
+          pendingStore: pendingStore,
+        );
+        await notifier.loadPrices();
 
-      final outcome = await notifier.buy(FunnelTier.you, clientConversationRef: 'conv_test');
+        final outcome = await notifier.buy(
+          FunnelTier.you,
+          clientConversationRef: 'conv_test',
+        );
 
-      expect(
-        outcome,
-        isA<PurchaseVerified>(),
-        reason: 'the user paid and the server recorded it; failing to finish '
-            'the StoreKit transaction only means it replays',
-      );
-      // A one-off's durable credential is the payment reference, not a code.
-      expect((outcome as PurchaseVerified).paymentReference, isNotEmpty);
-    });
+        expect(
+          outcome,
+          isA<PurchaseVerified>(),
+          reason:
+              'the user paid and the server recorded it; failing to finish '
+              'the StoreKit transaction only means it replays',
+        );
+        // A one-off's durable credential is the payment reference, not a code.
+        expect((outcome as PurchaseVerified).paymentReference, isNotEmpty);
+        expect(
+          await pendingStore.read(iap.lastTransaction!.accountToken!),
+          isNotNull,
+          reason: 'completion failure must retain process-death recovery data',
+        );
+      },
+    );
 
     test('a failed verification leaves the transaction unfinished', () async {
       final iap = buildIap();
       final api = FakeBillingApi()..rejectVerification = true;
-      final notifier = buildNotifier(iap: iap, api: api);
+      final pendingStore = InMemoryPendingPurchaseStore();
+      final notifier = buildNotifier(
+        iap: iap,
+        api: api,
+        pendingStore: pendingStore,
+      );
       await notifier.loadPrices();
 
-      final outcome = await notifier.buy(FunnelTier.you, clientConversationRef: 'conv_test');
+      final outcome = await notifier.buy(
+        FunnelTier.you,
+        clientConversationRef: 'conv_test',
+      );
 
       expect(outcome, isA<PurchaseFailed>());
       expect(
@@ -155,6 +192,29 @@ void main() {
         reason: 'StoreKit must replay a purchase the server never recorded',
       );
       expect(await iap.unfinished(), hasLength(1));
+      expect(
+        await pendingStore.read(iap.lastTransaction!.accountToken!),
+        isNotNull,
+      );
+    });
+
+    test('persists recovery context before opening the store', () async {
+      final pendingStore = InMemoryPendingPurchaseStore();
+      final iap = _ContextObservingIapService(pendingStore);
+      final notifier = buildNotifier(iap: iap, pendingStore: pendingStore);
+      await notifier.loadPrices();
+
+      await notifier.buy(
+        FunnelTier.you,
+        clientConversationRef: 'conv-durable',
+        deliveryEmail: 'buyer@example.com',
+      );
+
+      expect(iap.contextExistedWhenStoreOpened, isTrue);
+      expect(
+        await pendingStore.read(iap.lastTransaction!.accountToken!),
+        isNull,
+      );
     });
 
     test('a first purchase makes no prepare call', () async {
@@ -167,7 +227,8 @@ void main() {
       expect(
         api.prepareCallCount,
         0,
-        reason: 'with no Pass session the UUID is generated locally; the '
+        reason:
+            'with no Pass session the UUID is generated locally; the '
             'server derives billing facts from the JWS regardless',
       );
     });
@@ -184,25 +245,31 @@ void main() {
       expect(api.prepareCallCount, 1);
     });
 
-    test('a subscription on an already-funded Pass fails before StoreKit opens',
-        () async {
-      final iap = buildIap();
-      final api = FakeBillingApi()..fundedPassSession = 'funded';
-      final store = InMemoryPassCredentialStore();
-      await store.writeSessionToken('funded');
-      final notifier = buildNotifier(iap: iap, api: api, store: store);
-      await notifier.loadPrices();
+    test(
+      'a subscription on an already-funded Pass fails before StoreKit opens',
+      () async {
+        final iap = buildIap();
+        final api = FakeBillingApi()..fundedPassSession = 'funded';
+        final store = InMemoryPassCredentialStore();
+        await store.writeSessionToken('funded');
+        final notifier = buildNotifier(iap: iap, api: api, store: store);
+        await notifier.loadPrices();
 
-      final outcome = await notifier.buy(FunnelTier.pass, clientConversationRef: 'conv_test');
+        final outcome = await notifier.buy(
+          FunnelTier.pass,
+          clientConversationRef: 'conv_test',
+        );
 
-      expect(outcome, isA<PurchaseFailed>());
-      expect(
-        iap.pending,
-        isEmpty,
-        reason: 'rejecting before the sheet opens avoids an Apple refund we '
-            'do not control',
-      );
-    });
+        expect(outcome, isA<PurchaseFailed>());
+        expect(
+          iap.pending,
+          isEmpty,
+          reason:
+              'rejecting before the sheet opens avoids an Apple refund we '
+              'do not control',
+        );
+      },
+    );
 
     test('a consumable on a funded Pass still succeeds', () async {
       final api = FakeBillingApi()..fundedPassSession = 'funded';
@@ -211,7 +278,10 @@ void main() {
       final notifier = buildNotifier(api: api, store: store);
       await notifier.loadPrices();
 
-      final outcome = await notifier.buy(FunnelTier.you, clientConversationRef: 'conv_test');
+      final outcome = await notifier.buy(
+        FunnelTier.you,
+        clientConversationRef: 'conv_test',
+      );
 
       expect(outcome, isA<PurchaseVerified>());
     });
@@ -220,7 +290,10 @@ void main() {
       final iap = buildIap();
       final notifier = buildNotifier(iap: iap);
 
-      final outcome = await notifier.buy(FunnelTier.you, clientConversationRef: 'conv_test');
+      final outcome = await notifier.buy(
+        FunnelTier.you,
+        clientConversationRef: 'conv_test',
+      );
 
       expect(outcome, isA<PurchaseFailed>());
       expect(iap.pending, isEmpty);
@@ -232,10 +305,33 @@ void main() {
 /// completePurchase does int.parse(purchaseID!) and purchaseID is null.
 class _UnfinishableIapService extends FakeIapService {
   _UnfinishableIapService()
-      : super(products: const {_youSku: r'HK$78.00', _passSku: r'HK$388.00'});
+    : super(products: const {_youSku: r'HK$78.00', _passSku: r'HK$388.00'});
 
   @override
   Future<void> complete(IapTransaction transaction) async {
     throw TypeError();
+  }
+}
+
+class _ContextObservingIapService extends FakeIapService {
+  _ContextObservingIapService(this.pendingStore)
+    : super(products: const {_youSku: r'HK$78.00', _passSku: r'HK$388.00'});
+
+  final PendingPurchaseStore pendingStore;
+  bool contextExistedWhenStoreOpened = false;
+
+  @override
+  Future<void> buy({
+    required String productId,
+    required String appAccountToken,
+    required bool isConsumable,
+  }) async {
+    contextExistedWhenStoreOpened =
+        await pendingStore.read(appAccountToken) != null;
+    await super.buy(
+      productId: productId,
+      appAccountToken: appAccountToken,
+      isConsumable: isConsumable,
+    );
   }
 }

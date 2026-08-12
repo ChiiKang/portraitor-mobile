@@ -7,6 +7,7 @@ void main() {
     WidgetTester tester, {
     bool cancelPending = false,
     int usesRemaining = 7,
+    String provider = 'apple',
   }) {
     return tester.pumpWidget(
       MaterialApp(
@@ -16,6 +17,7 @@ void main() {
             renewalDate: '7 September 2026',
             usesRemaining: usesRemaining,
             cancelPending: cancelPending,
+            provider: provider,
           ),
         ),
       ),
@@ -32,6 +34,15 @@ void main() {
     expect(find.byKey(const Key('manage_subscription')), findsOneWidget);
   });
 
+  testWidgets('labels Google-funded subscriptions with originating store', (
+    tester,
+  ) async {
+    await pumpTile(tester, provider: 'google');
+
+    expect(find.text('Billing managed by Google Play'), findsOneWidget);
+    expect(find.text('Billing managed by Apple'), findsNothing);
+  });
+
   testWidgets('offers no control Apple owns', (tester) async {
     await pumpTile(tester);
 
@@ -42,8 +53,9 @@ void main() {
     expect(find.text('Refill'), findsNothing);
   });
 
-  testWidgets('distinguishes renewal from expiry when cancel is pending',
-      (tester) async {
+  testWidgets('distinguishes renewal from expiry when cancel is pending', (
+    tester,
+  ) async {
     await pumpTile(tester, cancelPending: false);
     expect(find.textContaining('Renews'), findsOneWidget);
 

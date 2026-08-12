@@ -50,11 +50,10 @@ void main() async {
 
   final container = ProviderContainer();
 
-  // Drain unfinished StoreKit transactions and reconcile entitlements.
+  // Drain unfinished store transactions and reconcile entitlements.
   // Deliberately not awaited: a slow or offline reconciliation must never
-  // delay the first frame. iOS-only for now; Android has no StoreKit and gets
-  // Google Play Billing later.
-  if (Platform.isIOS) {
+  // delay the first frame.
+  if (Platform.isIOS || Platform.isAndroid) {
     unawaited(
       container.read(purchaseRecoveryProvider).runAtLaunch().catchError((e) {
         debugPrint('[IAP] launch recovery failed: $e');

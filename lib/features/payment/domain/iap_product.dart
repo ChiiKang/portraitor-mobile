@@ -1,6 +1,6 @@
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 
-/// A product as the App Store describes it.
+/// A product as the platform store describes it.
 ///
 /// [localizedPrice] is StoreKit's own formatted string. It is never built from
 /// a hardcoded number: App Store prices are set in App Store Connect, vary by

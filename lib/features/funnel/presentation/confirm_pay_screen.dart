@@ -71,9 +71,7 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
   Widget build(BuildContext context) {
     final draft = ref.watch(funnelDraftProvider);
     final name =
-        draft.selectedNames.isNotEmpty
-            ? draft.selectedNames.first
-            : 'Someone';
+        draft.selectedNames.isNotEmpty ? draft.selectedNames.first : 'Someone';
     final messages = draft.normalized?.messageCount ?? 0;
     final showPass = _passOpen;
 
@@ -161,9 +159,10 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
                     ),
           ),
           _PassInsteadCard(
-            priceCaption: FunnelTier.pass.canPurchase
-                ? '${_priceFor(FunnelTier.pass)}/month'
-                : '\$50/month · Coming soon',
+            priceCaption:
+                FunnelTier.pass.canPurchase
+                    ? '${_priceFor(FunnelTier.pass)}/month'
+                    : '\$50/month · Coming soon',
             open: showPass,
             onToggle: () => setState(() => _passOpen = !_passOpen),
             onShowOneOff: () => setState(() => _passOpen = false),
@@ -179,7 +178,7 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
 
     if (!tier.canPurchase) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('The Pass needs a real StoreKit build.')),
+        const SnackBar(content: Text('The Pass needs a store-enabled build.')),
       );
       return;
     }
@@ -197,12 +196,12 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
       return;
     }
 
-    await _completeStoreKitPurchase(context, tier);
+    await _completeStorePurchase(context, tier);
   }
 
   /// Real StoreKit. Apple renders its own sheet, so there is none of ours to
   /// show; the funnel goes straight to save-your-code and then processing.
-  Future<void> _completeStoreKitPurchase(
+  Future<void> _completeStorePurchase(
     BuildContext context,
     FunnelTier tier,
   ) async {
@@ -214,10 +213,13 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     // refuses a payment whose stored ref does not match the run being queued,
     // so the id has to exist before the money moves. The same value is then
     // handed to /processing so both sides agree.
-    final conversationId = 'conv_${DateTime.now().millisecondsSinceEpoch}_'
+    final conversationId =
+        'conv_${DateTime.now().millisecondsSinceEpoch}_'
         '${const Uuid().v4().substring(0, 8)}';
 
-    final outcome = await ref.read(iapProvider.notifier).buy(
+    final outcome = await ref
+        .read(iapProvider.notifier)
+        .buy(
           tier,
           clientConversationRef: conversationId,
           deliveryEmail: _email,
@@ -232,10 +234,11 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
         if (IapProductCatalog.isSubscription(tier)) {
           await Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) => SavePassScreen(
-                passCode: passCode,
-                onContinue: () => Navigator.of(context).pop(),
-              ),
+              builder:
+                  (_) => SavePassScreen(
+                    passCode: passCode,
+                    onContinue: () => Navigator.of(context).pop(),
+                  ),
             ),
           );
           if (!context.mounted) return;

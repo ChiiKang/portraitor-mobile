@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -56,7 +57,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
         if (_passOpen && !FunnelTier.pass.canPurchase) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('The Pass needs a real StoreKit build.'),
+              content: Text('The Pass needs a store-enabled build.'),
             ),
           );
           return;
@@ -66,7 +67,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
       bottomExtra:
           _passOpen
               ? Text(
-                'Billed through the App Store · Terms',
+                '${defaultTargetPlatform == TargetPlatform.android ? 'Billed through Google Play' : 'Billed through the App Store'} · Terms',
                 textAlign: TextAlign.center,
                 style: PortraitorTokens.bodySm.copyWith(
                   color: const Color(0xFF8A7348),
@@ -273,7 +274,11 @@ class _PlanTierCard extends StatelessWidget {
                   ),
                 ],
               ),
-              child: const Icon(Icons.check_rounded, size: 14, color: Colors.white),
+              child: const Icon(
+                Icons.check_rounded,
+                size: 14,
+                color: Colors.white,
+              ),
             ),
           ),
       ],
@@ -519,9 +524,7 @@ class _PassDrawer extends StatelessWidget {
                   const _PassFeature(
                     text: 'All tiers included — You, Partner & Family',
                   ),
-                  const _PassFeature(
-                    text: 'Priority processing & PDF export',
-                  ),
+                  const _PassFeature(text: 'Priority processing & PDF export'),
                   const _PassFeature(text: 'Cancel anytime — no lock-in'),
                   const SizedBox(height: 8),
                   TextButton(
@@ -568,7 +571,11 @@ class _PassFeature extends StatelessWidget {
               color: Color(0xFFB89540),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.check_rounded, size: 12, color: Colors.white),
+            child: const Icon(
+              Icons.check_rounded,
+              size: 12,
+              color: Colors.white,
+            ),
           ),
           const SizedBox(width: 8),
           Expanded(

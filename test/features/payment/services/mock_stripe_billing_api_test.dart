@@ -19,32 +19,34 @@ void main() {
     dio.httpClientAdapter = _StubAdapter(requests);
   });
 
-  test('creates and confirms a real payment, returning the server reference',
-      () async {
-    final api = MockStripeBillingApi(dio: dio);
+  test(
+    'creates and confirms a real payment, returning the server reference',
+    () async {
+      final api = MockStripeBillingApi(dio: dio);
 
-    final result = await api.verifyPurchase(
-      jws: 'ignored-in-demo',
-      publicUuid: 'uuid-1',
-      productId: 'com.portraitor.portrait.partner',
-      clientConversationRef: 'conv_demo',
-      deliveryEmail: 'demo@example.com',
-    );
+      final result = await api.verifyPurchase(
+        verificationData: 'ignored-in-demo',
+        publicUuid: 'uuid-1',
+        productId: 'com.portraitor.portrait.partner',
+        clientConversationRef: 'conv_demo',
+        deliveryEmail: 'demo@example.com',
+      );
 
-    expect(requests.map((r) => '${r.method} ${r.path}'), [
-      'POST /api/payment.php',
-      'PUT /api/payment.php',
-    ]);
+      expect(requests.map((r) => '${r.method} ${r.path}'), [
+        'POST /api/payment.php',
+        'PUT /api/payment.php',
+      ]);
 
-    // The reference is the server's own PaymentIntent id, which is what
-    // assertPaymentCanQueue looks up. An invented value is what broke before.
-    expect(result.paymentReference, 'pi_demo_123');
-    expect(result.passCode, isNull, reason: 'a one-off mints no Pass');
-  });
+      // The reference is the server's own PaymentIntent id, which is what
+      // assertPaymentCanQueue looks up. An invented value is what broke before.
+      expect(result.paymentReference, 'pi_demo_123');
+      expect(result.passCode, isNull, reason: 'a one-off mints no Pass');
+    },
+  );
 
   test('sends the conversation ref so the queue can match it', () async {
     await MockStripeBillingApi(dio: dio).verifyPurchase(
-      jws: 'x',
+      verificationData: 'x',
       publicUuid: 'u',
       productId: 'com.portraitor.portrait.you',
       clientConversationRef: 'conv_must_match',
@@ -54,14 +56,15 @@ void main() {
   });
 
   test('resolves the tier from the product id, not the request', () async {
-    for (final entry in {
-      'com.portraitor.portrait.you': 'you',
-      'com.portraitor.portrait.partner': 'partner',
-      'com.portraitor.portrait.family': 'family',
-    }.entries) {
+    for (final entry
+        in {
+          'com.portraitor.portrait.you': 'you',
+          'com.portraitor.portrait.partner': 'partner',
+          'com.portraitor.portrait.family': 'family',
+        }.entries) {
       requests.clear();
       await MockStripeBillingApi(dio: dio).verifyPurchase(
-        jws: 'x',
+        verificationData: 'x',
         publicUuid: 'u',
         productId: entry.key,
         clientConversationRef: 'conv_1',
@@ -78,7 +81,7 @@ void main() {
     // actually hit. It must say why rather than failing opaquely.
     await expectLater(
       MockStripeBillingApi(dio: liveDio).verifyPurchase(
-        jws: 'x',
+        verificationData: 'x',
         publicUuid: 'u',
         productId: 'com.portraitor.portrait.you',
         clientConversationRef: 'conv_1',

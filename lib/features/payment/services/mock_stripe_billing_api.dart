@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:portraitor_mobile/core/api/api_service.dart';
 import 'package:portraitor_mobile/features/payment/services/billing_api.dart';
+import 'package:portraitor_mobile/features/payment/domain/store_provider.dart';
 
 /// Demo billing that produces a REAL payments row instead of a fabricated one.
 ///
@@ -29,6 +30,7 @@ class MockStripeBillingApi implements BillingApi {
   Future<PreparedPurchase> preparePurchase({
     required String? sessionToken,
     bool isSubscription = false,
+    StoreProvider provider = StoreProvider.apple,
   }) async {
     // No Pass involved in the demo path; the uuid is a correlation hint only.
     return const PreparedPurchase(publicUuid: 'demo-public-uuid');
@@ -36,12 +38,13 @@ class MockStripeBillingApi implements BillingApi {
 
   @override
   Future<VerifiedPurchase> verifyPurchase({
-    required String jws,
+    required String verificationData,
     required String publicUuid,
     required String productId,
     required String clientConversationRef,
     String? deliveryEmail,
     String? sessionToken,
+    StoreProvider provider = StoreProvider.apple,
   }) async {
     final tier = _tierFor(productId);
 
@@ -76,9 +79,10 @@ class MockStripeBillingApi implements BillingApi {
         );
       }
     } on DioException catch (e) {
-      final message = e.response?.data is Map
-          ? (e.response!.data['message'] as String? ?? '')
-          : '';
+      final message =
+          e.response?.data is Map
+              ? (e.response!.data['message'] as String? ?? '')
+              : '';
       throw PurchaseNotVerifiedException(
         message.contains('mock mode')
             ? 'Demo purchases need the backend payment mode set to "mock". '

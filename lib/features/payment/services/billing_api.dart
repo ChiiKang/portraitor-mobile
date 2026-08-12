@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:portraitor_mobile/core/api/api_service.dart';
 import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
+import 'package:portraitor_mobile/features/payment/domain/store_provider.dart';
 
 /// The correlation UUID sent to StoreKit as `appAccountToken`.
 class PreparedPurchase {
@@ -56,6 +57,7 @@ abstract class BillingApi {
   Future<PreparedPurchase> preparePurchase({
     required String? sessionToken,
     bool isSubscription = false,
+    StoreProvider provider = StoreProvider.apple,
   });
 
   /// [clientConversationRef] is required by the server: the generation queue
@@ -66,12 +68,13 @@ abstract class BillingApi {
   /// [deliveryEmail] is the address the portrait is emailed to, and for a Pass
   /// also receives the one-time code as a backup.
   Future<VerifiedPurchase> verifyPurchase({
-    required String jws,
+    required String verificationData,
     required String publicUuid,
     required String productId,
     required String clientConversationRef,
     String? deliveryEmail,
     String? sessionToken,
+    StoreProvider provider = StoreProvider.apple,
   });
 }
 
@@ -80,18 +83,20 @@ class HttpBillingApi implements BillingApi {
 
   final Dio _dio;
 
-  static Options? _auth(String? sessionToken) => sessionToken == null
-      ? null
-      : Options(headers: {'Authorization': 'Bearer $sessionToken'});
+  static Options? _auth(String? sessionToken) =>
+      sessionToken == null
+          ? null
+          : Options(headers: {'Authorization': 'Bearer $sessionToken'});
 
   @override
   Future<PreparedPurchase> preparePurchase({
     required String? sessionToken,
     bool isSubscription = false,
+    StoreProvider provider = StoreProvider.apple,
   }) async {
     try {
       final response = await _dio.post<Map<String, dynamic>>(
-        '/api/apple/purchase/prepare.php',
+        '/api/${provider.name}/purchase/prepare.php',
         data: {'is_subscription': isSubscription},
         options: _auth(sessionToken),
       );
@@ -110,18 +115,21 @@ class HttpBillingApi implements BillingApi {
 
   @override
   Future<VerifiedPurchase> verifyPurchase({
-    required String jws,
+    required String verificationData,
     required String publicUuid,
     required String productId,
     required String clientConversationRef,
     String? deliveryEmail,
     String? sessionToken,
+    StoreProvider provider = StoreProvider.apple,
   }) async {
     try {
       final response = await _dio.post<Map<String, dynamic>>(
-        '/api/apple/purchase/verify.php',
+        '/api/${provider.name}/purchase/verify.php',
         data: {
-          'jws': jws,
+          if (provider == StoreProvider.apple) 'jws': verificationData,
+          if (provider == StoreProvider.google)
+            'purchase_token': verificationData,
           'public_uuid': publicUuid,
           'product_id': productId,
           'client_conversation_ref': clientConversationRef,
@@ -139,9 +147,10 @@ class HttpBillingApi implements BillingApi {
       );
     } on DioException catch (e) {
       final body = e.response?.data;
-      final message = body is Map<String, dynamic>
-          ? (body['message'] as String? ?? 'Purchase could not be verified')
-          : 'Purchase could not be verified';
+      final message =
+          body is Map<String, dynamic>
+              ? (body['message'] as String? ?? 'Purchase could not be verified')
+              : 'Purchase could not be verified';
       throw PurchaseNotVerifiedException(message);
     }
   }
@@ -173,6 +182,7 @@ class FakeBillingApi implements BillingApi {
   Future<PreparedPurchase> preparePurchase({
     required String? sessionToken,
     bool isSubscription = false,
+    StoreProvider provider = StoreProvider.apple,
   }) async {
     if (isSubscription &&
         sessionToken != null &&
@@ -185,19 +195,22 @@ class FakeBillingApi implements BillingApi {
 
   @override
   Future<VerifiedPurchase> verifyPurchase({
-    required String jws,
+    required String verificationData,
     required String publicUuid,
     required String productId,
     required String clientConversationRef,
     String? deliveryEmail,
     String? sessionToken,
+    StoreProvider provider = StoreProvider.apple,
   }) async {
     lastConversationRef = clientConversationRef;
     lastDeliveryEmail = deliveryEmail;
     if (rejectVerification) {
-      throw const PurchaseNotVerifiedException('Purchase could not be verified');
+      throw const PurchaseNotVerifiedException(
+        'Purchase could not be verified',
+      );
     }
-    final first = _verified.add(jws);
+    final first = _verified.add('${provider.name}:$verificationData');
 
     // Mirrors the real contract: a one-off bundle buys portraits of one
     // conversation and mints no Pass, so it returns a payment reference and no
@@ -205,7 +218,8 @@ class FakeBillingApi implements BillingApi {
     final isSubscription = productId == IapProductCatalog.passMonthly;
 
     return VerifiedPurchase(
-      sessionToken: isSubscription ? 'a' * 64 : (echoSessionToken ?? sessionToken ?? ''),
+      sessionToken:
+          isSubscription ? 'a' * 64 : (echoSessionToken ?? sessionToken ?? ''),
       // Matches the server's canonical key. uq_provider_account_product includes
       // provider, so Apple reuses the key Stripe already uses.
       productKey: isSubscription ? 'pass_monthly' : 'portrait_you',

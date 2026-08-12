@@ -7,8 +7,9 @@ import 'package:portraitor_mobile/features/payment/application/iap_provider.dart
 import 'package:portraitor_mobile/features/payment/services/billing_api.dart';
 import 'package:portraitor_mobile/features/payment/services/iap_service.dart';
 import 'package:portraitor_mobile/features/payment/services/pass_credential_store.dart';
+import 'package:portraitor_mobile/features/payment/services/pending_purchase_store.dart';
 
-/// Reconciles StoreKit with the server, independently of any active purchase.
+/// Reconciles the platform store with the server independently of a purchase.
 ///
 /// Deliberately separate from [IapNotifier]: this runs at launch whether or
 /// not anyone is buying, and folding two independent lifecycles into one state
@@ -16,23 +17,23 @@ import 'package:portraitor_mobile/features/payment/services/pass_credential_stor
 ///
 /// Restoration is automatic during normal operation. The user-initiated
 /// Restore Purchases action exists only as a fallback, because
-/// `AppStore.sync()` can prompt for Apple credentials.
-/// Placeholder conversation reference for a replayed purchase. Distinctive so
-/// it is greppable in the payments table when support has to reconcile one.
-const String _replayConversationRef = 'storekit_replay_unbound';
+/// Store synchronization may show platform account UI.
 
 class PurchaseRecovery {
   PurchaseRecovery({
     required IapService iap,
     required BillingApi api,
     required PassCredentialStore store,
-  })  : _iap = iap,
-        _api = api,
-        _store = store;
+    required PendingPurchaseStore pendingStore,
+  }) : _iap = iap,
+       _api = api,
+       _store = store,
+       _pendingStore = pendingStore;
 
   final IapService _iap;
   final BillingApi _api;
   final PassCredentialStore _store;
+  final PendingPurchaseStore _pendingStore;
   StreamSubscription<IapTransaction>? _sub;
 
   Future<void> runAtLaunch() async {
@@ -49,8 +50,8 @@ class PurchaseRecovery {
     await _iap.restore();
   }
 
-  /// Explicit user action only: this prompts for Apple credentials.
-  Future<void> restoreOnUserRequest() => _iap.syncWithAppStore();
+  /// Explicit user action only: the platform may display account UI.
+  Future<void> restoreOnUserRequest() => _iap.syncWithStore();
 
   Future<void> _reconcile(IapTransaction txn) async {
     if (!txn.isPendingCompletion) return;
@@ -58,7 +59,7 @@ class PurchaseRecovery {
         txn.status != IapTransactionStatus.restored) {
       return;
     }
-    // Without a JWS there is nothing the server can verify, and finishing it
+    // Without signed store proof there is nothing the server can verify, and finishing it
     // would discard a purchase we cannot prove.
     if (!txn.hasProof) {
       debugPrint('[IAP] recovery skipped ${txn.productId}: no signed proof');
@@ -66,27 +67,29 @@ class PurchaseRecovery {
     }
 
     try {
+      final accountToken = txn.accountToken;
+      if (accountToken == null) {
+        debugPrint('[IAP] recovery skipped ${txn.productId}: no account token');
+        return;
+      }
+      final context = await _pendingStore.read(accountToken);
+      if (context == null ||
+          context.provider != txn.provider ||
+          context.productId != txn.productId) {
+        debugPrint(
+          '[IAP] recovery skipped ${txn.productId}: no matching context',
+        );
+        return;
+      }
       final sessionToken = await _store.readSessionToken();
       final verified = await _api.verifyPurchase(
-        jws: txn.jws,
-        // On a replay the subject comes from the verified appAccountToken
-        // inside the JWS; the request field is only a correlation hint.
-        publicUuid: '',
+        verificationData: txn.serverVerificationData,
+        publicUuid: context.publicUuid,
         productId: txn.productId,
-        // KNOWN GAP. StoreKit transactions carry no conversation reference, so
-        // a replay cannot restate the one the purchase was made against.
-        //
-        // Harmless for the common case: the server deduplicates on Apple's
-        // transaction id and returns the original reference, so a replay of an
-        // already-recorded purchase never consults this value.
-        //
-        // It matters only when the FIRST verify never reached the server. The
-        // row is then created against this placeholder and the queue will refuse
-        // it, so the credit is recoverable by support but not by the app.
-        // Closing it properly means persisting the ref at purchase time and
-        // looking it up here; see the backend plan, section 6.
-        clientConversationRef: _replayConversationRef,
+        clientConversationRef: context.clientConversationRef,
+        deliveryEmail: context.deliveryEmail,
         sessionToken: sessionToken,
+        provider: txn.provider,
       );
 
       if (verified.passCode != null) {
@@ -99,6 +102,7 @@ class PurchaseRecovery {
       }
 
       await _iap.complete(txn);
+      await _pendingStore.remove(context.publicUuid);
     } catch (e) {
       // Left unfinished on purpose. StoreKit replays it next launch, and the
       // server's transaction-id idempotency absorbs the duplicate.
@@ -117,6 +121,7 @@ final purchaseRecoveryProvider = Provider<PurchaseRecovery>((ref) {
     iap: ref.watch(iapServiceProvider),
     api: ref.watch(billingApiProvider),
     store: ref.watch(passCredentialStoreProvider),
+    pendingStore: ref.watch(pendingPurchaseStoreProvider),
   );
   ref.onDispose(recovery.dispose);
   return recovery;

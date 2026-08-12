@@ -17,15 +17,14 @@ void main() {
 
   test('invokes the native manage-subscriptions method', () async {
     final calls = <MethodCall>[];
-    messenger.setMockMethodCallHandler(
-      ManageSubscriptionsChannel.channel,
-      (call) async {
-        calls.add(call);
-        return null;
-      },
-    );
+    messenger.setMockMethodCallHandler(ManageSubscriptionsChannel.channel, (
+      call,
+    ) async {
+      calls.add(call);
+      return null;
+    });
 
-    await const ManageSubscriptionsChannel().show();
+    await const ManageSubscriptionsChannel().show('apple');
 
     expect(calls.single.method, 'showManageSubscriptions');
   });
@@ -37,7 +36,7 @@ void main() {
     );
 
     expect(
-      () => const ManageSubscriptionsChannel().show(),
+      () => const ManageSubscriptionsChannel().show('apple'),
       throwsA(isA<PlatformException>()),
     );
   });
