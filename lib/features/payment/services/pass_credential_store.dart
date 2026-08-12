@@ -5,7 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// The Pass code is revealed exactly once and is not recoverable from the
 /// server: `passes.token_hash` is a peppered HMAC, and V1 has no rotation.
 /// Losing it costs cross-platform use of a Pass the user paid for, which is
-/// why the write happens before StoreKit is told the purchase is finished.
+/// why the write happens before the platform transaction is completed.
 ///
 /// The session token is separate on purpose. A fresh session is always
 /// issuable because it is generated rather than derived from the code, so a
@@ -25,7 +25,7 @@ abstract class PassCredentialStore {
 
 class KeychainPassCredentialStore implements PassCredentialStore {
   KeychainPassCredentialStore({FlutterSecureStorage? storage})
-      : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage();
 
   static const _passCodeKey = 'portraitor_pass_code';
   static const _sessionKey = 'portraitor_pass_session';

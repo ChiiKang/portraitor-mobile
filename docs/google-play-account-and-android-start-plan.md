@@ -2,7 +2,11 @@
 
 ## Development status — 2026-08-12
 
-Core Android billing development is complete without a Play Console account. APK/AAB builds and automated purchase/recovery/backend tests run locally. Real Google sandbox purchases remain intentionally disabled unless the build includes `--dart-define=GOOGLE_PLAY_BILLING_ENABLED=true` and the backend has `GOOGLE_PLAY_PACKAGE_NAME` plus server-only `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`.
+Current implementation status is owned by
+[`docs/android-cross-platform-billing-plan.md`](android-cross-platform-billing-plan.md).
+This document owns the Google Play account, console, and release-start handoff.
+Engineering language below records the original implementation plan; the
+account and console instructions remain current.
 
 Next client action: create the Play Console organization account, accept the agreement and fee, complete identity/organization verification, create the app with package `ai.portraitor.portraitor_mobile`, enable Play App Signing, create the four matching products, add license testers, upload an enabled internal-track AAB, grant the service account Android Publisher access, and provide credentials through the deployment secret store. Never send or commit the service-account JSON in chat or the mobile repository.
 
@@ -10,7 +14,7 @@ Date: 2026-08-11
 
 Last reviewed against repository and current Google requirements: 2026-08-12
 
-## Decision
+## Original decision
 
 Start Android engineering now.
 Ask the client to start Google Play Console organization enrollment now in parallel.
@@ -41,11 +45,11 @@ A verified Google Play account is required to:
 
 The engineering track should therefore proceed until the store-integration checkpoint while the client completes the account track.
 
-## Review update
+## Pre-implementation review baseline
 
 The project is ready to begin Android development.
 
-Verified on 2026-08-12:
+Verified before implementation on 2026-08-12:
 
 - `flutter analyze` passes with no issues.
 - The full Flutter test suite passes.
@@ -63,7 +67,7 @@ Verified on 2026-08-12:
 Google requires target API 36 and Billing Library 8 for new apps and updates from August 31, 2026.
 The current project already satisfies both requirements.
 
-## Parallel delivery tracks
+## Original parallel delivery tracks
 
 | Engineering track | Client account track | Dependency |
 | --- | --- | --- |
@@ -76,7 +80,7 @@ The current project already satisfies both requirements.
 | Run real Play Billing tests. | Configure Cloud API access and internal test track. | Account, app, products, and testers required. |
 | Harden lifecycle and release build. | Complete store listing and policy declarations. | Both tracks converge for release. |
 
-## Architecture to implement now
+## Implemented architecture
 
 ### 1. Shared billing contract
 
@@ -188,7 +192,7 @@ Recommended rule:
 
 The client must approve this rule before backend implementation is finalized.
 
-## Engineering plan that starts immediately
+## Historical engineering plan
 
 ### Stage A: Clean Android baseline
 

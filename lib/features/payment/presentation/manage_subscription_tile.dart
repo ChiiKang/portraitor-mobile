@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/features/payment/services/manage_subscriptions_channel.dart';
 
-/// Pass status for an Apple-funded subscription.
+/// Pass status for a store-funded subscription.
 ///
 /// Only the controls differ from a Stripe-funded Pass, never the information.
-/// Cancel, change-card and refill all belong to Apple, which exposes no API
-/// for any of them, so they are absent rather than present-and-broken.
+/// Cancellation and payment-method changes belong to the originating store, so
+/// the tile opens that store's management surface.
 class ManageSubscriptionTile extends StatelessWidget {
   const ManageSubscriptionTile({
     super.key,

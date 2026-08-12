@@ -3,7 +3,8 @@ import 'package:portraitor_mobile/core/api/api_service.dart';
 import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/domain/store_provider.dart';
 
-/// The correlation UUID sent to StoreKit as `appAccountToken`.
+/// Correlation UUID sent to StoreKit as `appAccountToken` or Google Play as an
+/// obfuscated account identifier.
 class PreparedPurchase {
   const PreparedPurchase({required this.publicUuid, this.passId});
   final String publicUuid;
@@ -53,7 +54,7 @@ class PurchaseNotVerifiedException implements Exception {
 abstract class BillingApi {
   /// Only called when a Pass session exists. A first purchase generates its
   /// UUID locally, because the value is a correlation hint and the server
-  /// derives every billing fact from the verified JWS regardless.
+  /// derives every billing fact from verified store proof regardless.
   Future<PreparedPurchase> preparePurchase({
     required String? sessionToken,
     bool isSubscription = false,
@@ -84,9 +85,8 @@ class HttpBillingApi implements BillingApi {
   final Dio _dio;
 
   static Options _auth(String? sessionToken) => Options(
-    headers: sessionToken == null
-        ? null
-        : {'Authorization': 'Bearer $sessionToken'},
+    headers:
+        sessionToken == null ? null : {'Authorization': 'Bearer $sessionToken'},
     validateStatus: (status) => status != null && status >= 200 && status < 300,
   );
 
@@ -149,9 +149,10 @@ class HttpBillingApi implements BillingApi {
       );
     } on DioException catch (e) {
       final body = e.response?.data;
-      final message = body is Map<String, dynamic>
-          ? (body['message'] as String? ?? 'Purchase could not be verified')
-          : 'Purchase could not be verified';
+      final message =
+          body is Map<String, dynamic>
+              ? (body['message'] as String? ?? 'Purchase could not be verified')
+              : 'Purchase could not be verified';
       throw PurchaseNotVerifiedException(message);
     }
   }
@@ -219,11 +220,10 @@ class FakeBillingApi implements BillingApi {
     final isSubscription = productId == IapProductCatalog.passMonthly;
 
     return VerifiedPurchase(
-      sessionToken: isSubscription
-          ? 'a' * 64
-          : (echoSessionToken ?? sessionToken ?? ''),
+      sessionToken:
+          isSubscription ? 'a' * 64 : (echoSessionToken ?? sessionToken ?? ''),
       // Matches the server's canonical key. uq_provider_account_product includes
-      // provider, so Apple reuses the key Stripe already uses.
+      // provider, so store providers reuse the key Stripe already uses.
       productKey: isSubscription ? 'pass_monthly' : 'portrait_you',
       passCodeDelivered: isSubscription && first,
       paymentReference: isSubscription ? null : 'credit-$publicUuid',

@@ -4,8 +4,7 @@ import 'package:portraitor_mobile/core/theme/tokens.dart';
 /// Native-style App Store purchase sheet (UI shell), mirroring the prototype's
 /// `#iap-sheet`. Face ID confirm → [onConfirm]; there is no second review step.
 ///
-/// StoreKit is not wired yet, so this simulates the purchase. Replace the
-/// confirm button's action with a real StoreKit transaction when products ship.
+/// Used only by `DEMO_IAP`; real builds invoke the platform store directly.
 Future<void> showAppleIapSheet({
   required BuildContext context,
   required String productTitle,
@@ -165,10 +164,7 @@ class _AppleIapSheetState extends State<_AppleIapSheet> {
                 ),
                 child: Column(
                   children: [
-                    const _IapRow(
-                      label: 'Account',
-                      value: 'you@icloud.com',
-                    ),
+                    const _IapRow(label: 'Account', value: 'you@icloud.com'),
                     const Divider(height: 1),
                     InkWell(
                       onTap:
@@ -192,7 +188,10 @@ class _AppleIapSheetState extends State<_AppleIapSheet> {
                         padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
                         child: Column(
                           children: [
-                            _FakeField(label: 'Card number', hint: '•••• •••• •••• 4242'),
+                            _FakeField(
+                              label: 'Card number',
+                              hint: '•••• •••• •••• 4242',
+                            ),
                             const SizedBox(height: 8),
                             Row(
                               children: [
@@ -322,11 +321,7 @@ class _IapAppIcon extends StatelessWidget {
 }
 
 class _IapRow extends StatelessWidget {
-  const _IapRow({
-    required this.label,
-    required this.value,
-    this.trailing,
-  });
+  const _IapRow({required this.label, required this.value, this.trailing});
 
   final String label;
   final String value;

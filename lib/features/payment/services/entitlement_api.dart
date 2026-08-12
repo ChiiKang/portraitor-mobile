@@ -4,8 +4,9 @@ import 'package:portraitor_mobile/core/api/api_service.dart';
 /// What the server says this Pass currently is.
 ///
 /// [fundingProvider] is the load-bearing field: it decides which controls the
-/// app may show. Whoever took the money owns cancellation, so an Apple-funded
-/// Pass is managed in Apple's own sheet and a Stripe-funded one through our API.
+/// app may show. Whoever took the money owns cancellation, so a store-funded
+/// Pass uses that store's management surface and a Stripe-funded one uses our
+/// API.
 class Entitlement {
   const Entitlement({
     required this.state,
@@ -23,7 +24,7 @@ class Entitlement {
   final int usesTotal;
   final String? accessUntil;
 
-  /// `'apple'`, `'stripe'`, later `'google'`, or null when nothing funds it.
+  /// `'apple'`, `'google'`, `'stripe'`, or null when nothing funds it.
   final String? fundingProvider;
 
   final bool cancelPending;

@@ -304,11 +304,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// Which provider funds this Pass.
   ///
-  /// Read from the entitlement endpoint once that read is wired into this
-  /// screen; until then it stays null, which renders the Stripe controls
-  /// exactly as before. Null is the safe default: it is what a Stripe-funded
-  /// and an unfunded Pass both look like, and an Apple-funded Pass is refused
-  /// server-side regardless of what this screen renders.
+  /// Loaded from the entitlement endpoint. Null keeps the existing self-managed
+  /// controls available when the Pass is unfunded or the read is unavailable;
+  /// store-funded billing operations still fail closed on the server.
   String? get _fundingProvider => _liveFundingProvider;
 
   void _openStripe() => _toast('Opening Stripe billing portal…');
@@ -345,10 +343,10 @@ class _MembershipCard extends StatelessWidget {
   final VoidCallback onCopy;
   final VoidCallback onShare;
 
-  /// Who took the money: 'apple', 'stripe', later 'google', or null.
+  /// Who took the money: 'apple', 'google', 'stripe', or null.
   ///
   /// Decides which controls may appear at all. Whoever took the money owns
-  /// cancellation and payment method, and Apple exposes no API for either.
+  /// cancellation and payment-method changes.
   final String? fundingProvider;
 
   final VoidCallback onStripe;
@@ -604,12 +602,12 @@ class _MembershipCard extends StatelessWidget {
 
           // Whoever took the money owns these buttons.
           //
-          // For an Apple-funded Pass, cancel and change-card live in Apple's
-          // own sheet and there is no API for us to call. Refill is absent for
-          // a second, independent reason: it charges for quota consumed in the
-          // app, so a Stripe payment for it inside the iOS app would breach
-          // App Store Guideline 3.1.1 even on a Stripe-funded Pass. That is
-          // why there is no refill control here for ANY provider.
+          // For a store-funded Pass, cancel and change-card live in the
+          // originating store's management surface. Refill is absent for a
+          // second, independent reason: it charges for quota consumed in the
+          // app, so an external payment inside a store-distributed app would
+          // breach store billing policy. There is no refill control here for
+          // any provider.
           if (fundingProvider == 'apple' || fundingProvider == 'google')
             ManageSubscriptionTile(
               key: ValueKey('profile-$fundingProvider-managed'),

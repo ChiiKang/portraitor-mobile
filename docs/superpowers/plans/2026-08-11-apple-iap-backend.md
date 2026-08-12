@@ -6,7 +6,7 @@
 **Supersedes:** `docs/superpowers/plans/2026-08-07-apple-iap-backend.md` (commit `cfe6dd1`). That plan invented method names, used a status enum value that does not exist, collided with a taken migration number, and built the JWS verifier on a Node precedent that is abandoned dead code. Do not read it for reference.
 
 **Spec (authoritative):** `docs/superpowers/specs/2026-08-07-apple-iap-design.md`
-**Handoff (state of the world):** `docs/apple-iap-handoff.md`
+**Current delivery status:** `docs/android-cross-platform-billing-plan.md`
 **Companion plan (executed through Task 13):** `docs/superpowers/plans/2026-08-07-apple-iap-mobile.md`
 
 **Target repo:** `/Users/chiikang/Desktop/Nation/Project54/portraitor_v3`, branch `portraitor_pass`

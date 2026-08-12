@@ -23,7 +23,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
   @override
   void initState() {
     super.initState();
-    // Real prices are set in App Store Connect and vary by storefront, so the
+    // Real prices are configured per platform and vary by storefront, so the
     // store is the only truthful source. The demo keeps its Dart strings.
     if (!kDemoIapPurchase) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -32,7 +32,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     }
   }
 
-  /// The demo renders its own copy; real builds render what StoreKit reports.
+  /// The demo renders its own copy; real builds render what the store reports.
   String _priceFor(FunnelTier tier) {
     if (kDemoIapPurchase) return tier.priceLabel;
     return ref.watch(iapProvider).priceFor(tier) ?? tier.priceLabel;
@@ -53,7 +53,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
       ctaEnabled: !_passOpen,
       onCta: () {
         // The demo cannot simulate a subscription, so the Pass still routes
-        // to a notice there. With real StoreKit it is a first-class product.
+        // to a notice there. With real store billing it is a first-class product.
         if (_passOpen && !FunnelTier.pass.canPurchase) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -170,7 +170,7 @@ class _PlanTierCard extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  /// Resolved by the parent: the demo's Dart string, or StoreKit's own
+  /// Resolved by the parent: the demo's Dart string, or the platform store's
   /// localized price in a real build.
   final String priceLabel;
 

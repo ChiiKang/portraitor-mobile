@@ -1,13 +1,10 @@
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// Presents Apple's manage-subscriptions sheet in-app.
+/// Opens subscription management for the originating platform store.
 ///
-/// Apple owns cancellation, payment-method changes, plan changes, and billing
-/// recovery for a subscription it billed. There is no server-side cancel, so
-/// this sheet is the only route — and `in_app_purchase` does not expose
-/// `AppStore.showManageSubscriptions(in:)`, which is why this is the one piece
-/// of native code in the payment feature.
+/// Apple uses an in-app native sheet; Google uses its external Play management
+/// page. Neither store-funded subscription is cancelled by Portraitor's server.
 class ManageSubscriptionsChannel {
   const ManageSubscriptionsChannel();
 

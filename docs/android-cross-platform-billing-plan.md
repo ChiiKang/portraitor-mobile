@@ -15,11 +15,23 @@ Implemented in the mobile and `portraitor_v3` worktrees:
 
 Live Play purchase launch is gated by `--dart-define=GOOGLE_PLAY_BILLING_ENABLED=true`. Keep it false until the Play Console app, matching package `ai.portraitor.portraitor_mobile`, products, license testers, and backend service account are ready. Backend requires `GOOGLE_PLAY_PACKAGE_NAME` and `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`; service-account JSON is server-only.
 
+Known client gaps remain:
+
+- the Pass purchase CTA is disabled while its drawer is open, so subscription
+  checkout is not currently reachable from the confirm screen;
+- automatic purchase recovery runs at launch, but no Settings action invokes
+  `restoreOnUserRequest()` as the user-triggered fallback.
+
 Date: 2026-08-11
 
 Last reviewed against repository and current Google requirements: 2026-08-12
 
-## Executive conclusion
+The implementation status above is authoritative. The remaining sections
+preserve the verified pre-implementation baseline, architecture, delivery
+checklist, and account handoff that produced it; statements about missing code
+or future implementation refer to that baseline.
+
+## Pre-implementation executive conclusion
 
 Portraitor does not need a separate Android application or a ground-up Android rebuild.
 The existing Flutter application already compiles into an Android APK, and most product code can remain shared.
@@ -41,7 +53,7 @@ The complete backend feature runner currently reports 29 of 30 test scripts pass
 Its queue-hardening script reports two sweep failures while the local MariaDB connection is unavailable, so that suite must be rerun in its configured database environment before Google backend changes begin.
 Deployment configuration and a real Apple sandbox transaction still need verification before claiming end-to-end readiness.
 
-## Verified current state
+## Verified pre-implementation baseline
 
 ### Android foundation that already exists
 
@@ -81,7 +93,7 @@ Deployment configuration and a real Apple sandbox transaction still need verific
 - The local product test file `ios/Runner/Portraitor.storekit` has no Android equivalent.
 - The iOS Share Extension is not reusable on Android, although Android incoming-share intent filters already cover the equivalent user flow.
 
-### Android-specific gaps
+### Android-specific gaps before implementation
 
 - No Google Play purchase service exists in Dart.
 - No backend Google Play purchase-token verifier exists in this repository.
@@ -134,7 +146,7 @@ Product identifiers should be finalized before creating store products because c
 | Android release packaging | New | Finalize package ID, upload key, Play App Signing, AAB, store listing, and policy forms. |
 | Automated tests | Medium | Keep unit/widget tests, fix stale integration tests, and add store-specific contract and device tests. |
 
-## Target billing architecture
+## Implemented billing architecture
 
 ### Mobile boundary
 
@@ -221,7 +233,7 @@ The backend must prevent a second active funding source from being attached acci
 
 This product rule needs explicit owner approval before implementation because it controls backend conflict handling and settings UX.
 
-## End-to-end implementation phases
+## Historical implementation phases
 
 ### Phase 0: Resolve identity, ownership, and access
 

@@ -144,7 +144,8 @@ Run tests with coverage:
 flutter test --coverage
 ```
 
-Current test files live under `test/`. There are no integration test files checked in yet. If `integration_test/` tests are added later, run them on a simulator or device:
+Unit and widget tests live under `test/`. Integration tests live under
+`integration_test/` and must run on a simulator or device:
 
 ```sh
 flutter test integration_test

@@ -104,7 +104,7 @@ class PurchaseRecovery {
       await _iap.complete(txn);
       await _pendingStore.remove(context.publicUuid);
     } catch (e) {
-      // Left unfinished on purpose. StoreKit replays it next launch, and the
+      // Left unfinished on purpose. The store replays it next launch, and the
       // server's transaction-id idempotency absorbs the duplicate.
       debugPrint('[IAP] recovery deferred for ${txn.productId}: $e');
     }

@@ -1,7 +1,7 @@
 /// The result of a purchase attempt, after server verification.
 ///
-/// A StoreKit success alone is never an outcome here: only a verified server
-/// response grants anything.
+/// A platform-store success alone is never an outcome here: only a verified
+/// server response grants anything.
 sealed class PurchaseOutcome {
   const PurchaseOutcome();
 }
@@ -27,7 +27,7 @@ class PurchaseVerified extends PurchaseOutcome {
   ///
   /// This is not an execution capability: the `subgrant_*` token that
   /// authorizes a generation run is minted server-side and never reaches the
-  /// client, and Apple's transaction id never does either.
+  /// client, and the platform transaction id never does either.
   final String? paymentReference;
 
   final String productKey;

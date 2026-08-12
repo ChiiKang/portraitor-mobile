@@ -58,12 +58,15 @@ class PendingJobRecoveryState {
     if (classifications.isEmpty) return null;
     // serverCompleted entries are auto-deleted in refresh() so they should
     // never appear here; defensively filter them out anyway.
-    final candidates = classifications
-        .where((c) => c.status != RecoveryStatus.serverCompleted)
-        .toList();
+    final candidates =
+        classifications
+            .where((c) => c.status != RecoveryStatus.serverCompleted)
+            .toList();
     if (candidates.isEmpty) return null;
     candidates.sort((a, b) {
-      final priorityCompare = _priority(a.status).compareTo(_priority(b.status));
+      final priorityCompare = _priority(
+        a.status,
+      ).compareTo(_priority(b.status));
       if (priorityCompare != 0) return priorityCompare;
       return b.job.createdAt.compareTo(a.job.createdAt);
     });
@@ -86,12 +89,10 @@ class PendingJobRecoveryState {
 
 class PendingJobRecoveryNotifier
     extends StateNotifier<PendingJobRecoveryState> {
-  PendingJobRecoveryNotifier({
-    required ApiService api,
-    StorageService? storage,
-  })  : _api = api,
-        _storage = storage ?? StorageService.instance,
-        super(const PendingJobRecoveryState());
+  PendingJobRecoveryNotifier({required ApiService api, StorageService? storage})
+    : _api = api,
+      _storage = storage ?? StorageService.instance,
+      super(const PendingJobRecoveryState());
 
   final ApiService _api;
   final StorageService _storage;
@@ -146,10 +147,7 @@ class PendingJobRecoveryNotifier
       }
     }
 
-    state = state.copyWith(
-      isLoading: false,
-      classifications: classifications,
-    );
+    state = state.copyWith(isLoading: false, classifications: classifications);
   }
 
   Future<_ProbeResult> _probeServer(String clientConversationRef) async {
@@ -207,9 +205,9 @@ class PendingJobRecoveryNotifier
       debugPrint('[Recovery] queue release failed (ignored): $e');
     }
 
-    // No payment cancel: Apple charges at purchase, so there is no
+    // No payment cancel: the platform store charges at purchase, so there is no
     // authorization hold to release. Abandoning a job forfeits the generation,
-    // not the money - a refund is Apple's to issue, not ours.
+    // not the money - a refund belongs to the originating store, not us.
 
     await _storage.deletePendingJob(job.id);
 
@@ -231,7 +229,9 @@ enum _ProbeResult {
   probeFailed,
 }
 
-final pendingJobRecoveryProvider = StateNotifierProvider<
-    PendingJobRecoveryNotifier, PendingJobRecoveryState>((ref) {
-  return PendingJobRecoveryNotifier(api: ApiService.instance);
-});
+final pendingJobRecoveryProvider =
+    StateNotifierProvider<PendingJobRecoveryNotifier, PendingJobRecoveryState>((
+      ref,
+    ) {
+      return PendingJobRecoveryNotifier(api: ApiService.instance);
+    });

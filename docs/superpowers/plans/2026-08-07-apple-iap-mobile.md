@@ -1,5 +1,9 @@
 # Apple IAP - Mobile Implementation Plan
 
+> This is the executed Apple client plan and retains its starting-state details
+> for traceability. Current cross-platform delivery status is tracked in
+> [`docs/android-cross-platform-billing-plan.md`](../../android-cross-platform-billing-plan.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the fake purchase path in the Flutter app with real StoreKit 2 purchases, server-verified, with crash-safe recovery for paid consumables.
@@ -9,7 +13,7 @@
 **Tech Stack:** Flutter 3.29+, Dart 3.7+, Riverpod 2, `in_app_purchase` + `in_app_purchase_storekit` (StoreKit 2), `flutter_secure_storage`, Dio.
 
 **Repo:** `portraitor-mobile`, branch `v2/ui-prototype-port` (payment commits kept separate from UI-port commits so the port can be cherry-picked out if it needs to ship first)
-**Companion plan:** `2026-08-07-apple-iap-backend.md`
+**Companion plan:** `2026-08-11-apple-iap-backend.md`
 **Spec:** `docs/superpowers/specs/2026-08-07-apple-iap-design.md`
 
 ---

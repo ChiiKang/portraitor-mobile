@@ -3,19 +3,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:portraitor_mobile/features/import/services/chat_normalizer.dart';
 import 'package:portraitor_mobile/features/import/services/date_parser.dart';
 
-/// Commercial tier for the 4-step funnel. Partner/Family/Pass gated until backend ready.
+/// Commercial tier for the four-step funnel.
 enum FunnelTier { you, partner, family, pass }
 
-/// Demo build: the Apple IAP sheet is simulated end to end, so every one-off
-/// bundle can complete a purchase and start a generation without StoreKit or
-/// the payments backend.
+/// Demo build: the native purchase sheet is simulated end to end, so every
+/// one-off bundle can start generation without a platform store or billing
+/// backend.
 ///
 /// Enabled only by `--dart-define=DEMO_IAP=true`, and off in every other
 /// build. A hand-flipped constant is one forgotten revert away from shipping
-/// an app that gives away paid content, which is both lost revenue and an App
-/// Store Guideline 3.1.1 breach.
+/// an app that gives away paid content, which loses revenue and violates store
+/// billing policy.
 ///
-/// With the flag off, real StoreKit runs and all four products are purchasable.
+/// With the flag off, the platform-selected store handles all four products.
 const bool kDemoIapPurchase = bool.fromEnvironment('DEMO_IAP');
 
 extension FunnelTierX on FunnelTier {
@@ -72,12 +72,12 @@ extension FunnelTierX on FunnelTier {
     }
   }
 
-  /// Fallback price, shown only until StoreKit reports the real one.
+  /// Fallback price, shown only until the platform store reports the real one.
   ///
   /// These mirror the web prices in `config/tiers.php` so the two storefronts
-  /// read the same on a US device. They are NOT what the user is charged:
-  /// Apple charges the App Store Connect price for the product id, in the
-  /// buyer's own storefront currency. Every screen prefers
+  /// read the same on a US device. They are NOT what the user is charged: the
+  /// platform store charges its configured price in the buyer's storefront
+  /// currency. Every screen prefers
   /// `IapState.priceFor(tier)` and reaches this only before products load.
   String get priceLabel {
     switch (this) {
@@ -111,18 +111,18 @@ extension FunnelTierX on FunnelTier {
   ///
   /// The demo can only simulate one-off bundles: a subscription grants monthly
   /// quota rather than a portrait, so a faked one cannot do anything truthful.
-  /// Real StoreKit ships all four products.
+  /// Real store billing ships all four products.
   bool get canPurchase => kDemoIapPurchase ? isOneOff : true;
 
-  /// App Store product title — prototype `"Portraitor · " + meta.label`.
+  /// Demo purchase-sheet title - prototype `"Portraitor · " + meta.label`.
   String get iapProductTitle =>
       this == FunnelTier.pass ? 'Portraitor Pass' : 'Portraitor · $label';
 
-  /// App Store product kind line.
+  /// Demo purchase-sheet product kind line.
   String get iapProductKind =>
       this == FunnelTier.pass ? 'Monthly subscription' : 'One-time purchase';
 
-  /// App Store price, formatted the way StoreKit renders it.
+  /// Demo purchase-sheet price formatted like a store price.
   String get iapPriceLabel => '$priceLabel.00';
 
   /// Caption under the price — prototype `"one-time · N portraits"`.
@@ -131,7 +131,6 @@ extension FunnelTierX on FunnelTier {
     return 'one-time · $portraitCount '
         '${portraitCount == 1 ? 'portrait' : 'portraits'}';
   }
-
 }
 
 class FunnelDraft {

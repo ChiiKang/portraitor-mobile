@@ -54,15 +54,14 @@ class IapState {
   }
 }
 
-/// Stub the server while the Apple endpoints do not exist yet.
+/// Use the backend's mock Stripe rail for local store testing.
 ///
-/// Enabled only by `--dart-define=FAKE_BILLING=true`. This keeps real StoreKit
-/// in play - Apple's own sheet, real transactions, real finish semantics - and
-/// fakes only the verification round trip, which is the piece the backend has
-/// not shipped.
+/// Enabled only by `--dart-define=FAKE_BILLING=true`. This keeps the platform
+/// store's sheet, transactions, and completion semantics in play while the mock
+/// backend endpoint creates a real payment row for generation.
 ///
-/// Defaults off, like [kDemoIapPurchase], so it cannot reach a release build
-/// and hand out portraits nobody paid for.
+/// Defaults off, like [kDemoIapPurchase], and must never be enabled in a release
+/// build because it authorizes portraits without a real store payment.
 const bool kFakeBilling = bool.fromEnvironment('FAKE_BILLING');
 
 final iapServiceProvider = Provider<IapService>((ref) {
@@ -125,7 +124,7 @@ class IapNotifier extends StateNotifier<IapState> {
   ///
   /// The ordering is the contract: prepare (only if a Pass exists), purchase,
   /// verify, store, then finish. Finishing earlier loses a paid purchase on a
-  /// crash, because Apple will not replay a finished transaction.
+  /// crash, because a platform store will not replay a completed transaction.
   Future<PurchaseOutcome> buy(
     FunnelTier tier, {
     required String clientConversationRef,
@@ -160,13 +159,14 @@ class IapNotifier extends StateNotifier<IapState> {
     try {
       // No Pass yet means no round trip: the UUID is a correlation hint, and
       // the server derives every billing fact from the verified JWS anyway.
-      prepared = sessionToken == null
-          ? PreparedPurchase(publicUuid: const Uuid().v4())
-          : await _api.preparePurchase(
-              sessionToken: sessionToken,
-              isSubscription: isSubscription,
-              provider: _iap.provider,
-            );
+      prepared =
+          sessionToken == null
+              ? PreparedPurchase(publicUuid: const Uuid().v4())
+              : await _api.preparePurchase(
+                sessionToken: sessionToken,
+                isSubscription: isSubscription,
+                provider: _iap.provider,
+              );
     } on PassAlreadyFundedException {
       state = state.copyWith(
         status: IapStatus.failed,
@@ -258,11 +258,11 @@ class IapNotifier extends StateNotifier<IapState> {
         await _store.writeSessionToken(verified.sessionToken);
       }
 
-      // Durable everywhere it matters. Only now may StoreKit forget it.
+      // Durable everywhere it matters. Only now may the store forget it.
       //
       // Failing to finish is not failing to buy: the purchase is verified and
       // the credential is stored, so the user has what they paid for. Leaving
-      // it unfinished only means StoreKit replays it, which recovery absorbs
+      // it unfinished only means the store replays it, which recovery absorbs
       // idempotently. Treating this as a purchase failure would throw away a
       // completed sale.
       try {
@@ -288,7 +288,7 @@ class IapNotifier extends StateNotifier<IapState> {
         passCode: verified.passCode,
       );
     } on PurchaseNotVerifiedException catch (e) {
-      // Deliberately not completing: StoreKit replays it next launch and the
+      // Deliberately not completing: the store replays it next launch and the
       // server's transaction-id idempotency absorbs the duplicate.
       debugPrint('[IAP] verification failed, transaction left unfinished');
       state = state.copyWith(status: IapStatus.failed, error: e.message);

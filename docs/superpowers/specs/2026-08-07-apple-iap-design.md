@@ -1,9 +1,12 @@
 # Apple In-App Purchase - Design
 
 **Date:** 2026-08-07
-**Revised:** 2026-08-07 (post-review)
+**Revised:** 2026-08-12 (cross-platform implementation)
 **Repos:** `portraitor-mobile` (Flutter client) and `portraitor_v3` (PHP backend)
-**Status:** design approved, implementation not started
+**Status:** approved contract; current delivery status is owned by
+[`docs/android-cross-platform-billing-plan.md`](../../android-cross-platform-billing-plan.md),
+and Apple test setup is owned by
+[`docs/apple-billing-sandbox.md`](../../apple-billing-sandbox.md)
 **Supersedes for mobile:** `docs/web-payment-flow-plan.md` (Stripe web redirect)
 **Related:** [p54-ai/portraitor#65](https://github.com/p54-ai/portraitor/issues/65), `portraitor_v3:docs/iap-stripe-accounts-and-subscriptions.md`
 
@@ -26,7 +29,7 @@ The commission cost is accepted in exchange for compliance.
 | Decision | Value |
 |---|---|
 | Mobile payment rail | Apple IAP for all iOS purchases, no storefront gating |
-| Android | Google Play Billing later, never Stripe |
+| Android | Google Play Billing, never Stripe |
 | Stripe | Web app only |
 | Products | 3 consumables + 1 auto-renewable subscription |
 | V1 scope | **All of them.** Both one-off bundles and the Pass ship in this version. Confirmed 2026-08-07. `isPayableInV1` in `funnel_draft_provider.dart:93` is superseded and must be removed. |

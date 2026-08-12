@@ -2,10 +2,9 @@ import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provi
 
 /// A product as the platform store describes it.
 ///
-/// [localizedPrice] is StoreKit's own formatted string. It is never built from
-/// a hardcoded number: App Store prices are set in App Store Connect, vary by
-/// storefront, and change without a code release, so the store is the only
-/// truthful source.
+/// [localizedPrice] is the platform store's formatted string. It is never built
+/// from a hardcoded number: store prices vary by storefront and can change
+/// without a code release, so the store is the only truthful source.
 class IapProduct {
   const IapProduct({
     required this.productId,
@@ -20,16 +19,14 @@ class IapProduct {
   final bool isSubscription;
 }
 
-/// Maps funnel tiers to App Store product identifiers.
+/// Maps funnel tiers to platform-store product identifiers.
 ///
 /// Product ids, product type, and subscription group membership are
 /// effectively permanent once live, so this table is a published contract
 /// rather than an implementation detail.
 ///
-/// There is exactly one Pass SKU. Promotional and win-back offers attach to
-/// that product in App Store Connect (StoreKit exposes them as
-/// `promotionalOffer` and `winBackOfferId` on a purchase), so they must never
-/// become separate product ids.
+/// There is exactly one Pass SKU per store. Promotional and win-back offers
+/// attach to that product, so they must never become separate product ids.
 class IapProductCatalog {
   const IapProductCatalog._();
 
