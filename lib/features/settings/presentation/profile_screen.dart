@@ -1,32 +1,39 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:portraitor_mobile/features/payment/presentation/manage_subscription_tile.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:portraitor_mobile/core/theme/tokens.dart';
+import 'package:portraitor_mobile/features/payment/application/purchase_recovery.dart';
+import 'package:portraitor_mobile/features/payment/presentation/manage_subscription_tile.dart';
 import 'package:portraitor_mobile/features/payment/services/entitlement_api.dart';
 import 'package:portraitor_mobile/features/payment/services/pass_credential_store.dart';
 import 'package:portraitor_mobile/shared/widgets/main_tab_shell.dart';
 
 /// Profile tab root, ported from the `portraitor-ios.html` prototype
 /// (`[data-screen="profile"]`).
-class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+class ProfileScreen extends ConsumerStatefulWidget {
+  const ProfileScreen({
+    super.key,
+    this.entitlementApi,
+    this.credentialStore,
+    this.onRestorePurchases,
+  });
+
+  final EntitlementApi? entitlementApi;
+  final PassCredentialStore? credentialStore;
+  final Future<void> Function()? onRestorePurchases;
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
-  static const _passId = 'PORT-53PH-66F3-QV4S';
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   static const _maskedPassId = '••••-••••-••••-••••';
-  static const _used = 1;
-  static const _total = 10;
-  static const _renewalDate = 'Sep 5, 2026';
-  static const _passLink = 'https://staging.portraitor.ai/#PORT-53PH-66F3-QV4S';
 
   // Prototype tokens that have no Flutter equivalent yet.
   static const _passGold = Color(0xFFC1A354);
@@ -38,35 +45,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
   static const _segUsed = Color(0xFFD7D6E4); // oklch(88% .02 290)
 
   bool _passHidden = false;
-  String? _liveFundingProvider;
+  bool _entitlementLoading = true;
+  bool _restoreBusy = false;
+  String? _entitlementError;
+  String? _passId;
+  Entitlement? _entitlement;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_loadFundingProvider());
+    unawaited(_loadEntitlement());
   }
 
-  Future<void> _loadFundingProvider() async {
+  PassCredentialStore get _credentialStore =>
+      widget.credentialStore ?? KeychainPassCredentialStore();
+
+  EntitlementApi get _entitlementApi =>
+      widget.entitlementApi ?? HttpEntitlementApi();
+
+  Future<void> _loadEntitlement() async {
     try {
-      final session = await KeychainPassCredentialStore().readSessionToken();
+      final session = await _credentialStore.readSessionToken();
+      final passCode = await _credentialStore.readPassCode();
       if (session == null || session.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _passId = passCode;
+            _entitlement = null;
+            _entitlementLoading = false;
+            _entitlementError = null;
+          });
+        }
         return;
       }
-      final entitlement = await HttpEntitlementApi().current(
-        sessionToken: session,
-      );
+      final entitlement = await _entitlementApi.current(sessionToken: session);
       if (mounted) {
-        setState(() => _liveFundingProvider = entitlement?.fundingProvider);
+        setState(() {
+          _passId = passCode;
+          _entitlement = entitlement;
+          _entitlementLoading = false;
+          _entitlementError = null;
+        });
       }
     } catch (_) {
-      // Profile remains usable offline; billing actions still fail closed server-side.
+      if (mounted) {
+        setState(() {
+          _entitlementLoading = false;
+          _entitlementError = 'Pass status is unavailable while offline.';
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final bottomPad = mainTabContentBottomInset(context);
-    final visiblePassId = _passHidden ? _maskedPassId : _passId;
+    final visiblePassId = _passHidden ? _maskedPassId : (_passId ?? '');
 
     return Scaffold(
       backgroundColor: PortraitorTokens.onboardingSurface,
@@ -181,8 +215,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Your conversations never leave your device — your '
-                        'account only manages billing.',
+                        'Your conversations are stored on this device. Selected '
+                        'conversation text is sent securely for portrait generation.',
                         style: TextStyle(
                           fontFamily: PortraitorTokens.fontBody,
                           fontSize: 13,
@@ -198,79 +232,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // ── Membership ──────────────────────────────────────
               const _SectionLabel('MEMBERSHIP PASS', accent: true),
-              Row(
-                key: const ValueKey('profile-status'),
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Flexible(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _activeFill,
-                        borderRadius: BorderRadius.circular(
-                          PortraitorTokens.radiusPill,
-                        ),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _Dot(color: _activeDot),
-                          SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              'Active Pass',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontFamily: PortraitorTokens.fontBody,
-                                fontSize: 13,
-                                height: 1.3,
-                                fontWeight: FontWeight.w600,
-                                color: _activeInk,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  const Flexible(
-                    child: Text(
-                      'Refills $_renewalDate',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.right,
-                      style: TextStyle(
-                        fontFamily: PortraitorTokens.fontBody,
-                        fontSize: 13,
-                        height: 1.3,
-                        color: PortraitorTokens.onboardingMuted,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              _MembershipCard(
-                key: const ValueKey('profile-membership-card'),
-                used: _used,
-                total: _total,
-                passId: visiblePassId,
-                passHidden: _passHidden,
-                onToggleVisibility: () {
-                  setState(() => _passHidden = !_passHidden);
-                },
-                onCopy: _copyPass,
-                onShare: _sharePass,
-                onStripe: _openStripe,
-                onCancel: _cancelSubscription,
-                fundingProvider: _fundingProvider,
-              ),
+              ..._membershipWidgets(visiblePassId),
               const SizedBox(height: 8),
 
               // ── Settings entry ──────────────────────────────────
@@ -285,14 +247,191 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  List<Widget> _membershipWidgets(String visiblePassId) {
+    if (_entitlementLoading) {
+      return const [
+        SizedBox(height: 12),
+        LinearProgressIndicator(key: ValueKey('profile-entitlement-loading')),
+      ];
+    }
+
+    final entitlement = _entitlement;
+    if (entitlement == null || !entitlement.grantsAccess) {
+      return [
+        const SizedBox(height: 10),
+        Container(
+          key: const ValueKey('profile-no-active-pass'),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: PortraitorTokens.surface,
+            borderRadius: BorderRadius.circular(PortraitorTokens.radiusXl),
+            border: Border.all(color: PortraitorTokens.borderSoft),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'No active Pass',
+                style: TextStyle(
+                  fontFamily: PortraitorTokens.fontBody,
+                  fontWeight: FontWeight.w700,
+                  color: PortraitorTokens.onboardingInk,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _entitlementError ??
+                    'Subscribe or restore a purchase made with this store account.',
+                style: PortraitorTokens.bodySm.copyWith(
+                  color: PortraitorTokens.onboardingInkSoft,
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  key: const ValueKey('profile-restore-purchases'),
+                  onPressed: _restoreBusy ? null : _restorePurchases,
+                  child: Text(
+                    _restoreBusy ? 'Restoring…' : 'Restore purchases',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ];
+    }
+
+    final used = (entitlement.usesTotal - entitlement.usesRemaining).clamp(
+      0,
+      entitlement.usesTotal,
+    );
+    final periodLabel = _periodLabel(entitlement);
+    return [
+      Row(
+        key: const ValueKey('profile-status'),
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: _activeFill,
+                borderRadius: BorderRadius.circular(
+                  PortraitorTokens.radiusPill,
+                ),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _Dot(color: _activeDot),
+                  SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      'Active Pass',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontFamily: PortraitorTokens.fontBody,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _activeInk,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              periodLabel,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontFamily: PortraitorTokens.fontBody,
+                fontSize: 13,
+                color: PortraitorTokens.onboardingMuted,
+              ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      _MembershipCard(
+        key: const ValueKey('profile-membership-card'),
+        used: used,
+        total: entitlement.usesTotal,
+        passId: visiblePassId,
+        passHidden: _passHidden,
+        onToggleVisibility: () {
+          setState(() => _passHidden = !_passHidden);
+        },
+        onCopy: _copyPass,
+        onShare: _sharePass,
+        onStripe: _openStripe,
+        onCancel: _cancelSubscription,
+        fundingProvider: entitlement.fundingProvider,
+        periodLabel: periodLabel,
+        periodDate: _periodDate(entitlement),
+        entitlementState: entitlement.state,
+        cancelPending: entitlement.cancelPending,
+        usesRemaining: entitlement.usesRemaining,
+      ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          key: const ValueKey('profile-restore-purchases'),
+          onPressed: _restoreBusy ? null : _restorePurchases,
+          child: Text(_restoreBusy ? 'Restoring…' : 'Restore purchases'),
+        ),
+      ),
+    ];
+  }
+
+  String _periodLabel(Entitlement entitlement) {
+    final date = _periodDate(entitlement);
+    if (date == 'Billing period unavailable') return date;
+    return entitlement.cancelPending ? 'Ends $date' : 'Renews $date';
+  }
+
+  String _periodDate(Entitlement entitlement) {
+    final raw = entitlement.accessUntil;
+    final parsed = raw == null ? null : DateTime.tryParse(raw)?.toLocal();
+    if (parsed == null) return 'Billing period unavailable';
+    return DateFormat.yMMMd().format(parsed);
+  }
+
+  Future<void> _restorePurchases() async {
+    if (_restoreBusy) return;
+    setState(() => _restoreBusy = true);
+    try {
+      final action =
+          widget.onRestorePurchases ??
+          ref.read(purchaseRecoveryProvider).restoreOnUserRequest;
+      await action();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await _loadEntitlement();
+      if (mounted) _toast('Store purchases restored');
+    } catch (_) {
+      if (mounted) _toast('Purchases could not be restored. Try again later.');
+    } finally {
+      if (mounted) setState(() => _restoreBusy = false);
+    }
+  }
+
   Future<void> _copyPass() async {
-    await Clipboard.setData(const ClipboardData(text: _passId));
+    final passId = _passId;
+    if (passId == null || passId.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: passId));
     if (!mounted) return;
     _toast('Pass ID copied');
   }
 
   Future<void> _sharePass() async {
-    final text = 'Join my Portraitor Pass: $_passId\n$_passLink';
+    final passId = _passId;
+    if (passId == null || passId.isEmpty) return;
+    final text =
+        'Join my Portraitor Pass: $passId\nhttps://portraitor.ai/#$passId';
     try {
       await Share.share(text, subject: 'Portraitor Pass');
     } catch (_) {
@@ -301,13 +440,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _toast('Share text copied');
     }
   }
-
-  /// Which provider funds this Pass.
-  ///
-  /// Loaded from the entitlement endpoint. Null keeps the existing self-managed
-  /// controls available when the Pass is unfunded or the read is unavailable;
-  /// store-funded billing operations still fail closed on the server.
-  String? get _fundingProvider => _liveFundingProvider;
 
   void _openStripe() => _toast('Opening Stripe billing portal…');
 
@@ -332,6 +464,11 @@ class _MembershipCard extends StatelessWidget {
     required this.onShare,
     required this.onStripe,
     required this.onCancel,
+    required this.periodLabel,
+    required this.periodDate,
+    required this.entitlementState,
+    required this.cancelPending,
+    required this.usesRemaining,
     this.fundingProvider,
   });
 
@@ -342,6 +479,11 @@ class _MembershipCard extends StatelessWidget {
   final VoidCallback onToggleVisibility;
   final VoidCallback onCopy;
   final VoidCallback onShare;
+  final String periodLabel;
+  final String periodDate;
+  final String entitlementState;
+  final bool cancelPending;
+  final int usesRemaining;
 
   /// Who took the money: 'apple', 'google', 'stripe', or null.
   ///
@@ -431,11 +573,11 @@ class _MembershipCard extends StatelessWidget {
 
           // Usage block
           const _CardDivider(top: 16, bottom: 14),
-          const Row(
+          Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Flexible(
+              const Flexible(
                 child: Text(
                   'Portraits this cycle',
                   maxLines: 1,
@@ -448,10 +590,10 @@ class _MembershipCard extends StatelessWidget {
                   ),
                 ),
               ),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Flexible(
                 child: Text(
-                  '1 of 10 portraits used this cycle',
+                  '$used of $total portraits used this cycle',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
@@ -504,9 +646,9 @@ class _MembershipCard extends StatelessWidget {
                     color: PortraitorTokens.onboardingPrimary,
                   ),
                 ),
-                const TextSpan(
+                TextSpan(
                   text:
-                      ' · refills ${_ProfileScreenState._renewalDate}'
+                      ' · ${periodLabel.toLowerCase()}'
                       ' · shared pool',
                 ),
               ],
@@ -564,41 +706,43 @@ class _MembershipCard extends StatelessWidget {
           ),
 
           // Billing meta
-          const SizedBox(height: 14),
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Flexible(
-                child: Text(
-                  'Card on file · manage on Stripe',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontFamily: PortraitorTokens.fontBody,
-                    fontSize: 12,
-                    height: 1.4,
-                    color: PortraitorTokens.onboardingMuted,
+          if (fundingProvider == 'stripe') ...[
+            const SizedBox(height: 14),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Flexible(
+                  child: Text(
+                    'Card on file · manage on Stripe',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: PortraitorTokens.fontBody,
+                      fontSize: 12,
+                      height: 1.4,
+                      color: PortraitorTokens.onboardingMuted,
+                    ),
                   ),
                 ),
-              ),
-              SizedBox(width: 10),
-              Flexible(
-                child: Text(
-                  'Next charge ${_ProfileScreenState._renewalDate}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontFamily: PortraitorTokens.fontBody,
-                    fontSize: 12,
-                    height: 1.4,
-                    color: PortraitorTokens.onboardingMuted,
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    periodLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontFamily: PortraitorTokens.fontBody,
+                      fontSize: 12,
+                      height: 1.4,
+                      color: PortraitorTokens.onboardingMuted,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
 
           // Whoever took the money owns these buttons.
           //
@@ -611,13 +755,13 @@ class _MembershipCard extends StatelessWidget {
           if (fundingProvider == 'apple' || fundingProvider == 'google')
             ManageSubscriptionTile(
               key: ValueKey('profile-$fundingProvider-managed'),
-              status: 'Active',
-              renewalDate: _ProfileScreenState._renewalDate,
-              usesRemaining: 0,
-              cancelPending: false,
+              status: entitlementState,
+              renewalDate: periodDate,
+              usesRemaining: usesRemaining,
+              cancelPending: cancelPending,
               provider: fundingProvider!,
             )
-          else ...[
+          else if (fundingProvider == 'stripe') ...[
             _StripeButton(
               key: const ValueKey('profile-stripe'),
               onTap: onStripe,

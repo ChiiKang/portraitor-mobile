@@ -35,13 +35,16 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
   /// The demo renders its own copy; real builds render what the store reports.
   String _priceFor(FunnelTier tier) {
     if (kDemoIapPurchase) return tier.priceLabel;
-    return ref.watch(iapProvider).priceFor(tier) ?? tier.priceLabel;
+    return ref.watch(iapProvider).priceFor(tier) ?? 'Loading…';
   }
 
   @override
   Widget build(BuildContext context) {
     final draft = ref.watch(funnelDraftProvider);
     final selected = draft.selectedTier;
+    final iap = ref.watch(iapProvider);
+    final selectedProductReady =
+        kDemoIapPurchase || iap.priceFor(selected) != null;
 
     return FunnelChrome(
       step: 2,
@@ -49,8 +52,8 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
       lead: 'Choose a bundle. Each is a one-time payment.',
       lockBodyScroll: !_passOpen,
       ctaLabel: _ctaLabel(selected, _passOpen),
-      showCtaArrow: !_passOpen,
-      ctaEnabled: !_passOpen,
+      showCtaArrow: true,
+      ctaEnabled: selected.canPurchase && selectedProductReady,
       onCta: () {
         // The demo cannot simulate a subscription, so the Pass still routes
         // to a notice there. With real store billing it is a first-class product.

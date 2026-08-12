@@ -120,6 +120,12 @@ final router = GoRouter(
           paymentReference: extra['paymentReference'] as String? ?? '',
           dateRange: extra['dateRange'] as String?,
           isResume: extra['resume'] as bool? ?? false,
+          people:
+              (extra['people'] as List?)?.whereType<String>().toList(
+                growable: false,
+              ) ??
+              const [],
+          tier: extra['tier'] as String? ?? 'you',
         );
       },
     ),

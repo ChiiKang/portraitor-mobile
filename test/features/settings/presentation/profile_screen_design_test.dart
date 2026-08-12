@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:portraitor_mobile/features/payment/services/entitlement_api.dart';
+import 'package:portraitor_mobile/features/payment/services/pass_credential_store.dart';
 import 'package:portraitor_mobile/features/settings/presentation/profile_screen.dart';
 import 'package:portraitor_mobile/shared/widgets/main_tab_shell.dart';
 
@@ -27,23 +29,26 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(_ProfileTestApp());
-    await tester.pumpAndSettle();
+    await tester.pumpWidget(await _ProfileTestApp.create());
+    await tester.pump();
 
     expect(find.text('My Profile'), findsOneWidget);
     expect(find.text('YOUR PORTRAITOR PASS'), findsOneWidget);
-    expect(find.text('PORT-53PH-66F3-QV4S'), findsWidgets);
+    expect(find.text('PORT-TEST-CODE'), findsWidgets);
     expect(find.byKey(const ValueKey('profile-pass-header')), findsOneWidget);
-    expect(find.byKey(const ValueKey('profile-privacy-banner')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('profile-privacy-banner')),
+      findsOneWidget,
+    );
     expect(
       find.text(
-        'Your conversations never leave your device — your account only manages billing.',
+        'Your conversations are stored on this device. Selected conversation text is sent securely for portrait generation.',
       ),
       findsOneWidget,
     );
     expect(find.text('MEMBERSHIP PASS'), findsOneWidget);
     expect(find.text('Active Pass'), findsOneWidget);
-    expect(find.text('Refills Sep 5, 2026'), findsOneWidget);
+    expect(find.text('Renews Sep 5, 2026'), findsWidgets);
     expect(
       find.byKey(const ValueKey('profile-membership-card')),
       findsOneWidget,
@@ -51,9 +56,9 @@ void main() {
     expect(find.text('Portraitor Monthly'), findsOneWidget);
     expect(find.text('Billed monthly · cancel anytime'), findsOneWidget);
     expect(find.text('Portraits this cycle'), findsOneWidget);
-    expect(find.text('1 of 10 portraits used this cycle'), findsOneWidget);
+    expect(find.text('2 of 10 portraits used this cycle'), findsOneWidget);
     expect(
-      find.text('9 left · refills Sep 5, 2026 · shared pool'),
+      find.text('8 left · renews sep 5, 2026 · shared pool'),
       findsOneWidget,
     );
     expect(find.text('YOUR PASS'), findsOneWidget);
@@ -62,7 +67,7 @@ void main() {
     expect(find.byKey(const ValueKey('profile-share-pass')), findsOneWidget);
     expect(find.text('Share Pass'), findsOneWidget);
     expect(find.text('Card on file · manage on Stripe'), findsOneWidget);
-    expect(find.text('Next charge Sep 5, 2026'), findsOneWidget);
+    expect(find.text('Renews Sep 5, 2026'), findsWidgets);
     expect(find.text('Check billing status on Stripe'), findsOneWidget);
     expect(find.text('Cancel subscription'), findsOneWidget);
     expect(
@@ -72,9 +77,7 @@ void main() {
       findsOneWidget,
     );
     final passHeaderTop =
-        tester
-            .getTopLeft(find.byKey(const ValueKey('profile-pass-header')))
-            .dy;
+        tester.getTopLeft(find.byKey(const ValueKey('profile-pass-header'))).dy;
     final privacyTop =
         tester
             .getTopLeft(find.byKey(const ValueKey('profile-privacy-banner')))
@@ -89,7 +92,7 @@ void main() {
 
     // The settings entry sits below the fold on a 390×844 screen.
     await tester.drag(find.byType(ListView), const Offset(0, -400));
-    await tester.pumpAndSettle();
+    await tester.pump();
     expect(find.text('App settings & privacy'), findsOneWidget);
 
     expect(tester.takeException(), isNull);
@@ -103,10 +106,10 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(_ProfileTestApp());
-    await tester.pumpAndSettle();
+    await tester.pumpWidget(await _ProfileTestApp.create());
+    await tester.pump();
 
-    expect(find.text('PORT-53PH-66F3-QV4S'), findsWidgets);
+    expect(find.text('PORT-TEST-CODE'), findsWidgets);
 
     await tester.tap(find.byKey(const ValueKey('profile-hide-pass')));
     await tester.pump();
@@ -116,12 +119,21 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('profile-hide-pass')));
     await tester.pump();
 
-    expect(find.text('PORT-53PH-66F3-QV4S'), findsWidgets);
+    expect(find.text('PORT-TEST-CODE'), findsWidgets);
   });
 }
 
 class _ProfileTestApp extends StatelessWidget {
-  _ProfileTestApp();
+  _ProfileTestApp._(this.store);
+
+  final PassCredentialStore store;
+
+  static Future<_ProfileTestApp> create() async {
+    final store = InMemoryPassCredentialStore();
+    await store.writePassCode('PORT-TEST-CODE');
+    await store.writeSessionToken('session');
+    return _ProfileTestApp._(store);
+  }
 
   late final GoRouter _router = GoRouter(
     initialLocation: '/profile',
@@ -131,7 +143,20 @@ class _ProfileTestApp extends StatelessWidget {
         routes: [
           GoRoute(
             path: '/profile',
-            builder: (context, state) => const ProfileScreen(),
+            builder:
+                (context, state) => ProfileScreen(
+                  credentialStore: store,
+                  entitlementApi: FakeEntitlementApi(
+                    entitlement: const Entitlement(
+                      state: 'active',
+                      grantsAccess: true,
+                      usesRemaining: 8,
+                      usesTotal: 10,
+                      accessUntil: '2026-09-05T00:00:00Z',
+                      fundingProvider: 'stripe',
+                    ),
+                  ),
+                ),
           ),
           GoRoute(
             path: '/home',

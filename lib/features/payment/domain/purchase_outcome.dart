@@ -46,6 +46,22 @@ class PurchaseCancelled extends PurchaseOutcome {
 }
 
 class PurchaseFailed extends PurchaseOutcome {
-  const PurchaseFailed(this.message);
+  const PurchaseFailed(this.message, {this.purchaseMayHaveCompleted = false});
+
   final String message;
+
+  /// True after the store emitted a purchased/restored transaction.
+  ///
+  /// The caller must preserve its staged generation payload so a replay can
+  /// finish verification without losing the customer's paid portrait.
+  final bool purchaseMayHaveCompleted;
 }
+
+/// Whether checkout can safely discard the locally staged portrait payload.
+bool shouldDiscardPendingGeneration(
+  PurchaseOutcome outcome,
+) => switch (outcome) {
+  PurchaseCancelled() => true,
+  PurchaseFailed(:final purchaseMayHaveCompleted) => !purchaseMayHaveCompleted,
+  PurchaseVerified() || PurchasePending() => false,
+};

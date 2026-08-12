@@ -47,6 +47,9 @@ class IapProductCatalog {
 
   static bool isSubscription(FunnelTier tier) => tier == FunnelTier.pass;
 
+  static bool isSubscriptionProductId(String productId) =>
+      productId == passMonthly;
+
   static Set<String> get allProductIds =>
       FunnelTier.values.map(productIdFor).toSet();
 }

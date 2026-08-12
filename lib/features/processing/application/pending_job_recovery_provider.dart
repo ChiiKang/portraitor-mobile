@@ -187,11 +187,11 @@ class PendingJobRecoveryNotifier
     );
   }
 
-  /// Cancel a pending job. Mirrors web `dismissJob` at `app.js:2976-3030`.
-  /// Best-effort: queue release first, then payment cancel, then local delete.
-  /// Any network failure is swallowed — local cleanup proceeds regardless,
-  /// matching web behavior (offline cancel deletes local but leaves server
-  /// payment uncaptured; documented sharp edge).
+  /// Dismiss a pending job from the current UI.
+  ///
+  /// A non-empty payment reference means a platform store already charged the
+  /// customer. Such a job stays durable and resumable; deleting it would throw
+  /// away paid value. Only legacy rows with no payment handle are safe to clear.
   Future<void> cancel(PendingJob job) async {
     // Best-effort queue release. The job's in-memory lease died with the app;
     // a fresh release call without lease_token is still useful because the
@@ -209,12 +209,16 @@ class PendingJobRecoveryNotifier
     // authorization hold to release. Abandoning a job forfeits the generation,
     // not the money - a refund belongs to the originating store, not us.
 
-    await _storage.deletePendingJob(job.id);
+    if (job.paymentSessionId.trim().isNotEmpty) {
+      await _storage.markPendingJobStatus(job.id, 'ready');
+    } else {
+      await _storage.deletePendingJob(job.id);
 
-    // Also drop the placeholder conversation row if it is still 'processing'.
-    final conv = await _storage.getConversationById(job.id);
-    if (conv != null && (conv['status'] as String?) == 'processing') {
-      await _storage.deleteConversation(job.id);
+      // Legacy placeholders have no recoverable purchase and can be removed.
+      final conv = await _storage.getConversationById(job.id);
+      if (conv != null && (conv['status'] as String?) == 'processing') {
+        await _storage.deleteConversation(job.id);
+      }
     }
 
     dropClassification(job.id);

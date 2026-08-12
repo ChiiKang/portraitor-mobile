@@ -17,6 +17,7 @@ class ProcessingScreen extends ConsumerStatefulWidget {
   final String normalizedText;
   final String targetName;
   final String conversationId;
+
   /// Opaque, Portraitor-generated. Authorizes generation. Never a provider's
   /// own transaction id.
   final String paymentReference;
@@ -27,6 +28,8 @@ class ProcessingScreen extends ConsumerStatefulWidget {
   /// chunks are not redone. Wired in by the recovery sheet at
   /// `pending_job_resume_sheet.dart` when the user taps Resume.
   final bool isResume;
+  final List<String> people;
+  final String tier;
 
   const ProcessingScreen({
     super.key,
@@ -36,6 +39,8 @@ class ProcessingScreen extends ConsumerStatefulWidget {
     required this.paymentReference,
     this.dateRange,
     this.isResume = false,
+    this.people = const [],
+    this.tier = 'you',
   });
 
   @override
@@ -64,12 +69,16 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
         if (job == null) {
           // Race: row was deleted between sheet display and this navigation.
           // Fall through to a fresh start using the same payment session.
-          ref.read(processingProvider.notifier).startProcessing(
+          ref
+              .read(processingProvider.notifier)
+              .startProcessing(
                 conversationId: widget.conversationId,
                 paymentSessionId: widget.paymentReference,
                 normalizedText: widget.normalizedText,
                 targetName: widget.targetName,
                 dateRange: widget.dateRange,
+                people: widget.people,
+                tier: widget.tier,
               );
           return;
         }
@@ -84,6 +93,8 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
             normalizedText: widget.normalizedText,
             targetName: widget.targetName,
             dateRange: widget.dateRange,
+            people: widget.people,
+            tier: widget.tier,
           );
     });
   }
@@ -107,7 +118,6 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
     return m > 0 ? '~${m}m ${s}s remaining' : '~${s}s remaining';
   }
 
-
   /// Plain-language cause, so the first thing the user reads is not a stack
   /// trace. The raw error is still shown beneath for support.
   String _friendlyFailure(String? error) {
@@ -115,13 +125,14 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
     if (raw.contains('Payment not found') ||
         raw.contains('Payment must be authorized')) {
       return 'We could not confirm your payment for this conversation. '
-          'You have not been charged for a portrait we did not deliver.';
+          'Your store purchase remains recorded. Retry this unfinished portrait '
+          'or contact support if the problem continues.';
     }
     if (raw.contains('conversation reference')) {
       return 'This purchase belongs to a different conversation.';
     }
-    return 'Something went wrong before your portrait was generated. '
-        'If you were charged, it will be reversed.';
+    return 'Something interrupted portrait generation. Your store purchase '
+        'remains recorded, so you can safely retry from the unfinished portrait.';
   }
 
   @override

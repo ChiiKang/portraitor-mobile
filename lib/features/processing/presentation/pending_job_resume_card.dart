@@ -98,8 +98,8 @@ class PendingJobResumeCardState extends ConsumerState<PendingJobResumeCard> {
     switch (_status) {
       case RecoveryStatus.resumable:
         return targetText == null
-            ? 'Continue where you left off, or cancel this portrait.'
-            : 'Continue the portrait for $targetText, or cancel.';
+            ? 'Continue where you left off, or keep it for later.'
+            : 'Continue the portrait for $targetText, or keep it for later.';
       case RecoveryStatus.serverFinalizing:
         return targetText == null
             ? 'The server is finishing this portrait. Check back shortly.'
@@ -127,14 +127,16 @@ class PendingJobResumeCardState extends ConsumerState<PendingJobResumeCard> {
       label: '$_title. $_body',
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: _isAccent
-              ? PortraitorTokens.brandSoft
-              : PortraitorTokens.surfaceMuted,
+          color:
+              _isAccent
+                  ? PortraitorTokens.brandSoft
+                  : PortraitorTokens.surfaceMuted,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: _isAccent
-                ? PortraitorTokens.onboardingPrimary.withValues(alpha: 0.32)
-                : PortraitorTokens.borderSoft,
+            color:
+                _isAccent
+                    ? PortraitorTokens.onboardingPrimary.withValues(alpha: 0.32)
+                    : PortraitorTokens.borderSoft,
           ),
         ),
         child: Padding(
@@ -193,7 +195,7 @@ class PendingJobResumeCardState extends ConsumerState<PendingJobResumeCard> {
           TextButton(
             key: const Key('pending_job_cancel_button'),
             onPressed: _busy ? null : _onCancel,
-            child: const Text('Cancel'),
+            child: const Text('Later'),
           ),
           const SizedBox(width: 8),
           FilledButton(
@@ -254,9 +256,10 @@ class _StatusGlyph extends StatelessWidget {
       height: 8,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: status == RecoveryStatus.resumable
-            ? PortraitorTokens.onboardingPrimary
-            : PortraitorTokens.onboardingMutedLight,
+        color:
+            status == RecoveryStatus.resumable
+                ? PortraitorTokens.onboardingPrimary
+                : PortraitorTokens.onboardingMutedLight,
       ),
     );
   }

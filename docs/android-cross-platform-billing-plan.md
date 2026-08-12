@@ -9,18 +9,21 @@ Implemented in the mobile and `portraitor_v3` worktrees:
 - secure pending-purchase context persisted before the store opens;
 - purchase-token/app-account correlation and process-death replay;
 - server verification before Apple finish or Google consume/acknowledge;
-- Google Publisher API verification, provider-scoped idempotency, encrypted token storage, and pull reconciliation;
+- Google Publisher API verification, provider-scoped idempotency, encrypted token storage, authenticated Pub/Sub RTDN, and pull reconciliation;
 - provider-aware profile controls and originating-store management routes;
-- unit/widget/backend/replay tests, Flutter analyzer, debug APK, and debug AAB validation.
+- reachable Pass checkout, user-triggered restore, and sequential Partner/Family portrait-pack generation under one paid queue lease;
+- unit/widget/backend/replay tests, Flutter analyzer, debug APK, release AAB, and Pixel 8 emulator smoke validation.
 
-Live Play purchase launch is gated by `--dart-define=GOOGLE_PLAY_BILLING_ENABLED=true`. Keep it false until the Play Console app, matching package `ai.portraitor.portraitor_mobile`, products, license testers, and backend service account are ready. Backend requires `GOOGLE_PLAY_PACKAGE_NAME` and `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`; service-account JSON is server-only.
+Live Play purchase launch is gated by `--dart-define=GOOGLE_PLAY_BILLING_ENABLED=true`. Keep it false until the Play Console app, matching package `ai.portraitor.portraitor_mobile`, products, license testers, and backend service account are ready. Backend purchase verification requires `GOOGLE_PLAY_PACKAGE_NAME` and `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`. Authenticated RTDN also requires `GOOGLE_PLAY_PUBSUB_AUDIENCE` and `GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT_EMAIL`. Service-account JSON remains server-only.
 
-Known client gaps remain:
+Implementation validation completed locally:
 
-- the Pass purchase CTA is disabled while its drawer is open, so subscription
-  checkout is not currently reachable from the confirm screen;
-- automatic purchase recovery runs at launch, but no Settings action invokes
-  `restoreOnUserRequest()` as the user-triggered fallback.
+- 421 Flutter tests pass, including provider adapters, replay, idempotency, storage migration, multi-person checkpoints, profile controls, and failure paths;
+- all backend feature scripts and Google billing suites pass, including MariaDB migration, OIDC, RTDN lifecycle, duplicate delivery, and token-redaction coverage;
+- debug APK and release AAB builds pass with Play billing both disabled and enabled;
+- the installed debug APK launches cleanly on a Pixel 8 Google Play emulator with no app fatal error or ANR in the smoke log.
+
+External sandbox validation remains intentionally pending. It needs a verified Google Play Console account, the first signed AAB uploaded to an internal test track, the four configured products, license testers, backend Google credentials, and an authenticated Pub/Sub push subscription targeting `/api/google/notifications.php`. Local builds do not prove a real Play purchase because Google Billing test transactions must originate from a Play-installed test-track build.
 
 Date: 2026-08-11
 

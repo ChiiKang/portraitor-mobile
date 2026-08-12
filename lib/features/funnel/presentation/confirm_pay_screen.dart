@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:portraitor_mobile/core/storage/pending_job.dart';
+import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
@@ -24,6 +26,13 @@ class ConfirmPayScreen extends ConsumerStatefulWidget {
   @override
   ConsumerState<ConfirmPayScreen> createState() => _ConfirmPayScreenState();
 }
+
+enum PostPurchaseDestination { processing, profile }
+
+PostPurchaseDestination postPurchaseDestinationFor(FunnelTier tier) =>
+    IapProductCatalog.isSubscription(tier)
+        ? PostPurchaseDestination.profile
+        : PostPurchaseDestination.processing;
 
 class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
   bool _passOpen = false;
@@ -64,7 +73,7 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
   /// Demo renders its own copy; real builds render what the store reports.
   String _priceFor(FunnelTier tier) {
     if (kDemoIapPurchase) return tier.priceLabel;
-    return ref.watch(iapProvider).priceFor(tier) ?? tier.priceLabel;
+    return ref.watch(iapProvider).priceFor(tier) ?? 'Loading…';
   }
 
   @override
@@ -78,6 +87,9 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     final purchaseBusy =
         iapState.status == IapStatus.purchasing ||
         iapState.status == IapStatus.verifying;
+    final activeTier = showPass ? FunnelTier.pass : draft.selectedTier;
+    final productReady =
+        kDemoIapPurchase || iapState.priceFor(activeTier) != null;
 
     return FunnelChrome(
       step: 4,
@@ -92,9 +104,9 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
       // The email gates the purchase. The server re-validates it, but letting
       // Opening the store without one would take money we cannot deliver against.
       ctaEnabled:
-          !showPass &&
           !purchaseBusy &&
-          draft.selectedTier.canPurchase &&
+          activeTier.canPurchase &&
+          productReady &&
           _emailValid,
       ctaLoading: purchaseBusy,
       onCta: () => _onCta(context),
@@ -183,7 +195,7 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
 
   Future<void> _onCta(BuildContext context) async {
     final draft = ref.read(funnelDraftProvider);
-    final tier = draft.selectedTier;
+    final tier = _passOpen ? FunnelTier.pass : draft.selectedTier;
 
     if (!tier.canPurchase) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -214,8 +226,14 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     BuildContext context,
     FunnelTier tier,
   ) async {
-    final payload = _funnelPayload(context);
-    if (payload == null) return;
+    final destination = postPurchaseDestinationFor(tier);
+    final payload =
+        destination == PostPurchaseDestination.processing
+            ? _funnelPayload(context)
+            : null;
+    if (destination == PostPurchaseDestination.processing && payload == null) {
+      return;
+    }
 
     // Generated BEFORE the purchase, not by the processing screen afterwards.
     // The server stores this on the payments row and the generation queue
@@ -225,6 +243,13 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     final conversationId =
         'conv_${DateTime.now().millisecondsSinceEpoch}_'
         '${const Uuid().v4().substring(0, 8)}';
+
+    if (destination == PostPurchaseDestination.processing) {
+      await _stagePendingGeneration(
+        conversationId: conversationId,
+        payload: payload!,
+      );
+    }
 
     final outcome = await ref
         .read(iapProvider.notifier)
@@ -251,16 +276,37 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
             ),
           );
           if (!context.mounted) return;
+          context.go('/profile');
+          return;
         }
+
+        if (paymentReference == null || paymentReference.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Purchase verified, but generation is not ready yet. '
+                'Use Continue on your unfinished portrait shortly.',
+              ),
+            ),
+          );
+          return;
+        }
+        await StorageService.instance.updatePendingJob(
+          conversationId,
+          paymentSessionId: paymentReference,
+          status: 'ready',
+        );
+        if (!context.mounted) return;
         context.pushReplacement(
           '/processing',
           extra: {
-            ...payload,
+            ...payload!,
             'conversationId': conversationId,
-            'paymentReference': paymentReference ?? '',
+            'paymentReference': paymentReference,
           },
         );
       case PurchaseCancelled():
+        await StorageService.instance.deletePendingJob(conversationId);
         break;
       case PurchasePending():
         ScaffoldMessenger.of(context).showSnackBar(
@@ -271,10 +317,40 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
           ),
         );
       case PurchaseFailed(:final message):
+        if (shouldDiscardPendingGeneration(outcome)) {
+          await StorageService.instance.deletePendingJob(conversationId);
+        }
+        if (!context.mounted) return;
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(message)));
     }
+  }
+
+  Future<void> _stagePendingGeneration({
+    required String conversationId,
+    required Map<String, dynamic> payload,
+  }) async {
+    final now = DateTime.now().toUtc();
+    await StorageService.instance.savePendingJobRecord(
+      PendingJob(
+        id: conversationId,
+        deviceId: StorageService.instance.deviceId,
+        clientConversationRef: conversationId,
+        inputText: payload['normalizedText'] as String,
+        targetName: payload['targetName'] as String,
+        dateRange: payload['dateRange'] as String?,
+        paymentSessionId: '',
+        status: 'awaiting_purchase',
+        chunksCompleted: 0,
+        chunksTotal: 0,
+        chunkResults: const [],
+        createdAt: now,
+        updatedAt: now,
+        tier: payload['tier'] as String,
+        people: (payload['people'] as List<String>),
+      ),
+    );
   }
 
   /// Shared funnel payload for whichever post-purchase route is in use.
@@ -299,6 +375,8 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     return {
       'normalizedText': normalized.text,
       'targetName': draft.selectedNames.first,
+      'people': List<String>.unmodifiable(draft.selectedNames),
+      'tier': draft.selectedTier.name,
       'tokenEstimate': draft.tokenEstimate,
       'conversationId': null,
       'dateRange': dateRangeStr,

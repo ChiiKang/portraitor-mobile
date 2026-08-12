@@ -18,6 +18,10 @@ class PendingJob {
     this.chunkingMode,
     this.tokenLimit,
     this.chunkOverlapTokens,
+    this.tier = 'you',
+    this.people = const [],
+    this.portraitsCompleted = const [],
+    this.activePersonIndex = 1,
   });
 
   final String id;
@@ -34,6 +38,10 @@ class PendingJob {
   final String? chunkingMode;
   final int? tokenLimit;
   final int? chunkOverlapTokens;
+  final String tier;
+  final List<String> people;
+  final List<Map<String, dynamic>> portraitsCompleted;
+  final int activePersonIndex;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -61,6 +69,10 @@ class PendingJob {
       'chunking_mode': chunkingMode,
       'token_limit': tokenLimit,
       'chunk_overlap_tokens': chunkOverlapTokens,
+      'tier': tier,
+      'people': jsonEncode(people),
+      'portraits_completed': jsonEncode(portraitsCompleted),
+      'active_person_index': activePersonIndex,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -68,9 +80,20 @@ class PendingJob {
 
   static PendingJob fromDbMap(Map<String, Object?> row) {
     final rawResults = row['chunk_results'] as String?;
-    final decoded = rawResults == null || rawResults.isEmpty
-        ? const <dynamic>[]
-        : jsonDecode(rawResults) as List<dynamic>;
+    final decoded =
+        rawResults == null || rawResults.isEmpty
+            ? const <dynamic>[]
+            : jsonDecode(rawResults) as List<dynamic>;
+    final rawPeople = row['people'] as String?;
+    final decodedPeople =
+        rawPeople == null || rawPeople.isEmpty
+            ? const <dynamic>[]
+            : jsonDecode(rawPeople) as List<dynamic>;
+    final rawPortraits = row['portraits_completed'] as String?;
+    final decodedPortraits =
+        rawPortraits == null || rawPortraits.isEmpty
+            ? const <dynamic>[]
+            : jsonDecode(rawPortraits) as List<dynamic>;
 
     return PendingJob(
       id: row['id'] as String,
@@ -90,6 +113,13 @@ class PendingJob {
       chunkingMode: row['chunking_mode'] as String?,
       tokenLimit: row['token_limit'] as int?,
       chunkOverlapTokens: row['chunk_overlap_tokens'] as int?,
+      tier: (row['tier'] as String?) ?? 'you',
+      people: decodedPeople.whereType<String>().toList(growable: false),
+      portraitsCompleted: decodedPortraits
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(growable: false),
+      activePersonIndex: (row['active_person_index'] as int?) ?? 1,
       createdAt: DateTime.parse(row['created_at'] as String),
       updatedAt: DateTime.parse(
         (row['updated_at'] as String?) ?? row['created_at'] as String,

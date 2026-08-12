@@ -14,7 +14,7 @@ class StorageService {
 
   static const String _deviceIdKey = 'portraitor_device_id';
   static const int _maxConversations = 100;
-  static const int _dbVersion = 5;
+  static const int _dbVersion = 6;
 
   Database? _db;
   String? _deviceId;
@@ -72,7 +72,7 @@ class StorageService {
   /// in-memory FFI database without recreating the SQL.
   @visibleForTesting
   static Future<void> onCreateSchema(Database db, int version) async {
-        await db.execute('''
+    await db.execute('''
           CREATE TABLE conversations (
             id TEXT PRIMARY KEY,
             device_id TEXT NOT NULL,
@@ -89,17 +89,20 @@ class StorageService {
             token_estimate INTEGER,
             token_limit INTEGER,
             status TEXT DEFAULT 'completed',
+            tier TEXT DEFAULT 'you',
+            people TEXT DEFAULT '[]',
+            portraits TEXT DEFAULT '[]',
             created_at TEXT NOT NULL
           )
         ''');
-        await db.execute(
-          'CREATE INDEX idx_conversations_device ON conversations(device_id)',
-        );
-        await db.execute(
-          'CREATE INDEX idx_conversations_date ON conversations(device_id, created_at)',
-        );
+    await db.execute(
+      'CREATE INDEX idx_conversations_device ON conversations(device_id)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_conversations_date ON conversations(device_id, created_at)',
+    );
 
-        await db.execute('''
+    await db.execute('''
           CREATE TABLE pending_jobs (
             id TEXT PRIMARY KEY,
             device_id TEXT NOT NULL,
@@ -115,19 +118,23 @@ class StorageService {
             chunking_mode TEXT,
             token_limit INTEGER,
             chunk_overlap_tokens INTEGER,
+            tier TEXT DEFAULT 'you',
+            people TEXT DEFAULT '[]',
+            portraits_completed TEXT DEFAULT '[]',
+            active_person_index INTEGER DEFAULT 1,
             created_at TEXT NOT NULL,
             updated_at TEXT
           )
         ''');
-        await db.execute(
-          'CREATE INDEX idx_pending_jobs_device ON pending_jobs(device_id)',
-        );
-        await db.execute(
-          'CREATE INDEX idx_pending_jobs_device_status ON pending_jobs(device_id, status)',
-        );
-        await db.execute(
-          'CREATE INDEX idx_pending_jobs_updated ON pending_jobs(device_id, updated_at)',
-        );
+    await db.execute(
+      'CREATE INDEX idx_pending_jobs_device ON pending_jobs(device_id)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_pending_jobs_device_status ON pending_jobs(device_id, status)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_pending_jobs_updated ON pending_jobs(device_id, updated_at)',
+    );
   }
 
   /// Schema migrations. Exposed so tests can wire it onto an in-memory FFI
@@ -138,8 +145,8 @@ class StorageService {
     int oldVersion,
     int newVersion,
   ) async {
-        if (oldVersion < 3) {
-          await db.execute('''
+    if (oldVersion < 3) {
+      await db.execute('''
             CREATE TABLE IF NOT EXISTS pending_jobs (
               id TEXT PRIMARY KEY,
               device_id TEXT NOT NULL,
@@ -151,66 +158,87 @@ class StorageService {
               created_at TEXT NOT NULL
             )
           ''');
-        }
-        if (oldVersion < 4) {
-          await _addColumnIfMissing(
-            db,
-            'conversations',
-            'client_conversation_ref TEXT',
-          );
-          await _addColumnIfMissing(db, 'conversations', 'date_range TEXT');
-          await _addColumnIfMissing(
-            db,
-            'conversations',
-            'payment_session_id TEXT',
-          );
-          await _addColumnIfMissing(db, 'conversations', 'pdf_path TEXT');
-        }
-        if (oldVersion < 5) {
-          // Web-parity pending_jobs columns. All nullable on upgrade because
-          // SQLite cannot add NOT NULL columns to existing tables. Required
-          // fields are enforced in Dart via PendingJob.isResumable at read time.
-          await _addColumnIfMissing(db, 'pending_jobs', 'input_text TEXT');
-          await _addColumnIfMissing(db, 'pending_jobs', 'date_range TEXT');
-          await _addColumnIfMissing(db, 'pending_jobs', 'payment_session_id TEXT');
-          await _addColumnIfMissing(
-            db,
-            'pending_jobs',
-            "chunk_results TEXT DEFAULT '[]'",
-          );
-          await _addColumnIfMissing(db, 'pending_jobs', 'chunking_mode TEXT');
-          await _addColumnIfMissing(db, 'pending_jobs', 'token_limit INTEGER');
-          await _addColumnIfMissing(
-            db,
-            'pending_jobs',
-            'chunk_overlap_tokens INTEGER',
-          );
-          await _addColumnIfMissing(db, 'pending_jobs', 'updated_at TEXT');
-          await db.execute(
-            "UPDATE pending_jobs SET updated_at = created_at "
-            "WHERE updated_at IS NULL OR updated_at = ''",
-          );
-          await db.execute(
-            "UPDATE pending_jobs SET chunk_results = '[]' "
-            "WHERE chunk_results IS NULL OR chunk_results = ''",
-          );
-          // Legacy v4 rows lack input_text and payment_session_id, so they
-          // cannot be resumed safely. Mark them stale; the recovery UI will
-          // offer cancel-only for these.
-          await db.execute(
-            "UPDATE pending_jobs SET status = 'stale' "
-            "WHERE input_text IS NULL OR input_text = '' "
-            "OR payment_session_id IS NULL OR payment_session_id = ''",
-          );
-          await db.execute(
-            'CREATE INDEX IF NOT EXISTS idx_pending_jobs_device_status '
-            'ON pending_jobs(device_id, status)',
-          );
-          await db.execute(
-            'CREATE INDEX IF NOT EXISTS idx_pending_jobs_updated '
-            'ON pending_jobs(device_id, updated_at)',
-          );
-        }
+    }
+    if (oldVersion < 4) {
+      await _addColumnIfMissing(
+        db,
+        'conversations',
+        'client_conversation_ref TEXT',
+      );
+      await _addColumnIfMissing(db, 'conversations', 'date_range TEXT');
+      await _addColumnIfMissing(db, 'conversations', 'payment_session_id TEXT');
+      await _addColumnIfMissing(db, 'conversations', 'pdf_path TEXT');
+    }
+    if (oldVersion < 5) {
+      // Web-parity pending_jobs columns. All nullable on upgrade because
+      // SQLite cannot add NOT NULL columns to existing tables. Required
+      // fields are enforced in Dart via PendingJob.isResumable at read time.
+      await _addColumnIfMissing(db, 'pending_jobs', 'input_text TEXT');
+      await _addColumnIfMissing(db, 'pending_jobs', 'date_range TEXT');
+      await _addColumnIfMissing(db, 'pending_jobs', 'payment_session_id TEXT');
+      await _addColumnIfMissing(
+        db,
+        'pending_jobs',
+        "chunk_results TEXT DEFAULT '[]'",
+      );
+      await _addColumnIfMissing(db, 'pending_jobs', 'chunking_mode TEXT');
+      await _addColumnIfMissing(db, 'pending_jobs', 'token_limit INTEGER');
+      await _addColumnIfMissing(
+        db,
+        'pending_jobs',
+        'chunk_overlap_tokens INTEGER',
+      );
+      await _addColumnIfMissing(db, 'pending_jobs', 'updated_at TEXT');
+      await db.execute(
+        "UPDATE pending_jobs SET updated_at = created_at "
+        "WHERE updated_at IS NULL OR updated_at = ''",
+      );
+      await db.execute(
+        "UPDATE pending_jobs SET chunk_results = '[]' "
+        "WHERE chunk_results IS NULL OR chunk_results = ''",
+      );
+      // Legacy v4 rows lack input_text and payment_session_id, so they
+      // cannot be resumed safely. Mark them stale; the recovery UI will
+      // offer cancel-only for these.
+      await db.execute(
+        "UPDATE pending_jobs SET status = 'stale' "
+        "WHERE input_text IS NULL OR input_text = '' "
+        "OR payment_session_id IS NULL OR payment_session_id = ''",
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_pending_jobs_device_status '
+        'ON pending_jobs(device_id, status)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_pending_jobs_updated '
+        'ON pending_jobs(device_id, updated_at)',
+      );
+    }
+    if (oldVersion < 6) {
+      await _addColumnIfMissing(db, 'conversations', "tier TEXT DEFAULT 'you'");
+      await _addColumnIfMissing(
+        db,
+        'conversations',
+        "people TEXT DEFAULT '[]'",
+      );
+      await _addColumnIfMissing(
+        db,
+        'conversations',
+        "portraits TEXT DEFAULT '[]'",
+      );
+      await _addColumnIfMissing(db, 'pending_jobs', "tier TEXT DEFAULT 'you'");
+      await _addColumnIfMissing(db, 'pending_jobs', "people TEXT DEFAULT '[]'");
+      await _addColumnIfMissing(
+        db,
+        'pending_jobs',
+        "portraits_completed TEXT DEFAULT '[]'",
+      );
+      await _addColumnIfMissing(
+        db,
+        'pending_jobs',
+        'active_person_index INTEGER DEFAULT 1',
+      );
+    }
   }
 
   static Future<void> _addColumnIfMissing(
@@ -276,6 +304,9 @@ class StorageService {
     int? tokenEstimate,
     int? tokenLimit,
     String status = 'completed',
+    String tier = 'you',
+    List<String> people = const [],
+    List<Map<String, dynamic>> portraits = const [],
   }) async {
     final db = _db;
     if (db == null) throw Exception('Database not initialized');
@@ -300,6 +331,9 @@ class StorageService {
       'token_estimate': tokenEstimate,
       'token_limit': tokenLimit,
       'status': status,
+      'tier': tier,
+      'people': jsonEncode(people),
+      'portraits': jsonEncode(portraits),
       'created_at': now,
     };
 
@@ -399,6 +433,7 @@ class StorageService {
     String id, {
     int? chunksCompleted,
     String? status,
+    String? paymentSessionId,
   }) async {
     final db = _db;
     if (db == null) return;
@@ -406,6 +441,10 @@ class StorageService {
     final updates = <String, dynamic>{};
     if (chunksCompleted != null) updates['chunks_completed'] = chunksCompleted;
     if (status != null) updates['status'] = status;
+    if (paymentSessionId != null) {
+      updates['payment_session_id'] = paymentSessionId;
+    }
+    updates['updated_at'] = DateTime.now().toUtc().toIso8601String();
 
     if (updates.isNotEmpty) {
       await db.update(
@@ -499,6 +538,55 @@ class StorageService {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  Future<void> appendPendingJobPortrait(
+    String id,
+    Map<String, dynamic> portrait,
+  ) async {
+    final db = _db;
+    if (db == null) return;
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'pending_jobs',
+        columns: ['portraits_completed'],
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (rows.isEmpty) return;
+      final raw = rows.first['portraits_completed'] as String?;
+      final existing = <Map<String, dynamic>>[];
+      if (raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          existing.addAll(
+            decoded.whereType<Map>().map(
+              (item) => Map<String, dynamic>.from(item),
+            ),
+          );
+        }
+      }
+      final index = portrait['index'];
+      final at = existing.indexWhere((item) => item['index'] == index);
+      if (at < 0) {
+        existing.add(portrait);
+      } else {
+        existing[at] = portrait;
+      }
+      await txn.update(
+        'pending_jobs',
+        {
+          'portraits_completed': jsonEncode(existing),
+          'active_person_index': (index as int) + 1,
+          'chunk_results': '[]',
+          'chunks_completed': 0,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
   }
 
   Future<void> markPendingJobStatus(String id, String status) async {

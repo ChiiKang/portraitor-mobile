@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/domain/purchase_outcome.dart';
@@ -99,16 +100,22 @@ class IapNotifier extends StateNotifier<IapState> {
     required BillingApi api,
     required PassCredentialStore store,
     PendingPurchaseStore? pendingStore,
+    Future<void> Function(String conversationRef, String paymentReference)?
+    onConsumableVerified,
   }) : _iap = iap,
        _api = api,
        _store = store,
        _pendingStore = pendingStore ?? InMemoryPendingPurchaseStore(),
+       _onConsumableVerified =
+           onConsumableVerified ?? _markPendingGenerationReady,
        super(const IapState());
 
   final IapService _iap;
   final BillingApi _api;
   final PassCredentialStore _store;
   final PendingPurchaseStore _pendingStore;
+  final Future<void> Function(String conversationRef, String paymentReference)
+  _onConsumableVerified;
   bool _purchaseInFlight = false;
 
   Future<void> loadPrices() async {
@@ -258,6 +265,16 @@ class IapNotifier extends StateNotifier<IapState> {
         await _store.writeSessionToken(verified.sessionToken);
       }
 
+      final paymentReference = verified.paymentReference;
+      if (!isSubscription &&
+          paymentReference != null &&
+          paymentReference.isNotEmpty) {
+        // Make the generation request durable before consume/finish. Otherwise
+        // a crash after verification can leave a charged consumable with no
+        // replayable store transaction and no resumable local job.
+        await _onConsumableVerified(clientConversationRef, paymentReference);
+      }
+
       // Durable everywhere it matters. Only now may the store forget it.
       //
       // Failing to finish is not failing to buy: the purchase is verified and
@@ -292,15 +309,27 @@ class IapNotifier extends StateNotifier<IapState> {
       // server's transaction-id idempotency absorbs the duplicate.
       debugPrint('[IAP] verification failed, transaction left unfinished');
       state = state.copyWith(status: IapStatus.failed, error: e.message);
-      return PurchaseFailed(e.message);
+      return PurchaseFailed(e.message, purchaseMayHaveCompleted: true);
     } catch (e) {
       if (!transactionReceived) {
         await _pendingStore.remove(prepared.publicUuid);
       }
       state = state.copyWith(status: IapStatus.failed, error: e.toString());
-      return PurchaseFailed(e.toString());
+      return PurchaseFailed(
+        e.toString(),
+        purchaseMayHaveCompleted: transactionReceived,
+      );
     } finally {
       await sub.cancel();
     }
   }
+
+  static Future<void> _markPendingGenerationReady(
+    String conversationRef,
+    String paymentReference,
+  ) => StorageService.instance.updatePendingJob(
+    conversationRef,
+    paymentSessionId: paymentReference,
+    status: 'ready',
+  );
 }

@@ -40,17 +40,19 @@ void main() {
             routes: [
               GoRoute(
                 path: '/processing',
-                builder: (context, state) => const ProcessingScreen(
-                  normalizedText: '[01/01/2026, 10:00:00] Emma: hello',
-                  targetName: 'Emma',
-                  conversationId: 'conv_1',
-                  paymentReference: 'credit-uuid-1',
-                ),
+                builder:
+                    (context, state) => const ProcessingScreen(
+                      normalizedText: '[01/01/2026, 10:00:00] Emma: hello',
+                      targetName: 'Emma',
+                      conversationId: 'conv_1',
+                      paymentReference: 'credit-uuid-1',
+                    ),
               ),
               GoRoute(
                 path: '/',
-                builder: (context, state) =>
-                    const Scaffold(body: Center(child: Text('HOME'))),
+                builder:
+                    (context, state) =>
+                        const Scaffold(body: Center(child: Text('HOME'))),
               ),
             ],
           ),
@@ -149,6 +151,8 @@ class _StubProcessing extends StateNotifier<ProcessingState>
     required String conversationId,
     required String paymentSessionId,
     String? dateRange,
+    List<String> people = const [],
+    String tier = 'you',
   }) async {}
 
   @override

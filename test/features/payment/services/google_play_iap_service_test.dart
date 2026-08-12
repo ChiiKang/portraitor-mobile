@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:in_app_purchase_android/billing_client_wrappers.dart';
@@ -43,5 +45,15 @@ void main() {
     expect(transaction.accountToken, 'uuid-1');
     expect(transaction.isConsumable, isTrue);
     expect(transaction.isPendingCompletion, isTrue);
+  });
+
+  test('manual store sync replays queried purchases into recovery', () {
+    final source =
+        File(
+          'lib/features/payment/services/google_play_iap_service.dart',
+        ).readAsStringSync();
+
+    expect(source, contains('for (final transaction in await unfinished())'));
+    expect(source, contains('_controller.add(transaction)'));
   });
 }

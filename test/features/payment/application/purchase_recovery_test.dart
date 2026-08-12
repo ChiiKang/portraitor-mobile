@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/features/payment/application/purchase_recovery.dart';
+import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/domain/store_provider.dart';
 import 'package:portraitor_mobile/features/payment/services/billing_api.dart';
 import 'package:portraitor_mobile/features/payment/services/iap_service.dart';
@@ -22,17 +23,82 @@ PurchaseRecovery buildRecovery({
   FakeBillingApi? api,
   PassCredentialStore? store,
   PendingPurchaseStore? pendingStore,
+  Future<void> Function(String conversationRef, String paymentReference)?
+  onConsumableVerified,
 }) {
   return PurchaseRecovery(
     iap: iap,
     api: api ?? FakeBillingApi(),
     store: store ?? InMemoryPassCredentialStore(),
     pendingStore: pendingStore ?? InMemoryPendingPurchaseStore(),
+    onConsumableVerified: onConsumableVerified,
   );
 }
 
 void main() {
   group('PurchaseRecovery at launch', () {
+    test(
+      'makes a recovered paid consumable resumable before finishing it',
+      () async {
+        final iap = await iapWithUnfinishedPurchase();
+        final pendingStore = InMemoryPendingPurchaseStore();
+        await pendingStore.write(
+          PendingPurchaseContext(
+            provider: StoreProvider.apple,
+            productId: 'sku',
+            publicUuid: 'uuid-1',
+            clientConversationRef: 'conv-original',
+            deliveryEmail: 'buyer@example.com',
+            createdAt: DateTime.utc(2026),
+          ),
+        );
+        String? readyConversation;
+        String? readyPayment;
+
+        await buildRecovery(
+          iap: iap,
+          pendingStore: pendingStore,
+          onConsumableVerified: (conversation, payment) async {
+            readyConversation = conversation;
+            readyPayment = payment;
+          },
+        ).runAtLaunch();
+
+        expect(readyConversation, 'conv-original');
+        expect(readyPayment, isNotEmpty);
+        expect(iap.finished, contains('sku'));
+      },
+    );
+
+    test(
+      'restores a subscription without stale pending-purchase context',
+      () async {
+        final iap = FakeIapService(
+          products: const {IapProductCatalog.passMonthly: r'$12.99'},
+        );
+        final api = _CountingApi();
+        final store = InMemoryPassCredentialStore();
+        final recovery = buildRecovery(iap: iap, api: api, store: store);
+        await recovery.runAtLaunch();
+
+        iap.emit(
+          const IapTransaction(
+            provider: StoreProvider.apple,
+            productId: IapProductCatalog.passMonthly,
+            serverVerificationData: 'signed-restored-subscription',
+            accountToken: 'uuid-restored',
+            status: IapTransactionStatus.restored,
+            isPendingCompletion: false,
+            isConsumable: false,
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(api.verifyCount, 1);
+        expect(await store.readSessionToken(), isNotEmpty);
+      },
+    );
+
     test('drains an unfinished consumable', () async {
       final iap = await iapWithUnfinishedPurchase();
       final pendingStore = InMemoryPendingPurchaseStore();

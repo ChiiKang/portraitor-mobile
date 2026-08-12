@@ -31,19 +31,24 @@ void main() {
     });
 
     test('exposes exactly one Pass sku', () {
-      final passSkus = IapProductCatalog.allProductIds
-          .where((id) => id.contains('.pass.'))
-          .toList();
+      final passSkus =
+          IapProductCatalog.allProductIds
+              .where((id) => id.contains('.pass.'))
+              .toList();
       expect(
         passSkus,
         hasLength(1),
-        reason: 'promo and win-back offers attach to the one subscription '
+        reason:
+            'promo and win-back offers attach to the one subscription '
             'product, they are never separate skus',
       );
     });
 
     test('allProductIds covers every tier', () {
-      expect(IapProductCatalog.allProductIds, hasLength(FunnelTier.values.length));
+      expect(
+        IapProductCatalog.allProductIds,
+        hasLength(FunnelTier.values.length),
+      );
     });
   });
 
@@ -85,15 +90,33 @@ void main() {
 
     test('outcomes are exhaustively switchable', () {
       String describe(PurchaseOutcome outcome) => switch (outcome) {
-            PurchaseVerified() => 'verified',
-            PurchasePending() => 'pending',
-            PurchaseCancelled() => 'cancelled',
-            PurchaseFailed() => 'failed',
-          };
+        PurchaseVerified() => 'verified',
+        PurchasePending() => 'pending',
+        PurchaseCancelled() => 'cancelled',
+        PurchaseFailed() => 'failed',
+      };
 
       expect(describe(const PurchasePending()), 'pending');
       expect(describe(const PurchaseCancelled()), 'cancelled');
       expect(describe(const PurchaseFailed('x')), 'failed');
+    });
+
+    test('staged generation survives failures after a store purchase', () {
+      expect(
+        shouldDiscardPendingGeneration(
+          const PurchaseFailed(
+            'verification failed',
+            purchaseMayHaveCompleted: true,
+          ),
+        ),
+        isFalse,
+      );
+      expect(
+        shouldDiscardPendingGeneration(const PurchaseFailed('launch failed')),
+        isTrue,
+      );
+      expect(shouldDiscardPendingGeneration(const PurchaseCancelled()), isTrue);
+      expect(shouldDiscardPendingGeneration(const PurchasePending()), isFalse);
     });
   });
 }

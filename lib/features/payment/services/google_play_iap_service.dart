@@ -156,7 +156,12 @@ class GooglePlayIapService implements IapService {
 
   @override
   Future<void> syncWithStore() async {
-    await unfinished();
+    // Querying Play returns data; it does not emit it through purchaseStream.
+    // Replay every mapped transaction so PurchaseRecovery can verify it and
+    // persist the recovered Pass/job just like the launch sweep does.
+    for (final transaction in await unfinished()) {
+      _controller.add(transaction);
+    }
   }
 
   void dispose() {

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -23,9 +24,45 @@ class ResultScreen extends ConsumerStatefulWidget {
   ConsumerState<ResultScreen> createState() => _ResultScreenState();
 }
 
+class PortraitTabs extends StatelessWidget {
+  const PortraitTabs({
+    super.key,
+    required this.people,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final List<String> people;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 52,
+      child: ListView.separated(
+        key: const ValueKey('portrait-tabs'),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        scrollDirection: Axis.horizontal,
+        itemCount: people.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder:
+            (context, index) => ChoiceChip(
+              key: ValueKey('portrait-tab-$index'),
+              label: Text(people[index]),
+              selected: selectedIndex == index,
+              onSelected: (_) => onSelected(index),
+            ),
+      ),
+    );
+  }
+}
+
 class _ResultScreenState extends ConsumerState<ResultScreen> {
   Map<String, dynamic>? _portrait;
   List<_Section> _sections = [];
+  List<Map<String, dynamic>> _portraits = const [];
+  int _selectedPortrait = 0;
   bool _isLoading = true;
   bool _isGeneratingPdf = false;
 
@@ -42,12 +79,38 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     if (data != null && mounted) {
       setState(() {
         _portrait = data;
-        _sections = _parseSections(data['output_summary'] as String? ?? '');
+        final raw = data['portraits'] as String?;
+        final decoded = raw == null || raw.isEmpty ? const [] : jsonDecode(raw);
+        _portraits =
+            decoded is List
+                ? decoded
+                    .whereType<Map>()
+                    .map((item) => Map<String, dynamic>.from(item))
+                    .toList(growable: false)
+                : const [];
+        _sections = _parseSections(_currentOutput(data));
         _isLoading = false;
       });
     } else if (mounted) {
       setState(() => _isLoading = false);
     }
+  }
+
+  String _currentOutput([Map<String, dynamic>? fallback]) =>
+      _portraits.isNotEmpty
+          ? _portraits[_selectedPortrait]['output'] as String? ?? ''
+          : (fallback ?? _portrait)?['output_summary'] as String? ?? '';
+
+  String get _currentName =>
+      _portraits.isNotEmpty
+          ? _portraits[_selectedPortrait]['person'] as String? ?? 'Portrait'
+          : _portrait?['target_name'] as String? ?? 'Portrait';
+
+  void _selectPortrait(int index) {
+    setState(() {
+      _selectedPortrait = index;
+      _sections = _parseSections(_currentOutput());
+    });
   }
 
   List<_Section> _parseSections(String markdown) {
@@ -128,7 +191,8 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
 
   Rect _shareOrigin(BuildContext sourceContext) {
     final sourceBox = sourceContext.findRenderObject();
-    final overlayBox = Overlay.maybeOf(sourceContext)?.context.findRenderObject();
+    final overlayBox =
+        Overlay.maybeOf(sourceContext)?.context.findRenderObject();
     if (sourceBox is RenderBox &&
         overlayBox is RenderBox &&
         sourceBox.hasSize &&
@@ -144,8 +208,8 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
   }
 
   void _share(BuildContext sourceContext) {
-    final name = _portrait?['target_name'] ?? 'Someone';
-    final content = _portrait?['output_summary'] ?? '';
+    final name = _currentName;
+    final content = _currentOutput();
     Share.share(
       '$name\'s Portrait by Portraitor\n\n$content',
       sharePositionOrigin: _shareOrigin(sourceContext),
@@ -160,8 +224,8 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     setState(() => _isGeneratingPdf = true);
 
     try {
-      final name = portrait['target_name'] as String? ?? 'Portrait';
-      final content = portrait['output_summary'] as String? ?? '';
+      final name = _currentName;
+      final content = _currentOutput();
       File? file;
       final pdfPath = portrait['pdf_path'] as String?;
       if (pdfPath != null && pdfPath.isNotEmpty) {
@@ -202,11 +266,9 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       // `catch (_)`). Read this in the Xcode/flutter console after reproducing.
       debugPrint('[PDF] _sharePdf failed: $e\n$st');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Unable to share PDF: $e'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Unable to share PDF: $e')));
     } finally {
       if (mounted) {
         setState(() => _isGeneratingPdf = false);
@@ -220,7 +282,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final name = _portrait?['target_name'] as String? ?? 'Portrait';
+    final name = _currentName;
     final oneliner = _sections.isNotEmpty ? _sections.first.summary : '';
     final traits = _sections.take(3).map((s) => s.title).toList();
 
@@ -233,6 +295,19 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
               Expanded(
                 child: CustomScrollView(
                   slivers: [
+                    if (_portraits.length > 1)
+                      SliverToBoxAdapter(
+                        child: PortraitTabs(
+                          people: _portraits
+                              .map(
+                                (portrait) =>
+                                    portrait['person'] as String? ?? 'Portrait',
+                              )
+                              .toList(growable: false),
+                          selectedIndex: _selectedPortrait,
+                          onSelected: _selectPortrait,
+                        ),
+                      ),
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
@@ -275,10 +350,11 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
           ),
           const Spacer(),
           Builder(
-            builder: (context) => IconButton(
-              icon: const Icon(Icons.share_outlined),
-              onPressed: () => _share(context),
-            ),
+            builder:
+                (context) => IconButton(
+                  icon: const Icon(Icons.share_outlined),
+                  onPressed: () => _share(context),
+                ),
           ),
           IconButton(icon: const Icon(Icons.more_horiz), onPressed: () {}),
         ],
@@ -297,46 +373,49 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
         children: [
           Expanded(
             child: Builder(
-              builder: (context) => GhostButton(
-                onPressed: _isGeneratingPdf ? null : () => _sharePdf(context),
-                height: PortraitorTokens.buttonHeightMd,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (_isGeneratingPdf)
-                      const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    else
-                      const Icon(
-                        Icons.picture_as_pdf_outlined,
-                        size: 18,
-                        color: PortraitorTokens.ink,
-                      ),
-                    const SizedBox(width: 8),
-                    Text(_isGeneratingPdf ? 'Creating' : 'PDF'),
-                  ],
-                ),
-              ),
+              builder:
+                  (context) => GhostButton(
+                    onPressed:
+                        _isGeneratingPdf ? null : () => _sharePdf(context),
+                    height: PortraitorTokens.buttonHeightMd,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (_isGeneratingPdf)
+                          const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        else
+                          const Icon(
+                            Icons.picture_as_pdf_outlined,
+                            size: 18,
+                            color: PortraitorTokens.ink,
+                          ),
+                        const SizedBox(width: 8),
+                        Text(_isGeneratingPdf ? 'Creating' : 'PDF'),
+                      ],
+                    ),
+                  ),
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Builder(
-              builder: (context) => GradientButton(
-                onPressed: () => _share(context),
-                height: PortraitorTokens.buttonHeightMd,
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.share, size: 18, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text('Share'),
-                  ],
-                ),
-              ),
+              builder:
+                  (context) => GradientButton(
+                    onPressed: () => _share(context),
+                    height: PortraitorTokens.buttonHeightMd,
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.share, size: 18, color: Colors.white),
+                        SizedBox(width: 8),
+                        Text('Share'),
+                      ],
+                    ),
+                  ),
             ),
           ),
         ],

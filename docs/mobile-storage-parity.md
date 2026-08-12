@@ -78,6 +78,10 @@ This is where the kill-and-resume feature lives. Every column maps to web behavi
 | `chunking_mode` | implicit | Snapshot of config used for the original split. Resume MUST use the snapshot, not latest config, or the re-split could produce different chunk boundaries. |
 | `token_limit` | implicit | Same snapshot reason. |
 | `chunk_overlap_tokens` | implicit | Same snapshot reason. |
+| `tier` | `tier` | Distinguishes Partner from a two-person Family result and selects the server prompt. |
+| `people` | `people` | Ordered names selected for the paid pack; resume generates every person in the same order. |
+| `portraits_completed` | `portraits_completed` | Durable per-person checkpoints. A resumed pack skips fully completed non-final portraits. |
+| `active_person_index` | `active_person_index` | Identifies the interrupted person; that person restarts while earlier portraits remain checkpointed. |
 | `created_at` | `created_at` | Sort + stale detection. |
 | `updated_at` | — (mobile-only) | Stale cleanup. Mobile sessions can be days old; web tabs cannot. |
 
@@ -121,7 +125,9 @@ In all three modes the same backend payment intent is reused, so the user is nev
 
 `input_text` (the chat being analyzed) is stored locally in SQLite. This matches web's privacy model — web stores it locally in IndexedDB too. The text never leaves the device except through the existing `gemini-proxy-stream.php` / `gemini-validate-stream.php` calls which already require user payment to run.
 
-On successful processing, the `pending_jobs` row is deleted; the `input_text` remains only inside the `conversations` row (for local history review). On cancel, both rows go.
+On successful processing, the `pending_jobs` row is deleted; the `input_text` remains only inside the `conversations` row for local history review.
+A paid store job is never deleted by a dismiss action: its queue lease is released and the durable row remains ready to resume.
+Only stale legacy rows with no payment reference can be cleared locally.
 
 ## Server-side dependencies
 

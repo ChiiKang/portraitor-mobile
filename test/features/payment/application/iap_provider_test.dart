@@ -48,6 +48,39 @@ class _OrderingStore extends InMemoryPassCredentialStore {
 
 void main() {
   group('IapNotifier', () {
+    test(
+      'durably enables recovered generation before finishing a consumable',
+      () async {
+        final iap = FakeIapService(
+          products: const {'com.portraitor.portrait.you': r'$29'},
+        );
+        final order = <String>[];
+        final notifier = IapNotifier(
+          iap: iap,
+          api: FakeBillingApi(),
+          store: InMemoryPassCredentialStore(),
+          pendingStore: InMemoryPendingPurchaseStore(),
+          onConsumableVerified: (conversation, payment) async {
+            expect(iap.finished, isEmpty);
+            expect(conversation, 'conversation-1');
+            expect(payment, isNotEmpty);
+            order.add('durable');
+          },
+        );
+        await notifier.loadPrices();
+
+        final outcome = await notifier.buy(
+          FunnelTier.you,
+          clientConversationRef: 'conversation-1',
+          deliveryEmail: 'buyer@example.com',
+        );
+
+        expect(outcome, isA<PurchaseVerified>());
+        expect(order, ['durable']);
+        expect(iap.finished, ['com.portraitor.portrait.you']);
+      },
+    );
+
     test('starts idle', () {
       expect(buildNotifier().state.status, IapStatus.idle);
     });
@@ -188,6 +221,7 @@ void main() {
       );
 
       expect(outcome, isA<PurchaseFailed>());
+      expect((outcome as PurchaseFailed).purchaseMayHaveCompleted, isTrue);
       expect(
         iap.finished,
         isEmpty,

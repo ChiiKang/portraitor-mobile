@@ -149,6 +149,7 @@ class ApiService {
     String? leaseToken,
     String? dateRange,
     bool forceFallback = false,
+    Map<String, dynamic> metadata = const {},
   }) async* {
     final body = {
       'text': text,
@@ -160,6 +161,7 @@ class ApiService {
         'include_thoughts': true,
         'conversation_ref': clientConversationRef,
         if (leaseToken != null) 'lease_token': leaseToken,
+        ...metadata,
       },
       if (forceFallback) 'force_fallback': true,
     };
@@ -263,7 +265,10 @@ class ApiService {
 
       final data = response.data;
       if (data == null || data.isEmpty) {
-        throw ApiException('Unable to create PDF', statusCode: response.statusCode);
+        throw ApiException(
+          'Unable to create PDF',
+          statusCode: response.statusCode,
+        );
       }
 
       return Uint8List.fromList(data);
@@ -472,7 +477,9 @@ class ApiService {
     try {
       final decoded = jsonDecode(utf8.decode(body));
       if (decoded is Map<String, dynamic>) {
-        return (decoded['message'] ?? decoded['error'] ?? 'Unable to create PDF')
+        return (decoded['message'] ??
+                decoded['error'] ??
+                'Unable to create PDF')
             .toString();
       }
     } catch (_) {}

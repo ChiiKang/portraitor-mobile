@@ -74,14 +74,15 @@ Widget _harness({
     routes: [
       GoRoute(
         path: '/home',
-        builder: (_, __) => Scaffold(
-          body: PendingJobResumeCard(
-            classification: RecoveryClassification(
-              job: _job(),
-              status: status,
+        builder:
+            (_, __) => Scaffold(
+              body: PendingJobResumeCard(
+                classification: RecoveryClassification(
+                  job: _job(),
+                  status: status,
+                ),
+              ),
             ),
-          ),
-        ),
       ),
       GoRoute(
         path: '/processing',
@@ -106,19 +107,27 @@ Widget _harness({
 
 void main() {
   group('what each state offers', () {
-    testWidgets('a resumable portrait offers Resume and Cancel',
-        (tester) async {
+    testWidgets('a resumable portrait offers Resume and Later', (tester) async {
       await tester.pumpWidget(_harness(status: RecoveryStatus.resumable));
 
       expect(find.text('Unfinished portrait'), findsOneWidget);
-      expect(find.text('Continue the portrait for Alice, or cancel.'),
-          findsOneWidget);
-      expect(find.byKey(const Key('pending_job_resume_button')), findsOneWidget);
-      expect(find.byKey(const Key('pending_job_cancel_button')), findsOneWidget);
+      expect(
+        find.text('Continue the portrait for Alice, or keep it for later.'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('pending_job_resume_button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('pending_job_cancel_button')),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('a portrait the server is finalizing offers nothing to tap',
-        (tester) async {
+    testWidgets('a portrait the server is finalizing offers nothing to tap', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _harness(status: RecoveryStatus.serverFinalizing),
       );
@@ -127,13 +136,15 @@ void main() {
       expect(
         find.byKey(const Key('pending_job_resume_button')),
         findsNothing,
-        reason: 'the server is delivering; a local resume would duplicate the '
+        reason:
+            'the server is delivering; a local resume would duplicate the '
             'validate, email and capture pipeline',
       );
       expect(
         find.byType(FilledButton),
         findsNothing,
-        reason: 'there is nothing for the user to decide, so offering a '
+        reason:
+            'there is nothing for the user to decide, so offering a '
             'button would only teach them to tap something inert',
       );
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
@@ -149,15 +160,18 @@ void main() {
   });
 
   group('actions', () {
-    testWidgets('resuming routes to processing with the job it left off',
-        (tester) async {
+    testWidgets('resuming routes to processing with the job it left off', (
+      tester,
+    ) async {
       final recorder = _Recorder();
       final notifier = _RecordingNotifier();
-      await tester.pumpWidget(_harness(
-        status: RecoveryStatus.resumable,
-        notifier: notifier,
-        recorder: recorder,
-      ));
+      await tester.pumpWidget(
+        _harness(
+          status: RecoveryStatus.resumable,
+          notifier: notifier,
+          recorder: recorder,
+        ),
+      );
 
       await tester.tap(find.byKey(const Key('pending_job_resume_button')));
       await tester.pumpAndSettle();
@@ -170,29 +184,31 @@ void main() {
       expect(
         extra['paymentReference'],
         'pi_conv_resumable',
-        reason: 'the route carries an opaque Portraitor reference, never a '
+        reason:
+            'the route carries an opaque Portraitor reference, never a '
             "provider's own transaction id",
       );
       expect(
         extra['resume'],
         true,
-        reason: 'processing must resume rather than start, or the user pays '
+        reason:
+            'processing must resume rather than start, or the user pays '
             'for work already done',
       );
       expect(
         notifier.dropped,
         ['conv_resumable'],
-        reason: 'the card must clear itself so a resumed job is not offered '
+        reason:
+            'the card must clear itself so a resumed job is not offered '
             'again behind the processing screen',
       );
     });
 
     testWidgets('a double tap on Cancel cancels once', (tester) async {
       final notifier = _RecordingNotifier()..blockCancel = Completer<void>();
-      await tester.pumpWidget(_harness(
-        status: RecoveryStatus.resumable,
-        notifier: notifier,
-      ));
+      await tester.pumpWidget(
+        _harness(status: RecoveryStatus.resumable, notifier: notifier),
+      );
 
       final cancel = find.byKey(const Key('pending_job_cancel_button'));
       await tester.tap(cancel);
@@ -203,7 +219,8 @@ void main() {
       expect(
         notifier.cancelCount,
         1,
-        reason: 'a second cancel would POST against a job already being torn '
+        reason:
+            'a second cancel would POST against a job already being torn '
             'down',
       );
 
@@ -213,8 +230,7 @@ void main() {
   });
 
   group('it is a card, not an overlay', () {
-    testWidgets('renders inline with no route pushed above it',
-        (tester) async {
+    testWidgets('renders inline with no route pushed above it', (tester) async {
       await tester.pumpWidget(_harness(status: RecoveryStatus.resumable));
 
       // The predecessor was a modal bottom sheet pushed onto the shell

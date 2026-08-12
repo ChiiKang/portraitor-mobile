@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
+import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/services/billing_api.dart';
 import 'package:portraitor_mobile/features/payment/services/iap_service.dart';
 import 'package:portraitor_mobile/features/payment/services/pass_credential_store.dart';
@@ -25,15 +27,21 @@ class PurchaseRecovery {
     required BillingApi api,
     required PassCredentialStore store,
     required PendingPurchaseStore pendingStore,
+    Future<void> Function(String conversationRef, String paymentReference)?
+    onConsumableVerified,
   }) : _iap = iap,
        _api = api,
        _store = store,
-       _pendingStore = pendingStore;
+       _pendingStore = pendingStore,
+       _onConsumableVerified =
+           onConsumableVerified ?? _markPendingGenerationReady;
 
   final IapService _iap;
   final BillingApi _api;
   final PassCredentialStore _store;
   final PendingPurchaseStore _pendingStore;
+  final Future<void> Function(String conversationRef, String paymentReference)
+  _onConsumableVerified;
   StreamSubscription<IapTransaction>? _sub;
 
   Future<void> runAtLaunch() async {
@@ -54,7 +62,10 @@ class PurchaseRecovery {
   Future<void> restoreOnUserRequest() => _iap.syncWithStore();
 
   Future<void> _reconcile(IapTransaction txn) async {
-    if (!txn.isPendingCompletion) return;
+    final restoringSubscription =
+        txn.status == IapTransactionStatus.restored &&
+        IapProductCatalog.isSubscriptionProductId(txn.productId);
+    if (!txn.isPendingCompletion && !restoringSubscription) return;
     if (txn.status != IapTransactionStatus.purchased &&
         txn.status != IapTransactionStatus.restored) {
       return;
@@ -72,7 +83,17 @@ class PurchaseRecovery {
         debugPrint('[IAP] recovery skipped ${txn.productId}: no account token');
         return;
       }
-      final context = await _pendingStore.read(accountToken);
+      var context = await _pendingStore.read(accountToken);
+      if (context == null && restoringSubscription) {
+        context = PendingPurchaseContext(
+          provider: txn.provider,
+          productId: txn.productId,
+          publicUuid: accountToken,
+          clientConversationRef: 'restore-$accountToken',
+          deliveryEmail: '',
+          createdAt: DateTime.now().toUtc(),
+        );
+      }
       if (context == null ||
           context.provider != txn.provider ||
           context.productId != txn.productId) {
@@ -101,7 +122,22 @@ class PurchaseRecovery {
         await _store.writeSessionToken(verified.sessionToken);
       }
 
-      await _iap.complete(txn);
+      final paymentReference = verified.paymentReference;
+      if (!IapProductCatalog.isSubscriptionProductId(txn.productId) &&
+          paymentReference != null &&
+          paymentReference.isNotEmpty) {
+        // This durable local transition happens before the store transaction is
+        // consumed/finished. A crash after verification therefore leaves a
+        // resumable paid job instead of silently discarding the portrait.
+        await _onConsumableVerified(
+          context.clientConversationRef,
+          paymentReference,
+        );
+      }
+
+      if (txn.isPendingCompletion) {
+        await _iap.complete(txn);
+      }
       await _pendingStore.remove(context.publicUuid);
     } catch (e) {
       // Left unfinished on purpose. The store replays it next launch, and the
@@ -109,6 +145,15 @@ class PurchaseRecovery {
       debugPrint('[IAP] recovery deferred for ${txn.productId}: $e');
     }
   }
+
+  static Future<void> _markPendingGenerationReady(
+    String conversationRef,
+    String paymentReference,
+  ) => StorageService.instance.updatePendingJob(
+    conversationRef,
+    paymentSessionId: paymentReference,
+    status: 'ready',
+  );
 
   void dispose() {
     _sub?.cancel();

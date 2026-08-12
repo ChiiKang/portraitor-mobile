@@ -14,8 +14,6 @@ class MockDio extends Mock {}
 class FakeApiService extends Fake implements ApiService {
   // Payment
 
-
-
   // Queue
   Future<Map<String, dynamic>> Function({
     required String paymentSessionId,
@@ -59,6 +57,7 @@ class FakeApiService extends Fake implements ApiService {
     String? leaseToken,
     String? dateRange,
     bool forceFallback,
+    required Map<String, dynamic> metadata,
   })?
   onStreamValidation;
 
@@ -171,6 +170,7 @@ class FakeApiService extends Fake implements ApiService {
     String? leaseToken,
     String? dateRange,
     bool forceFallback = false,
+    Map<String, dynamic> metadata = const {},
   }) {
     if (onStreamValidation != null) {
       return onStreamValidation!(
@@ -180,6 +180,7 @@ class FakeApiService extends Fake implements ApiService {
         leaseToken: leaseToken,
         dateRange: dateRange,
         forceFallback: forceFallback,
+        metadata: metadata,
       );
     }
     return Stream.fromIterable([
@@ -244,4 +245,3 @@ class FakeApiService extends Fake implements ApiService {
     return Future.value({'status': 'ok'});
   }
 }
-

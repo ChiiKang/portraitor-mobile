@@ -8,6 +8,7 @@ import 'package:portraitor_mobile/app/app.dart';
 import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/features/import/application/import_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/purchase_recovery.dart';
+import 'package:portraitor_mobile/features/processing/application/pending_job_recovery_provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 /// Holds the initial shared files detected at cold start (before widget tree).
@@ -55,9 +56,16 @@ void main() async {
   // delay the first frame.
   if (Platform.isIOS || Platform.isAndroid) {
     unawaited(
-      container.read(purchaseRecoveryProvider).runAtLaunch().catchError((e) {
-        debugPrint('[IAP] launch recovery failed: $e');
-      }),
+      container
+          .read(purchaseRecoveryProvider)
+          .runAtLaunch()
+          .then(
+            (_) =>
+                container.read(pendingJobRecoveryProvider.notifier).refresh(),
+          )
+          .catchError((e) {
+            debugPrint('[IAP] launch recovery failed: $e');
+          }),
     );
   }
 
