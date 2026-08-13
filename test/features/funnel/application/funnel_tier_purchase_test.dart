@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:portraitor_mobile/core/config/build_flags.dart';
 import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 
@@ -11,7 +12,8 @@ void main() {
     passPortraitsPerMonth: 12,
   );
 
-  // Run this suite in demo mode with --dart-define=DEMO_IAP=true.
+  // Run this suite in demo mode with --dart-define=DEMO_IAP=true, and in
+  // tester mode with --dart-define=FAKE_BILLING=true.
   group('demo IAP purchase gate', () {
     test('every one-off bundle can open the purchase sheet', () {
       if (!kDemoIapPurchase) return;
@@ -21,16 +23,25 @@ void main() {
       expect(FunnelTier.family.canPurchase, isTrue);
     });
 
-    test(
-      'Pass stays gated in demo - it grants quota, it does not generate',
-      () {
-        if (!kDemoIapPurchase) return;
+    test('Pass stays gated in DEMO_IAP - there is no server to mint one', () {
+      if (!kDemoIapPurchase) return;
 
-        expect(FunnelTier.pass.canPurchase, isFalse);
-      },
-    );
+      // DEMO_IAP verifies against a local stand-in and generates from a
+      // bundled sample, so a Pass bought here would be a code that unlocks
+      // nothing. FAKE_BILLING is the build that can offer it truthfully.
+      expect(FunnelTier.pass.canPurchase, isFalse);
+    });
 
-    test('real StoreKit mode ships all four products', () {
+    test('FAKE_BILLING sells the Pass, because the server really mints it', () {
+      if (!kFakeBilling || kDemoIapPurchase) return;
+
+      // A simulated subscription is verified by the real backend, which grants
+      // a real Pass. Hiding the tier would leave the Pass funnel untestable on
+      // the only build that can test it.
+      expect(FunnelTier.pass.canPurchase, isTrue);
+    });
+
+    test('every build but DEMO_IAP ships all four products', () {
       if (kDemoIapPurchase) return;
 
       // isPayableInV1 is gone: V1 ships every product, so a "you only" gate

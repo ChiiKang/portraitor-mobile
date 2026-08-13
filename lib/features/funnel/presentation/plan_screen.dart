@@ -75,8 +75,10 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
           ref.read(iapProvider.notifier).loadPrices();
           return;
         }
-        // The demo cannot simulate a subscription, so the Pass still routes
-        // to a notice there. With real store billing it is a first-class product.
+        // Only the backend-free demo still routes the Pass to a notice. A
+        // tester build verifies its simulated subscription against the real
+        // server and gets a real Pass, so there it is a first-class product
+        // exactly as it is under real store billing.
         if (_passOpen && !FunnelTier.pass.canPurchase) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(

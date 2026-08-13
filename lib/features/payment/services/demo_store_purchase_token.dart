@@ -1,32 +1,35 @@
 import 'dart:convert';
 import 'dart:math';
 
-/// The purchase token a simulated Google Play purchase sends to the backend.
+/// The purchase proof a simulated store purchase sends to the backend.
 ///
-/// It exists because there is no paid Play Console account yet, so a tester
-/// build has no real purchase token to present. Rather than route the tester
-/// around billing entirely, the simulated purchase presents this token to the
-/// same `/api/google/purchase/verify.php` a real purchase uses, and the backend
-/// swaps only its call to Google for a test double. Everything downstream -
+/// It exists because there is no paid Play Console or App Store Connect
+/// catalog yet, so a tester build has no real purchase token to present.
+/// Rather than route the tester around billing entirely, the simulated
+/// purchase presents this token to the same `/api/google/purchase/verify.php`
+/// or `/api/apple/purchase/verify.php` a real purchase uses - as
+/// `purchase_token` for Google and as `jws` for Apple - and the backend swaps
+/// only its call to the store for a test double. Everything downstream -
 /// product catalog, account-token match, the `authorized` payment row - is the
 /// production path, so a tester build cannot pass while the real rail is broken.
 ///
 /// The encoding mirrors `DemoGooglePlayApi::encodeToken()` in the backend,
-/// which is the only thing that reads it: the prefix, then base64url of the
-/// claims with `=` padding stripped. Both details matter. PHP's `base64_decode`
-/// is called in strict mode there, and the alphabet is swapped back before
-/// decoding, so a padded or standard-alphabet token decodes to nothing and the
-/// purchase fails against the real backend only - never in a unit test. That is
-/// why the exact byte shape is asserted rather than assumed.
+/// which is the only thing that reads it, and the Apple demo rail decodes the
+/// same envelope: the prefix, then base64url of the claims with `=` padding
+/// stripped. Both details matter. PHP's `base64_decode` is called in strict
+/// mode there, and the alphabet is swapped back before decoding, so a padded or
+/// standard-alphabet token decodes to nothing and the purchase fails against
+/// the real backend only - never in a unit test. That is why the exact byte
+/// shape is asserted rather than assumed.
 ///
-/// The claims are deliberately unsigned. A key shipped inside an APK is
+/// The claims are deliberately unsigned. A key shipped inside an APK or IPA is
 /// extractable, so signing here would be obscurity rather than protection. The
-/// backend gates demo grants on its own `GOOGLE_PLAY_DEMO_GRANTS` environment
-/// flag, which production never sets, and refuses them outright in production.
-class DemoGooglePurchaseToken {
-  const DemoGooglePurchaseToken._();
+/// backend gates demo grants on its own `STORE_DEMO_GRANTS` environment flag,
+/// which production never sets, and refuses them outright in production.
+class DemoStorePurchaseToken {
+  const DemoStorePurchaseToken._();
 
-  /// Marks a token as demo-issued. A real Play token never starts with this.
+  /// Marks a token as demo-issued. No real store proof starts with this.
   static const String prefix = 'demo.v1.';
 
   /// Encode the claims the backend decodes.
@@ -38,13 +41,13 @@ class DemoGooglePurchaseToken {
   ///
   /// [nonce] is what makes one purchase distinguishable from the next, and it
   /// is required rather than optional because omitting it is silently wrong.
-  /// The backend ignores the claim when decoding, but it derives the Play order
-  /// id from a hash of the WHOLE token, and that order id becomes
+  /// The backend ignores the claim when decoding, but it derives the store
+  /// order id from a hash of the WHOLE token, and that order id becomes
   /// `provider_transaction_id`. Without a nonce, a second purchase of the same
   /// tier by the same device encodes byte-identically, so the backend recognises
   /// it as a replay of the first, returns the original credit, and the buyer
-  /// gets no second portrait. A real Play purchase token is unique per purchase;
-  /// this has to be too.
+  /// gets no second portrait. A real store purchase token is unique per
+  /// purchase; this has to be too.
   ///
   /// The nonce must be generated ONCE per purchase and then reused for every
   /// verification attempt of that purchase. That is what keeps a retry after a

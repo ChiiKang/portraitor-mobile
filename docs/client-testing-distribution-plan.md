@@ -414,7 +414,7 @@ It is auto-generated, so it should be regenerated or dropped through claude-mem 
 ## Android, can start now
 
 - [x] Cross the two halves of the demo purchase in `iapServiceProvider` (Step 0)
-- [x] Hide the Pass tier for simulated-store builds
+- [x] ~~Hide the Pass tier for simulated-store builds~~ reversed: a `FAKE_BILLING` build now sells all four products, because its simulated subscription is verified by the real backend and mints a real Pass. Only `DEMO_IAP`, which has no backend at all, still hides it
 - [x] Add `tool/build_tester_apk.sh` and the `build-apk` skill so the build is one repeatable command
 - [x] Build the profile APK and verify it installs and launches on a device
 - [x] Move the tester rail off mock Stripe and onto the real Google verify endpoint, and delete `MockStripeBillingApi`

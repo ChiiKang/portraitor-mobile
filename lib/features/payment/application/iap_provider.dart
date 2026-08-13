@@ -62,12 +62,12 @@ class IapState {
 final iapServiceProvider = Provider<IapService>((ref) {
   // Both demo paths simulate the store sheet. They differ only in what happens
   // afterwards: [kDemoIapPurchase] keeps everything local, while [kFakeBilling]
-  // sends the simulated purchase's demo token to the real Google verify
-  // endpoint, so a genuine payment row exists and the queue admits a real
-  // generation run. A tester build has no store catalog to query, so a live
-  // store service would fail at loadProducts long before either path could be
-  // exercised.
-  if (kDemoIapPurchase || kFakeBilling) {
+  // sends the simulated purchase's demo token to the real verify endpoint for
+  // whichever store the device belongs to, so a genuine payment row exists and
+  // the queue admits a real generation run. A tester build has no store catalog
+  // to query, so a live store service would fail at loadProducts long before
+  // either path could be exercised.
+  if (kSimulatedStore) {
     return FakeIapService(
       provider:
           defaultTargetPlatform == TargetPlatform.android

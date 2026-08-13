@@ -87,7 +87,7 @@ void main() {
           const IapTransaction(
             provider: StoreProvider.apple,
             productId: IapProductCatalog.passMonthly,
-            serverVerificationData: 'signed-restored-subscription',
+            serverVerificationData: 'store-jws-restored-subscription',
             accountToken: 'uuid-restored',
             status: IapTransactionStatus.restored,
             isPendingCompletion: false,

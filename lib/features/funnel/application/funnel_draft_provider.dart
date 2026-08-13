@@ -112,13 +112,19 @@ extension FunnelTierX on FunnelTier {
 
   /// Whether the pay CTA may start a purchase.
   ///
-  /// Neither demo path can simulate a subscription: it grants monthly quota
-  /// rather than a portrait, so a faked one cannot do anything truthful, and a
-  /// simulated Pass would mint a credential that outlives the demo. The backend
-  /// refuses demo subscriptions for the same reason, so this gate keeps the app
-  /// from offering a purchase the server would only reject. Real store billing
-  /// ships all four products.
-  bool get canPurchase => kSimulatedStore ? isOneOff : true;
+  /// Real store billing ships all four products, and so does [kFakeBilling]:
+  /// its simulated subscription is verified by the real backend, which mints a
+  /// real Pass - real code, real monthly quota, emailed - so the tester walks
+  /// the Pass funnel end to end rather than a mock of it. That is deliberate,
+  /// and it is safe because the grant is gated server-side on an environment
+  /// flag production never sets.
+  ///
+  /// [kDemoIapPurchase] is the exception, because it is the build with no
+  /// backend at all. Its purchase resolves against a local stand-in and its
+  /// generation returns a bundled sample, so a Pass bought there would hand
+  /// back a code that unlocks nothing and a quota nobody is tracking. Gating it
+  /// is the honest answer, not a limitation waiting to be lifted.
+  bool get canPurchase => kDemoIapPurchase ? isOneOff : true;
 
   /// Demo purchase-sheet title - prototype `"Portraitor · " + meta.label`.
   String get iapProductTitle =>

@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
-import 'package:portraitor_mobile/features/payment/services/demo_google_purchase_token.dart';
+import 'package:portraitor_mobile/features/payment/services/demo_store_purchase_token.dart';
 
 /// The backend decodes this token with PHP, so the assertions here are exact
 /// strings rather than shapes. A padding or alphabet slip still produces a
@@ -16,7 +16,7 @@ import 'package:portraitor_mobile/features/payment/services/demo_google_purchase
 const _uuid = '6c1f7c0a-9d2e-4a3b-8f5d-2e7b1c9a4d60';
 
 /// Fixed so the encodings below are reproducible. Real purchases use
-/// [DemoGooglePurchaseToken.newNonce].
+/// [DemoStorePurchaseToken.newNonce].
 const _nonce = 'a1b2c3d4e5f60718293a4b5c';
 
 const _phpEncoded = <String, String>{
@@ -33,8 +33,8 @@ const _phpEncoded = <String, String>{
 /// Decode the way the backend does: swap the alphabet back, restore padding,
 /// then parse. A token this cannot read is a token the server cannot read.
 Map<String, dynamic> decodeClaims(String token) {
-  expect(token, startsWith(DemoGooglePurchaseToken.prefix));
-  final segment = token.substring(DemoGooglePurchaseToken.prefix.length);
+  expect(token, startsWith(DemoStorePurchaseToken.prefix));
+  final segment = token.substring(DemoStorePurchaseToken.prefix.length);
   final padded = segment.padRight(
     segment.length + (4 - segment.length % 4) % 4,
     '=',
@@ -44,11 +44,11 @@ Map<String, dynamic> decodeClaims(String token) {
 }
 
 void main() {
-  group('DemoGooglePurchaseToken', () {
+  group('DemoStorePurchaseToken', () {
     test('matches the backend encoder byte for byte for every product', () {
       for (final entry in _phpEncoded.entries) {
         expect(
-          DemoGooglePurchaseToken.encode(
+          DemoStorePurchaseToken.encode(
             productId: entry.key,
             publicUuid: _uuid,
             nonce: _nonce,
@@ -67,12 +67,12 @@ void main() {
     });
 
     test('strips base64 padding the backend would reject', () {
-      final token = DemoGooglePurchaseToken.encode(
+      final token = DemoStorePurchaseToken.encode(
         productId: 'com.portraitor.portrait.you',
         publicUuid: _uuid,
         nonce: _nonce,
       );
-      final segment = token.substring(DemoGooglePurchaseToken.prefix.length);
+      final segment = token.substring(DemoStorePurchaseToken.prefix.length);
 
       expect(segment, isNot(contains('=')));
     });
@@ -82,7 +82,7 @@ void main() {
       // Every real product id and UUID happens to avoid them, so without this
       // case an alphabet mistake would be invisible until the backend refused
       // a token on a device.
-      final token = DemoGooglePurchaseToken.encode(
+      final token = DemoStorePurchaseToken.encode(
         productId: 'com.portraitor.portrait.you',
         publicUuid: '?>?>',
         nonce: _nonce,
@@ -100,7 +100,7 @@ void main() {
 
     test('round-trips to the claims the backend reads', () {
       final claims = decodeClaims(
-        DemoGooglePurchaseToken.encode(
+        DemoStorePurchaseToken.encode(
           productId: 'com.portraitor.portrait.family',
           publicUuid: _uuid,
           nonce: _nonce,
@@ -116,8 +116,8 @@ void main() {
 
     test('recognises its own tokens and nothing else', () {
       expect(
-        DemoGooglePurchaseToken.isDemoToken(
-          DemoGooglePurchaseToken.encode(
+        DemoStorePurchaseToken.isDemoToken(
+          DemoStorePurchaseToken.encode(
             productId: 'com.portraitor.portrait.you',
             publicUuid: _uuid,
             nonce: _nonce,
@@ -126,7 +126,7 @@ void main() {
         isTrue,
       );
       expect(
-        DemoGooglePurchaseToken.isDemoToken('a-real-play-purchase-token'),
+        DemoStorePurchaseToken.isDemoToken('a-real-play-purchase-token'),
         isFalse,
         reason:
             'the prefix is how the backend refuses to demo-verify a genuine '
@@ -143,15 +143,15 @@ void main() {
     // exactly that path.
     group('purchase identity', () {
       test('a nonce makes two purchases of the same tier distinguishable', () {
-        final first = DemoGooglePurchaseToken.encode(
+        final first = DemoStorePurchaseToken.encode(
           productId: 'com.portraitor.portrait.you',
           publicUuid: _uuid,
-          nonce: DemoGooglePurchaseToken.newNonce(),
+          nonce: DemoStorePurchaseToken.newNonce(),
         );
-        final second = DemoGooglePurchaseToken.encode(
+        final second = DemoStorePurchaseToken.encode(
           productId: 'com.portraitor.portrait.you',
           publicUuid: _uuid,
-          nonce: DemoGooglePurchaseToken.newNonce(),
+          nonce: DemoStorePurchaseToken.newNonce(),
         );
 
         expect(
@@ -164,7 +164,7 @@ void main() {
 
       test('the same nonce reproduces the same token, so a retry is a retry',
           () {
-        String encode() => DemoGooglePurchaseToken.encode(
+        String encode() => DemoStorePurchaseToken.encode(
               productId: 'com.portraitor.portrait.you',
               publicUuid: _uuid,
               nonce: _nonce,
@@ -182,7 +182,7 @@ void main() {
       test('newNonce does not repeat', () {
         final nonces = List.generate(
           500,
-          (_) => DemoGooglePurchaseToken.newNonce(),
+          (_) => DemoStorePurchaseToken.newNonce(),
         );
 
         expect(nonces.toSet().length, nonces.length);

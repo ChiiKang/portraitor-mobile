@@ -19,8 +19,8 @@ import 'package:portraitor_mobile/shared/widgets/funnel_chrome.dart';
 /// Step 4/4 — Confirm & pay.
 /// Real builds use the platform-selected native store for every product.
 /// Verified consumables continue to `/processing`; a verified Pass first shows
-/// its save-your-code screen. Demo builds gate Pass purchases - see
-/// [kDemoIapPurchase].
+/// its save-your-code screen. Only the backend-free demo gates Pass purchases -
+/// see [kDemoIapPurchase].
 class ConfirmPayScreen extends ConsumerStatefulWidget {
   const ConfirmPayScreen({super.key});
 

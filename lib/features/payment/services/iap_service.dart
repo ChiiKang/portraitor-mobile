@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/domain/store_provider.dart';
-import 'package:portraitor_mobile/features/payment/services/demo_google_purchase_token.dart';
+import 'package:portraitor_mobile/features/payment/services/demo_store_purchase_token.dart';
 
 export 'app_store_iap_service.dart';
 export 'google_play_iap_service.dart';
@@ -121,26 +121,25 @@ class FakeIapService implements IapService {
 
   /// The proof the backend will actually be asked to verify.
   ///
-  /// Google gets a real demo purchase token, because a simulated Android
-  /// purchase is verified by the live `/api/google/purchase/verify.php` and an
-  /// opaque marker would be rejected there. Apple has no demo rail - that waits
-  /// on the paid developer account - so its proof stays an opaque marker.
+  /// Both stores get the same `demo.v1.` envelope, because a simulated purchase
+  /// is verified by the live `/api/{apple,google}/purchase/verify.php` and an
+  /// opaque marker is rejected there. Only the field name differs, and
+  /// `HttpBillingApi.verifyPurchase` picks it from the provider: `jws` for
+  /// Apple, `purchase_token` for Google.
   ///
   /// A fresh nonce per call is what makes the second purchase a second
-  /// purchase. The backend hashes the whole token into the Play order id it
+  /// purchase. The backend hashes the whole token into the store order id it
   /// stores as `provider_transaction_id`, so two byte-identical tokens are
   /// indistinguishable from one purchase verified twice: the buyer is charged
   /// again and handed back the first credit, already spent. Called once per
   /// buy(), and the result is carried on the transaction, so re-verifying the
   /// same purchase after a crash still presents the same token.
   String _proofFor(String productId, String appAccountToken) =>
-      provider == StoreProvider.google
-          ? DemoGooglePurchaseToken.encode(
-            productId: productId,
-            publicUuid: appAccountToken,
-            nonce: DemoGooglePurchaseToken.newNonce(),
-          )
-          : 'signed-$productId-$appAccountToken-${DemoGooglePurchaseToken.newNonce()}';
+      DemoStorePurchaseToken.encode(
+        productId: productId,
+        publicUuid: appAccountToken,
+        nonce: DemoStorePurchaseToken.newNonce(),
+      );
 
   @override
   Future<void> complete(IapTransaction transaction) async {

@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/features/payment/domain/store_provider.dart';
+import 'package:portraitor_mobile/features/payment/services/demo_store_purchase_token.dart';
 import 'package:portraitor_mobile/features/payment/services/iap_service.dart';
 
 void main() {
@@ -60,7 +62,7 @@ void main() {
       await sub.cancel();
     });
 
-    test('the appAccountToken travels into the signed proof', () async {
+    test('the appAccountToken travels into the proof', () async {
       final service = FakeIapService(products: const {'sku': r'$1'});
       await service.loadProducts({'sku'});
 
@@ -70,10 +72,25 @@ void main() {
         isConsumable: true,
       );
 
-      expect(
-        service.lastTransaction!.serverVerificationData,
-        contains('uuid-abc'),
-      );
+      // The uuid is inside the encoded claims rather than in the clear: the
+      // backend matches it against the request's own public_uuid, so a proof
+      // that lost it is a purchase that cannot be attributed.
+      final token = service.lastTransaction!.serverVerificationData;
+      final segment = token.substring(DemoStorePurchaseToken.prefix.length);
+      final claims =
+          jsonDecode(
+                utf8.decode(
+                  base64Url.decode(
+                    segment.padRight(
+                      segment.length + (4 - segment.length % 4) % 4,
+                      '=',
+                    ),
+                  ),
+                ),
+              )
+              as Map<String, dynamic>;
+
+      expect(claims['public_uuid'], 'uuid-abc');
       expect(service.lastTransaction!.accountToken, 'uuid-abc');
     });
 

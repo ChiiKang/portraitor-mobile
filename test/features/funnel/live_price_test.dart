@@ -36,7 +36,9 @@ void main() {
       expect(
         FunnelTier.pass.canPurchase,
         isFalse,
-        reason: 'the demo cannot simulate a subscription that grants quota',
+        reason:
+            'DEMO_IAP has no backend, so a Pass bought here would be a code '
+            'that unlocks nothing',
       );
     });
   });
