@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/purchase_recovery.dart';
 import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/domain/store_provider.dart';
@@ -25,15 +26,14 @@ PurchaseRecovery buildRecovery({
   FakeBillingApi? api,
   PassCredentialStore? store,
   PendingPurchaseStore? pendingStore,
-  Future<void> Function(String conversationRef, String paymentReference)?
-  onConsumableVerified,
+  ConsumableVerifiedCallback? onConsumableVerified,
 }) {
   return PurchaseRecovery(
     iap: iap,
     api: api ?? FakeBillingApi(),
     store: store ?? InMemoryPassCredentialStore(),
     pendingStore: pendingStore ?? InMemoryPendingPurchaseStore(),
-    onConsumableVerified: onConsumableVerified ?? (_, __) async {},
+    onConsumableVerified: onConsumableVerified ?? (_, __, ___) async {},
   );
 }
 
@@ -56,18 +56,27 @@ void main() {
         );
         String? readyConversation;
         String? readyPayment;
+        String? readyPublicUuid;
 
         await buildRecovery(
           iap: iap,
           pendingStore: pendingStore,
-          onConsumableVerified: (conversation, payment) async {
+          onConsumableVerified: (conversation, payment, publicUuid) async {
             readyConversation = conversation;
             readyPayment = payment;
+            readyPublicUuid = publicUuid;
           },
         ).runAtLaunch();
 
         expect(readyConversation, 'conv-original');
         expect(readyPayment, isNotEmpty);
+        expect(
+          readyPublicUuid,
+          'uuid-1',
+          reason:
+              'a recovered purchase has to carry the buyer forward too, or '
+              'cancelling its portrait cannot free it',
+        );
         expect(iap.finished, contains('sku'));
       },
     );
@@ -273,7 +282,7 @@ void main() {
       final recovery = buildRecovery(
         iap: iap,
         pendingStore: pendingStore,
-        onConsumableVerified: (_, __) => allowDurableWrite.future,
+        onConsumableVerified: (_, __, ___) => allowDurableWrite.future,
       );
       var completed = false;
 

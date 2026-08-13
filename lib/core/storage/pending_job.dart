@@ -1,5 +1,13 @@
 import 'dart:convert';
 
+/// Status of a row that holds a purchase and no portrait.
+///
+/// Cancelling a store-funded portrait frees the purchase rather than destroying
+/// it, and the freed purchase lives in `pending_jobs` because it needs exactly
+/// the durability an unfinished job needs. Recovery skips these rows: a credit
+/// is spent from the funnel, not resumed.
+const String pendingJobCreditStatus = 'credit';
+
 class PendingJob {
   const PendingJob({
     required this.id,
@@ -15,6 +23,7 @@ class PendingJob {
     this.targetName,
     this.dateRange,
     this.deliveryEmail = '',
+    this.publicUuid = '',
     this.status = 'processing',
     this.chunkingMode,
     this.tokenLimit,
@@ -40,6 +49,14 @@ class PendingJob {
   /// the run. A job resumed after an app kill has to carry the address it
   /// was bought with, or generation fails with "Payment email not found".
   final String deliveryEmail;
+
+  /// The correlation id the store purchase was made under.
+  ///
+  /// Empty for a Pass-funded or demo run, and for any row written before the
+  /// v8 column existed. Kept because freeing a purchase after the fact is the
+  /// one call that needs to name the buyer, and the purchase-time context is
+  /// discarded as soon as the store transaction is finished.
+  final String publicUuid;
   final String status;
   final int chunksCompleted;
   final int chunksTotal;
@@ -72,6 +89,7 @@ class PendingJob {
       'date_range': dateRange,
       'payment_session_id': paymentSessionId,
       'delivery_email': deliveryEmail,
+      'public_uuid': publicUuid,
       'status': status,
       'chunks_completed': chunksCompleted,
       'chunks_total': chunksTotal,
@@ -116,6 +134,7 @@ class PendingJob {
       // Null on rows written before the v7 column existed. Resume refuses
       // those loudly rather than generating a portrait nobody receives.
       deliveryEmail: (row['delivery_email'] as String?) ?? '',
+      publicUuid: (row['public_uuid'] as String?) ?? '',
       status: (row['status'] as String?) ?? 'processing',
       chunksCompleted: (row['chunks_completed'] as int?) ?? 0,
       chunksTotal: (row['chunks_total'] as int?) ?? 0,

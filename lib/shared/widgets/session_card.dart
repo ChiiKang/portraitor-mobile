@@ -11,12 +11,22 @@ class SessionCard extends StatelessWidget {
     required this.onTap,
     this.compact = false,
     this.onDelete,
+    this.onCancel,
+    this.onContinue,
   });
 
   final PortraitSession session;
   final VoidCallback onTap;
   final bool compact;
   final VoidCallback? onDelete;
+
+  /// Unfinished sessions only. Discards the portrait, keeping whatever paid
+  /// for it - see [cancelPendingJob].
+  final VoidCallback? onCancel;
+
+  /// Unfinished sessions only. Null when the job cannot be picked up again,
+  /// which leaves Cancel as the only way out of it.
+  final VoidCallback? onContinue;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +53,10 @@ class SessionCard extends StatelessWidget {
                     Row(
                       children: [
                         _BundleChip(label: session.bundle),
+                        if (session.isUnfinished) ...[
+                          const SizedBox(width: 6),
+                          const _UnfinishedChip(),
+                        ],
                         const Spacer(),
                         Text(
                           session.whenLabel,
@@ -107,7 +121,40 @@ class SessionCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (onDelete != null) ...[
+              if (onCancel != null || onContinue != null) ...[
+                const Divider(height: 1, color: Color(0x0F211A37)),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      if (onCancel != null)
+                        TextButton(
+                          key: const Key('session_card_cancel_button'),
+                          onPressed: onCancel,
+                          style: TextButton.styleFrom(
+                            foregroundColor: PortraitorTokens.error,
+                            minimumSize: const Size(0, 40),
+                          ),
+                          child: const Text('Cancel'),
+                        ),
+                      if (onContinue != null) ...[
+                        const SizedBox(width: 4),
+                        TextButton(
+                          key: const Key('session_card_continue_button'),
+                          onPressed: onContinue,
+                          style: TextButton.styleFrom(
+                            foregroundColor:
+                                PortraitorTokens.onboardingPrimaryDeep,
+                            minimumSize: const Size(0, 40),
+                          ),
+                          child: const Text('Continue'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ] else if (onDelete != null) ...[
                 const Divider(height: 1, color: Color(0x0F211A37)),
                 TextButton(
                   onPressed: onDelete,
@@ -173,6 +220,34 @@ class _BundleChip extends StatelessWidget {
           fontWeight: FontWeight.w700,
           letterSpacing: 0.04,
           color: PortraitorTokens.onboardingPrimaryDeep,
+        ),
+      ),
+    );
+  }
+}
+
+/// Marks a paid-for portrait that was never delivered, so it cannot be
+/// mistaken for a finished one sitting next to it in the same list.
+class _UnfinishedChip extends StatelessWidget {
+  const _UnfinishedChip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3EFE6),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0x33A17E26)),
+      ),
+      child: Text(
+        'Unfinished',
+        style: PortraitorTokens.labelSm.copyWith(
+          fontFamily: PortraitorTokens.fontBody,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.04,
+          color: const Color(0xFF8A6A1E),
         ),
       ),
     );

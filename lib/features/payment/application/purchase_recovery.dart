@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
 import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/services/billing_api.dart';
@@ -27,21 +26,19 @@ class PurchaseRecovery {
     required BillingApi api,
     required PassCredentialStore store,
     required PendingPurchaseStore pendingStore,
-    Future<void> Function(String conversationRef, String paymentReference)?
-    onConsumableVerified,
+    ConsumableVerifiedCallback? onConsumableVerified,
   }) : _iap = iap,
        _api = api,
        _store = store,
        _pendingStore = pendingStore,
        _onConsumableVerified =
-           onConsumableVerified ?? _markPendingGenerationReady;
+           onConsumableVerified ?? markPendingGenerationReady;
 
   final IapService _iap;
   final BillingApi _api;
   final PassCredentialStore _store;
   final PendingPurchaseStore _pendingStore;
-  final Future<void> Function(String conversationRef, String paymentReference)
-  _onConsumableVerified;
+  final ConsumableVerifiedCallback _onConsumableVerified;
   StreamSubscription<IapTransaction>? _sub;
   final Set<Future<void>> _reconciliations = {};
 
@@ -162,6 +159,7 @@ class PurchaseRecovery {
         await _onConsumableVerified(
           context.clientConversationRef,
           paymentReference,
+          context.publicUuid,
         );
       }
 
@@ -175,15 +173,6 @@ class PurchaseRecovery {
       debugPrint('[IAP] recovery deferred for ${txn.productId}: $e');
     }
   }
-
-  static Future<void> _markPendingGenerationReady(
-    String conversationRef,
-    String paymentReference,
-  ) => StorageService.instance.updatePendingJob(
-    conversationRef,
-    paymentSessionId: paymentReference,
-    status: 'ready',
-  );
 
   void dispose() {
     _sub?.cancel();

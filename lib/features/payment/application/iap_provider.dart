@@ -121,22 +121,20 @@ class IapNotifier extends StateNotifier<IapState> {
     required BillingApi api,
     required PassCredentialStore store,
     PendingPurchaseStore? pendingStore,
-    Future<void> Function(String conversationRef, String paymentReference)?
-    onConsumableVerified,
+    ConsumableVerifiedCallback? onConsumableVerified,
   }) : _iap = iap,
        _api = api,
        _store = store,
        _pendingStore = pendingStore ?? InMemoryPendingPurchaseStore(),
        _onConsumableVerified =
-           onConsumableVerified ?? _markPendingGenerationReady,
+           onConsumableVerified ?? markPendingGenerationReady,
        super(const IapState());
 
   final IapService _iap;
   final BillingApi _api;
   final PassCredentialStore _store;
   final PendingPurchaseStore _pendingStore;
-  final Future<void> Function(String conversationRef, String paymentReference)
-  _onConsumableVerified;
+  final ConsumableVerifiedCallback _onConsumableVerified;
   bool _purchaseInFlight = false;
 
   Future<void> loadPrices() async {
@@ -324,7 +322,11 @@ class IapNotifier extends StateNotifier<IapState> {
         // Make the generation request durable before consume/finish. Otherwise
         // a crash after verification can leave a charged consumable with no
         // replayable store transaction and no resumable local job.
-        await _onConsumableVerified(clientConversationRef, paymentReference);
+        await _onConsumableVerified(
+          clientConversationRef,
+          paymentReference,
+          prepared.publicUuid,
+        );
       }
 
       // Durable everywhere it matters. Only now may the store forget it.
@@ -380,12 +382,27 @@ class IapNotifier extends StateNotifier<IapState> {
     }
   }
 
-  static Future<void> _markPendingGenerationReady(
-    String conversationRef,
-    String paymentReference,
-  ) => StorageService.instance.updatePendingJob(
-    conversationRef,
-    paymentSessionId: paymentReference,
-    status: 'ready',
-  );
 }
+
+/// Makes a verified consumable's generation request durable.
+///
+/// [publicUuid] rides along because cancelling the portrait later has to name
+/// the buyer to free the purchase, and nothing else on the device remembers it
+/// once the store transaction is finished.
+typedef ConsumableVerifiedCallback =
+    Future<void> Function(
+      String conversationRef,
+      String paymentReference,
+      String publicUuid,
+    );
+
+Future<void> markPendingGenerationReady(
+  String conversationRef,
+  String paymentReference,
+  String publicUuid,
+) => StorageService.instance.updatePendingJob(
+  conversationRef,
+  paymentSessionId: paymentReference,
+  publicUuid: publicUuid,
+  status: 'ready',
+);

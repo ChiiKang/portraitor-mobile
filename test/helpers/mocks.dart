@@ -76,6 +76,18 @@ class FakeApiService extends Fake implements ApiService {
   // Job status
   Future<Map<String, dynamic>> Function(String)? onGetJobStatus;
 
+  // Store purchases
+  Future<Map<String, dynamic>> Function({
+    required String paymentReference,
+    required String clientConversationRef,
+    required String publicUuid,
+  })?
+  onReassignStorePurchase;
+
+  /// What the last reassign carried. The server matches all three, so a client
+  /// that stops sending one has to fail a test rather than a customer's money.
+  Map<String, String>? lastReassign;
+
   @override
   Future<Map<String, dynamic>> enqueue({
     required String paymentSessionId,
@@ -239,6 +251,27 @@ class FakeApiService extends Fake implements ApiService {
   Future<Map<String, dynamic>> getJobStatus(String clientConversationRef) {
     if (onGetJobStatus != null) return onGetJobStatus!(clientConversationRef);
     return Future.value({'status': 'completed'});
+  }
+
+  @override
+  Future<Map<String, dynamic>> reassignStorePurchase({
+    required String paymentReference,
+    required String clientConversationRef,
+    required String publicUuid,
+  }) {
+    lastReassign = {
+      'payment_reference': paymentReference,
+      'client_conversation_ref': clientConversationRef,
+      'public_uuid': publicUuid,
+    };
+    if (onReassignStorePurchase != null) {
+      return onReassignStorePurchase!(
+        paymentReference: paymentReference,
+        clientConversationRef: clientConversationRef,
+        publicUuid: publicUuid,
+      );
+    }
+    return Future.value({'status': 'ok'});
   }
 
   @override

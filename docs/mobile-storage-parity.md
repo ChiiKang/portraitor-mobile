@@ -72,7 +72,8 @@ This is where the kill-and-resume feature lives. Every column maps to web behavi
 | `date_range` | implicit | Rolling-final envelope uses this; preserved across sessions. |
 | `payment_session_id` | `payment_session_id` | Reused on resume so the same Stripe authorization captures. No double charge. |
 | `delivery_email` | — (mobile-only) | Web resolves the recipient from the Stripe customer on the payments row. An Apple/Google purchase writes a payments row with no Stripe customer, so both generation endpoints read `metadata.delivery_email` off the request instead and refuse the run without it. A resumed job rebuilds those requests, so the address the buyer typed has to survive the app kill here. |
-| `status` | (derived) | `processing` / `failed` / `stale`. Web infers from row presence; mobile stores explicitly so recovery UI can distinguish stale legacy rows from genuinely-resumable ones. |
+| `public_uuid` | — (mobile-only) | The correlation id the app handed the store as `appAccountToken` for this purchase. Cancelling a store-funded portrait frees the purchase rather than destroying it, and `/api/store/purchase/reassign.php` answers a uuid mismatch with the same 404 as an unknown reference. A purchase without a Pass session mints a fresh uuid per purchase and the purchase-time context is deleted once the store transaction is finished, so this row is the only place it survives. |
+| `status` | (derived) | `processing` / `failed` / `stale` / `credit`. Web infers from row presence; mobile stores explicitly so recovery UI can distinguish stale legacy rows from genuinely-resumable ones. `credit` is a purchase freed by a cancel, carrying no portrait: recovery skips it and the funnel spends it. |
 | `chunks_completed` | `chunks_completed.length` | Integer count for the UI progress meter. |
 | `chunks_total` | `chunks_total` | Total chunks computed at start. |
 | `chunk_results` | `chunks_completed` (array) | JSON array of `{index, content}` — the actual data resume uses to skip completed chunks. Matches `storageManager.js:539`. |
@@ -116,6 +117,16 @@ Migration is idempotent — running `onUpgradeSchema` twice does not error (veri
 Adds `delivery_email` to `pending_jobs`, using the same additive `_addColumnIfMissing` mechanism.
 
 Rows written before v7 read back with an empty address. They are not marked `stale`, because the money and the conversation text are both still there; instead `resumeProcessing` refuses them with "Pending portrait is missing its delivery email" before taking a queue slot. Running one anyway would burn the paid slot and finish with the portrait emailed to nobody.
+
+## Migration (v7 → v8)
+
+Adds `public_uuid` to `pending_jobs`, using the same additive `_addColumnIfMissing` mechanism.
+
+Rows written before v8 read back with an empty uuid, which means their purchase can never be reassigned: the server cannot match a buyer it has no id for.
+Cancel refuses to call the endpoint for those rows and keeps the portrait instead of deleting it, because a stranded purchase the customer can still see is recoverable by support and a deleted one is not.
+
+`savePendingJobRecord` preserves a stored uuid when the incoming record carries an empty one.
+Only the purchase knows this value; every later write of the row comes from generation, which does not, and a replacing insert would otherwise erase it.
 
 ## Resume algorithm parity
 

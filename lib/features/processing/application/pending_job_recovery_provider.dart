@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import 'package:portraitor_mobile/core/api/api_service.dart';
 import 'package:portraitor_mobile/core/storage/pending_job.dart';
@@ -32,6 +33,72 @@ class RecoveryClassification {
   const RecoveryClassification({required this.job, required this.status});
   final PendingJob job;
   final RecoveryStatus status;
+
+  /// Only a job the user can actually pick up again earns a Continue button.
+  bool get canContinue => status == RecoveryStatus.resumable;
+
+  /// A deferred store purchase may still be approved, and the staged payload is
+  /// the only thing that could receive it. Everything else is the user's to
+  /// discard.
+  bool get canCancel => status != RecoveryStatus.storePending;
+}
+
+/// What paid for an unfinished job, which is what decides what Cancel may do.
+enum PendingJobFunding {
+  /// Nothing was charged, so discarding costs the customer nothing.
+  unfunded,
+
+  /// A Pass attempt. The server spends one only on delivery and releases it on
+  /// failure, so discarding hands it back without any client-side arithmetic.
+  passGrant,
+
+  /// A platform store purchase, already charged. Apple and Google take the
+  /// money at confirmation, so discarding has to free the purchase first or the
+  /// customer pays twice for one portrait.
+  storePurchase,
+}
+
+/// Reads the funding off the payment reference the job carries.
+///
+/// Identified by elimination, mirroring exactly what the reassign endpoint
+/// refuses as `not_a_store_purchase`: an empty handle, a Pass grant, a demo
+/// reference minted locally, and the Stripe-era handles still sitting on old
+/// rows. None of those has a store purchase behind it to free.
+PendingJobFunding fundingFor(PendingJob job) {
+  final reference = job.paymentSessionId.trim();
+  if (reference.isEmpty) return PendingJobFunding.unfunded;
+  if (reference.startsWith('subgrant_')) return PendingJobFunding.passGrant;
+  for (final prefix in const ['demo_', 'demo-', 'cs_', 'pi_', 'mock_pi_']) {
+    if (reference.startsWith(prefix)) return PendingJobFunding.unfunded;
+  }
+  return PendingJobFunding.storePurchase;
+}
+
+/// What Cancel managed to do, so the UI can say something true about it.
+class CancelOutcome {
+  const CancelOutcome.discarded({
+    required this.funding,
+    this.purchaseKept = false,
+    this.note,
+  }) : error = null;
+
+  const CancelOutcome.failed({required this.funding, required this.error})
+    : purchaseKept = false,
+      note = null;
+
+  final PendingJobFunding funding;
+
+  /// A store purchase survived the cancel and can fund another portrait.
+  final bool purchaseKept;
+
+  /// Why the job was kept. Non-null only when nothing was discarded.
+  final String? error;
+
+  /// Replaces the default confirmation when the discard needs explaining, as
+  /// when the server reports the portrait was already delivered.
+  final String? note;
+
+  bool get succeeded => error == null;
 }
 
 class PendingJobRecoveryState {
@@ -60,9 +127,10 @@ class PendingJobRecoveryState {
     if (classifications.isEmpty) return null;
     // serverCompleted entries are auto-deleted in refresh() so they should
     // never appear here; defensively filter them out anyway.
-    final candidates = classifications
-        .where((c) => c.status != RecoveryStatus.serverCompleted)
-        .toList();
+    final candidates =
+        classifications
+            .where((c) => c.status != RecoveryStatus.serverCompleted)
+            .toList();
     if (candidates.isEmpty) return null;
     candidates.sort((a, b) {
       final priorityCompare = _priority(
@@ -110,6 +178,9 @@ class PendingJobRecoveryNotifier
     final classifications = <RecoveryClassification>[];
 
     for (final job in localJobs) {
+      // A credit is a purchase with no portrait attached. It is spent from the
+      // funnel, never resumed, so it must not read as unfinished work.
+      if (job.status == pendingJobCreditStatus) continue;
       if (job.status == 'awaiting_purchase') {
         classifications.add(
           RecoveryClassification(job: job, status: RecoveryStatus.storePending),
@@ -196,46 +267,179 @@ class PendingJobRecoveryNotifier
     );
   }
 
-  /// Dismiss a pending job from the current UI.
+  /// Discard an unfinished portrait for good.
   ///
-  /// A non-empty payment reference means a platform store already charged the
-  /// customer. Such a job stays durable and resumable; deleting it would throw
-  /// away paid value. Only legacy rows with no payment handle are safe to clear.
-  Future<void> cancel(PendingJob job) async {
-    if (job.status == 'awaiting_purchase') {
-      dropClassification(job.id);
-      return;
-    }
+  /// There is no authorization hold to void: Apple and Google take the money at
+  /// confirmation, so by the time a portrait is unfinished it is already paid
+  /// for. What that money buys is A portrait rather than one attempt at one, so
+  /// a store-funded job frees its purchase onto a fresh conversation before the
+  /// job goes. If that call fails the job stays exactly where it was, because
+  /// deleting it is the only outcome here that actually costs the customer.
+  Future<CancelOutcome> cancelJob(PendingJob job) async {
+    final funding = fundingFor(job);
+
     // Best-effort queue release. The job's in-memory lease died with the app;
     // a fresh release call without lease_token is still useful because the
     // backend can clean up the slot keyed by payment_session_id.
-    try {
-      await _api.releaseQueue(
-        clientConversationRef: job.clientConversationRef,
-        paymentSessionId: job.paymentSessionId,
-      );
-    } catch (e) {
-      debugPrint('[Recovery] queue release failed (ignored): $e');
-    }
-
-    // No payment cancel: the platform store charges at purchase, so there is no
-    // authorization hold to release. Abandoning a job forfeits the generation,
-    // not the money - a refund belongs to the originating store, not us.
-
     if (job.paymentSessionId.trim().isNotEmpty) {
-      await _storage.markPendingJobStatus(job.id, 'ready');
-    } else {
-      await _storage.deletePendingJob(job.id);
-
-      // Legacy placeholders have no recoverable purchase and can be removed.
-      final conv = await _storage.getConversationById(job.id);
-      if (conv != null && (conv['status'] as String?) == 'processing') {
-        await _storage.deleteConversation(job.id);
+      try {
+        await _api.releaseQueue(
+          clientConversationRef: job.clientConversationRef,
+          paymentSessionId: job.paymentSessionId,
+        );
+      } catch (e) {
+        debugPrint('[Recovery] queue release failed (ignored): $e');
       }
     }
 
+    if (funding == PendingJobFunding.storePurchase) {
+      // The server answers a uuid mismatch with the same 404 as an unknown
+      // reference, so sending an empty one would only turn a knowable problem
+      // into an unexplainable one. Purchases made before the uuid was stored
+      // land here, and they are the first thing anyone testing this will hit.
+      if (job.publicUuid.trim().isEmpty) {
+        return const CancelOutcome.failed(
+          funding: PendingJobFunding.storePurchase,
+          error:
+              'This purchase was made before the app could move it, so the '
+              'portrait was kept. Nothing was lost - contact support and we '
+              'will move it for you.',
+        );
+      }
+
+      final freedRef = _newConversationRef();
+      try {
+        // 200 is success even when the body says `reassigned: false`: that is
+        // what a retry against an already-moved credit looks like.
+        await _api.reassignStorePurchase(
+          paymentReference: job.paymentSessionId,
+          clientConversationRef: freedRef,
+          publicUuid: job.publicUuid,
+        );
+      } on ApiException catch (e) {
+        debugPrint('[Recovery] purchase reassign refused (${e.code}): $e');
+        final resolution = _resolveReassignFailure(e);
+        if (resolution.error != null) return resolution;
+        // The server says there is no store purchase left to protect, so the
+        // portrait can go without one being freed.
+        await _discard(job);
+        dropClassification(job.id);
+        return resolution;
+      } catch (e) {
+        debugPrint('[Recovery] purchase reassign failed: $e');
+        return const CancelOutcome.failed(
+          funding: PendingJobFunding.storePurchase,
+          error: _retryLaterMessage,
+        );
+      }
+      // Written before the job goes, so a kill between the two leaves a
+      // duplicate the funnel can spend rather than a purchase with no handle.
+      await _storage.savePendingJobRecord(_creditFrom(job, freedRef));
+    }
+
+    await _discard(job);
     dropClassification(job.id);
+    return CancelOutcome.discarded(
+      funding: funding,
+      purchaseKept: funding == PendingJobFunding.storePurchase,
+    );
   }
+
+  /// Whether a refused reassign may still discard the portrait.
+  ///
+  /// Only two refusals mean the money is not at stake: the server saying no
+  /// store purchase is attached, and it saying the portrait was already
+  /// delivered. Everything else keeps the job, because a portrait the customer
+  /// can still see is recoverable and a deleted one is not.
+  CancelOutcome _resolveReassignFailure(ApiException e) {
+    switch (e.code) {
+      case 'not_a_store_purchase':
+        return const CancelOutcome.discarded(
+          funding: PendingJobFunding.storePurchase,
+        );
+      case 'portrait_already_delivered':
+        return const CancelOutcome.discarded(
+          funding: PendingJobFunding.storePurchase,
+          note:
+              'That portrait was already delivered. Check the email it was '
+              'sent to.',
+        );
+      case 'purchase_not_authorized':
+        // Transient: a delivery claim won a race, and the server restores the
+        // credit itself within about fifteen minutes.
+        return const CancelOutcome.failed(
+          funding: PendingJobFunding.storePurchase,
+          error:
+              'This purchase is busy finishing a portrait. Nothing was lost - '
+              'try again in a few minutes.',
+        );
+      case 'rate_limited':
+        return const CancelOutcome.failed(
+          funding: PendingJobFunding.storePurchase,
+          error: _retryLaterMessage,
+        );
+      case 'purchase_not_found':
+      case 'invalid_request':
+      case 'unsupported_provider':
+      case 'conversation_already_funded':
+        return const CancelOutcome.failed(
+          funding: PendingJobFunding.storePurchase,
+          error:
+              'We could not move this purchase, so the portrait was kept. '
+              'Nothing was lost - contact support and we will move it for you.',
+        );
+      default:
+        return const CancelOutcome.failed(
+          funding: PendingJobFunding.storePurchase,
+          error: _retryLaterMessage,
+        );
+    }
+  }
+
+  static const String _retryLaterMessage =
+      'Your purchase is safe. We could not move it right now - check your '
+      'connection and try again in a few minutes.';
+
+  Future<void> _discard(PendingJob job) async {
+    await _storage.deletePendingJob(job.id);
+
+    // A conversation row only exists once a portrait is delivered, so one
+    // sitting at 'processing' is a placeholder from an abandoned run.
+    final conv = await _storage.getConversationById(job.id);
+    if (conv != null && (conv['status'] as String?) == 'processing') {
+      await _storage.deleteConversation(job.id);
+    }
+  }
+
+  /// The purchase, kept without the portrait it was bought for.
+  ///
+  /// Same table as the job it replaces, because a freed purchase needs exactly
+  /// the durability an unfinished job needs.
+  PendingJob _creditFrom(PendingJob job, String freedRef) {
+    final now = DateTime.now().toUtc();
+    return PendingJob(
+      id: freedRef,
+      deviceId: job.deviceId,
+      clientConversationRef: freedRef,
+      inputText: '',
+      paymentSessionId: job.paymentSessionId,
+      publicUuid: job.publicUuid,
+      deliveryEmail: job.deliveryEmail,
+      status: pendingJobCreditStatus,
+      chunksCompleted: 0,
+      chunksTotal: 0,
+      chunkResults: const [],
+      tier: job.tier,
+      createdAt: now,
+      updatedAt: now,
+    );
+  }
+
+  /// Matches the id the funnel mints, so nothing downstream can tell a freed
+  /// conversation from a freshly started one.
+  String _newConversationRef() =>
+      'conv_${DateTime.now().millisecondsSinceEpoch}_'
+      '${const Uuid().v4().substring(0, 8)}';
 }
 
 enum _ProbeResult {

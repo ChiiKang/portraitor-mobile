@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/core/api/api_service.dart';
 import 'package:portraitor_mobile/core/storage/pending_job.dart';
 import 'package:portraitor_mobile/core/storage/storage_service.dart';
+import 'package:portraitor_mobile/features/payment/application/portrait_credit_provider.dart';
 import 'package:portraitor_mobile/features/processing/application/pending_job_recovery_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -61,6 +62,41 @@ PendingJob _legacyStaleJob({String id = 'conv_legacy'}) {
   );
 }
 
+/// A run funded by a Pass use. The grant token sits in the payment slot a
+/// store purchase would fill, which is what makes the prefix load-bearing.
+PendingJob _passFundedJob({String id = 'conv_pass'}) {
+  return PendingJob.fromDbMap({
+    ..._resumableJob(id: id).toDbMap(),
+    'payment_session_id': 'subgrant_abc123',
+  });
+}
+
+/// A run funded by a real store purchase, carrying the buyer's correlation id.
+PendingJob _storeFundedJob({String id = 'conv_store'}) {
+  return PendingJob.fromDbMap({
+    ..._resumableJob(id: id).toDbMap(),
+    'payment_session_id': 'apl_0123456789abcdef0123456789abcdef',
+    'public_uuid': 'uuid-buyer-1',
+    'tier': 'partner',
+  });
+}
+
+/// A store purchase made before the app recorded the buyer's uuid. The server
+/// cannot match one of these, so the money is stranded until support moves it.
+PendingJob _uuidlessStoreJob({String id = 'conv_store_legacy'}) {
+  return PendingJob.fromDbMap({
+    ..._storeFundedJob(id: id).toDbMap(),
+    'public_uuid': '',
+  });
+}
+
+PendingJob _demoFundedJob({String id = 'conv_demo'}) {
+  return PendingJob.fromDbMap({
+    ..._resumableJob(id: id).toDbMap(),
+    'payment_session_id': 'demo_0d1f',
+  });
+}
+
 PendingJob _awaitingPurchaseJob({String id = 'conv_store_pending'}) {
   return PendingJob.fromDbMap({
     ..._resumableJob(id: id).toDbMap(),
@@ -115,16 +151,17 @@ void main() {
         await StorageService.instance.savePendingJobRecord(_resumableJob());
 
         // Server: payment captured but not yet final (e.g. requires_capture).
-        fakeApi.onGetJobStatus = (ref) async => {
-          'status': 'ok',
-          'data': {
-            'chunks_completed': 1,
-            'chunks_total': 3,
-            'chunking_mode': 'map-reduce',
-            'payment_status': 'requires_capture',
-            'email_sent': false,
-          },
-        };
+        fakeApi.onGetJobStatus =
+            (ref) async => {
+              'status': 'ok',
+              'data': {
+                'chunks_completed': 1,
+                'chunks_total': 3,
+                'chunking_mode': 'map-reduce',
+                'payment_status': 'requires_capture',
+                'email_sent': false,
+              },
+            };
 
         await notifier.refresh();
 
@@ -165,10 +202,11 @@ void main() {
       'deletes pending row when server reports payment_status=completed && email_sent=true',
       () async {
         await StorageService.instance.savePendingJobRecord(_resumableJob());
-        fakeApi.onGetJobStatus = (ref) async => {
-          'status': 'ok',
-          'data': {'payment_status': 'completed', 'email_sent': true},
-        };
+        fakeApi.onGetJobStatus =
+            (ref) async => {
+              'status': 'ok',
+              'data': {'payment_status': 'completed', 'email_sent': true},
+            };
 
         await notifier.refresh();
 
@@ -188,10 +226,11 @@ void main() {
       'hides Resume (shows serverFinalizing) when server says completed but email not yet sent',
       () async {
         await StorageService.instance.savePendingJobRecord(_resumableJob());
-        fakeApi.onGetJobStatus = (ref) async => {
-          'status': 'ok',
-          'data': {'payment_status': 'completed', 'email_sent': false},
-        };
+        fakeApi.onGetJobStatus =
+            (ref) async => {
+              'status': 'ok',
+              'data': {'payment_status': 'completed', 'email_sent': false},
+            };
 
         await notifier.refresh();
 
@@ -260,10 +299,11 @@ void main() {
         'updated_at': DateTime.utc(2026, 6, 8).toIso8601String(),
       });
 
-      fakeApi.onGetJobStatus = (ref) async => {
-        'status': 'ok',
-        'data': {'payment_status': 'requires_capture', 'email_sent': false},
-      };
+      fakeApi.onGetJobStatus =
+          (ref) async => {
+            'status': 'ok',
+            'data': {'payment_status': 'requires_capture', 'email_sent': false},
+          };
 
       await notifier.refresh();
 
@@ -321,10 +361,11 @@ void main() {
       await StorageService.instance.savePendingJobRecord(older);
       await StorageService.instance.savePendingJobRecord(newer);
 
-      fakeApi.onGetJobStatus = (ref) async => {
-        'status': 'ok',
-        'data': {'payment_status': 'requires_capture', 'email_sent': false},
-      };
+      fakeApi.onGetJobStatus =
+          (ref) async => {
+            'status': 'ok',
+            'data': {'payment_status': 'requires_capture', 'email_sent': false},
+          };
 
       await notifier.refresh();
 
@@ -337,95 +378,353 @@ void main() {
     });
   });
 
-  group('PendingJobRecoveryNotifier.cancel', () {
-    test('dismissing a deferred purchase keeps its staged payload', () async {
-      final job = _awaitingPurchaseJob();
+  group('what funds a job', () {
+    test('reads the funding off the payment reference it carries', () {
+      expect(fundingFor(_legacyStaleJob()), PendingJobFunding.unfunded);
+      expect(fundingFor(_passFundedJob()), PendingJobFunding.passGrant);
+      expect(fundingFor(_storeFundedJob()), PendingJobFunding.storePurchase);
+      expect(
+        fundingFor(_demoFundedJob()),
+        PendingJobFunding.unfunded,
+        reason:
+            'a demo reference is minted locally; no purchase sits behind it',
+      );
+      // Matches what the reassign endpoint itself refuses, so the client never
+      // sends a call it already knows the answer to.
+      for (final legacy in const ['cs_abc', 'pi_abc', 'mock_pi_abc']) {
+        expect(
+          fundingFor(
+            PendingJob.fromDbMap({
+              ..._resumableJob().toDbMap(),
+              'payment_session_id': legacy,
+            }),
+          ),
+          PendingJobFunding.unfunded,
+          reason: '$legacy is a Stripe-era handle, not a store purchase',
+        );
+      }
+    });
+  });
+
+  group('PendingJobRecoveryNotifier.cancelJob', () {
+    test('an unpaid job is simply deleted', () async {
+      final job = _legacyStaleJob();
       await StorageService.instance.savePendingJobRecord(job);
 
-      await notifier.cancel(job);
+      final outcome = await notifier.cancelJob(job);
 
+      expect(outcome.succeeded, isTrue);
+      expect(outcome.purchaseKept, isFalse);
+      expect(await StorageService.instance.getPendingJobById(job.id), isNull);
+      expect(
+        fakeApi.lastReassign,
+        isNull,
+        reason: 'there is no purchase to free',
+      );
+    });
+
+    test('a Pass-funded job is discarded with no reassign call', () async {
+      final job = _passFundedJob();
+      await StorageService.instance.savePendingJobRecord(job);
+
+      final outcome = await notifier.cancelJob(job);
+
+      expect(outcome.funding, PendingJobFunding.passGrant);
+      expect(outcome.succeeded, isTrue);
+      expect(await StorageService.instance.getPendingJobById(job.id), isNull);
+      expect(
+        fakeApi.lastReassign,
+        isNull,
+        reason:
+            'a Pass attempt is only spent on delivery and released on failure, '
+            'so there is nothing for the client to correct',
+      );
+      expect(
+        await StorageService.instance.getSpendablePortraitCredits(),
+        isEmpty,
+      );
+    });
+
+    test('a store-funded job frees its purchase, then is discarded', () async {
+      final job = _storeFundedJob();
+      await StorageService.instance.savePendingJobRecord(job);
+
+      final outcome = await notifier.cancelJob(job);
+
+      expect(outcome.succeeded, isTrue);
+      expect(outcome.purchaseKept, isTrue);
+      expect(await StorageService.instance.getPendingJobById(job.id), isNull);
+
+      final reassign = fakeApi.lastReassign!;
+      expect(
+        reassign['payment_reference'],
+        'apl_0123456789abcdef0123456789abcdef',
+      );
+      expect(reassign['public_uuid'], 'uuid-buyer-1');
+      expect(
+        reassign['client_conversation_ref'],
+        isNot(job.clientConversationRef),
+        reason: 'the purchase moves to a fresh conversation, not the dead one',
+      );
+
+      final credits =
+          await StorageService.instance.getSpendablePortraitCredits();
+      expect(credits, hasLength(1));
+      expect(credits.single.id, reassign['client_conversation_ref']);
+      expect(credits.single.paymentSessionId, job.paymentSessionId);
+      expect(credits.single.publicUuid, 'uuid-buyer-1');
+      expect(
+        credits.single.tier,
+        job.tier,
+        reason: 'a credit can only fund the tier it was bought for',
+      );
+    });
+
+    test('a store-funded job survives a failed reassign', () async {
+      final job = _storeFundedJob();
+      await StorageService.instance.savePendingJobRecord(job);
+      fakeApi.onReassignStorePurchase = ({
+        required paymentReference,
+        required clientConversationRef,
+        required publicUuid,
+      }) async {
+        throw ApiException('Reassign unavailable', statusCode: 500);
+      };
+
+      final outcome = await notifier.cancelJob(job);
+
+      expect(outcome.succeeded, isFalse);
+      expect(outcome.error, isNotNull);
+      expect(
+        await StorageService.instance.getPendingJobById(job.id),
+        isNotNull,
+        reason:
+            'deleting a paid job we could not free is the one outcome that '
+            'costs the customer money',
+      );
+      expect(
+        await StorageService.instance.getSpendablePortraitCredits(),
+        isEmpty,
+        reason: 'a credit that the server never granted must not be invented',
+      );
+    });
+
+    test(
+      'a store purchase with no recorded buyer is kept without calling',
+      () async {
+        final job = _uuidlessStoreJob();
+        await StorageService.instance.savePendingJobRecord(job);
+
+        final outcome = await notifier.cancelJob(job);
+
+        expect(outcome.succeeded, isFalse);
+        expect(
+          fakeApi.lastReassign,
+          isNull,
+          reason:
+              'the server answers a missing uuid with the same 404 as an '
+              'unknown purchase, so asking only obscures the real problem',
+        );
+        expect(
+          await StorageService.instance.getPendingJobById(job.id),
+          isNotNull,
+        );
+      },
+    );
+
+    test('a busy purchase is described as retryable, and kept', () async {
+      final job = _storeFundedJob();
+      await StorageService.instance.savePendingJobRecord(job);
+      fakeApi.onReassignStorePurchase = ({
+        required paymentReference,
+        required clientConversationRef,
+        required publicUuid,
+      }) async {
+        throw ApiException(
+          'Purchase is not authorized',
+          statusCode: 409,
+          code: 'purchase_not_authorized',
+        );
+      };
+
+      final outcome = await notifier.cancelJob(job);
+
+      expect(outcome.succeeded, isFalse);
+      expect(
+        outcome.error,
+        contains('few minutes'),
+        reason:
+            'the server restores this credit itself, so calling it permanent '
+            'would send the customer to support for nothing',
+      );
       expect(
         await StorageService.instance.getPendingJobById(job.id),
         isNotNull,
       );
     });
 
-    test(
-      'keeps a paid pending row and only drops it from current UI',
-      () async {
-        await StorageService.instance.savePendingJobRecord(_resumableJob());
-        fakeApi.onGetJobStatus = (ref) async => {
-          'status': 'ok',
-          'data': {'payment_status': 'requires_capture', 'email_sent': false},
-        };
-        await notifier.refresh();
-        expect(notifier.state.classifications, hasLength(1));
-
-        await notifier.cancel(notifier.state.classifications.single.job);
-
-        expect(notifier.state.classifications, isEmpty);
-        expect(
-          await StorageService.instance.getPendingJobById('conv_resumable'),
-          isNotNull,
+    test('an already-delivered portrait is discarded and explained', () async {
+      final job = _storeFundedJob();
+      await StorageService.instance.savePendingJobRecord(job);
+      fakeApi.onReassignStorePurchase = ({
+        required paymentReference,
+        required clientConversationRef,
+        required publicUuid,
+      }) async {
+        throw ApiException(
+          'Portrait already delivered',
+          statusCode: 409,
+          code: 'portrait_already_delivered',
         );
-      },
-    );
+      };
 
-    test('cancel releases the queue slot and cancels no payment', () async {
-      var releaseCalled = false;
-      await StorageService.instance.savePendingJobRecord(_resumableJob());
-      fakeApi.onReleaseQueue =
-          ({
-            required clientConversationRef,
-            required paymentSessionId,
-            leaseToken,
-          }) async {
-            releaseCalled = true;
-            return {'status': 'ok'};
-          };
+      final outcome = await notifier.cancelJob(job);
 
-      await notifier.cancel(_resumableJob());
-
-      expect(releaseCalled, isTrue);
-      // Store purchases are charged immediately. Dismissing recovery must not
-      // destroy the durable generation request the customer already bought.
+      expect(outcome.succeeded, isTrue);
+      expect(outcome.purchaseKept, isFalse);
+      expect(outcome.note, contains('already delivered'));
       expect(
-        await StorageService.instance.getPendingJobById('conv_resumable'),
-        isNotNull,
+        await StorageService.instance.getPendingJobById(job.id),
+        isNull,
+        reason:
+            'the purchase already produced a portrait, so keeping the job '
+            'would leave a banner nothing can clear',
+      );
+      expect(
+        await StorageService.instance.getSpendablePortraitCredits(),
+        isEmpty,
       );
     });
 
     test(
-      'paid job remains resumable when queue release network-fails',
+      'a reference the server says is not a store purchase is discarded',
       () async {
-        await StorageService.instance.savePendingJobRecord(_resumableJob());
-        fakeApi.onReleaseQueue =
-            ({
-              required clientConversationRef,
-              required paymentSessionId,
-              leaseToken,
-            }) async {
-              throw ApiException('Queue service unavailable', statusCode: 500);
-            };
+        final job = _storeFundedJob();
+        await StorageService.instance.savePendingJobRecord(job);
+        fakeApi.onReassignStorePurchase = ({
+          required paymentReference,
+          required clientConversationRef,
+          required publicUuid,
+        }) async {
+          throw ApiException(
+            'Not a store purchase',
+            statusCode: 400,
+            code: 'not_a_store_purchase',
+          );
+        };
 
-        // Should not throw or discard the paid request.
-        await notifier.cancel(_resumableJob());
+        final outcome = await notifier.cancelJob(job);
 
+        expect(outcome.succeeded, isTrue);
         expect(
-          await StorageService.instance.getPendingJobById('conv_resumable'),
-          isNotNull,
+          await StorageService.instance.getPendingJobById(job.id),
+          isNull,
+          reason: 'there is no store money behind it to protect',
         );
       },
     );
 
-    test('cancel handles a stale row with no payment reference', () async {
-      await notifier.cancel(_legacyStaleJob());
+    test('cancel releases the queue slot', () async {
+      var releaseCalled = false;
+      final job = _storeFundedJob();
+      await StorageService.instance.savePendingJobRecord(job);
+      fakeApi.onReleaseQueue = ({
+        required clientConversationRef,
+        required paymentSessionId,
+        leaseToken,
+      }) async {
+        releaseCalled = true;
+        return {'status': 'ok'};
+      };
+
+      await notifier.cancelJob(job);
+
+      expect(releaseCalled, isTrue);
+    });
+
+    test('a failing queue release does not block the cancel', () async {
+      final job = _storeFundedJob();
+      await StorageService.instance.savePendingJobRecord(job);
+      fakeApi.onReleaseQueue = ({
+        required clientConversationRef,
+        required paymentSessionId,
+        leaseToken,
+      }) async {
+        throw ApiException('Queue service unavailable', statusCode: 500);
+      };
+
+      final outcome = await notifier.cancelJob(job);
+
+      expect(outcome.succeeded, isTrue);
+      expect(await StorageService.instance.getPendingJobById(job.id), isNull);
+    });
+
+    test('cancelling drops the entry from the current UI', () async {
+      await StorageService.instance.savePendingJobRecord(_storeFundedJob());
+      fakeApi.onGetJobStatus =
+          (ref) async => {
+            'status': 'ok',
+            'data': {'payment_status': 'requires_capture', 'email_sent': false},
+          };
+      await notifier.refresh();
+      expect(notifier.state.classifications, hasLength(1));
+
+      await notifier.cancelJob(notifier.state.classifications.single.job);
+
+      expect(notifier.state.classifications, isEmpty);
+    });
+  });
+
+  group('freed credits', () {
+    test('a credit is never offered back as unfinished work', () async {
+      await StorageService.instance.savePendingJobRecord(_storeFundedJob());
+      await notifier.cancelJob(_storeFundedJob());
+
+      await notifier.refresh();
 
       expect(
-        await StorageService.instance.getPendingJobById(_legacyStaleJob().id),
-        isNull,
-        reason: 'a stale row is cleaned up regardless of what it carries',
+        notifier.state.classifications,
+        isEmpty,
+        reason: 'a credit is spent from the funnel, never resumed',
       );
+      expect(
+        await StorageService.instance.getSpendablePortraitCredits(),
+        hasLength(1),
+      );
+    });
+
+    test('the funnel can find the freed credit for its own tier', () async {
+      await StorageService.instance.savePendingJobRecord(_storeFundedJob());
+      await notifier.cancelJob(_storeFundedJob());
+
+      final credits =
+          await StorageService.instance.getSpendablePortraitCredits();
+
+      expect(creditForTier(credits, 'partner'), isNotNull);
+      expect(
+        creditForTier(credits, 'family'),
+        isNull,
+        reason:
+            'a purchase only covers the tier it was bought for; offering it '
+            'elsewhere would move the failure to queue admission',
+      );
+    });
+
+    test('a credit keeps the ref the server bound the payment to', () async {
+      await StorageService.instance.savePendingJobRecord(_storeFundedJob());
+      await notifier.cancelJob(_storeFundedJob());
+
+      final credit =
+          (await StorageService.instance.getSpendablePortraitCredits()).single;
+
+      expect(
+        credit.clientConversationRef,
+        credit.id,
+        reason:
+            'the run has to reuse this ref: the queue refuses a payment whose '
+            'stored reference does not match the run being queued',
+      );
+      expect(credit.inputText, isEmpty);
     });
   });
 }

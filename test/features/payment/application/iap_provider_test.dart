@@ -32,15 +32,14 @@ IapNotifier buildNotifier({
   FakeBillingApi? api,
   PassCredentialStore? store,
   PendingPurchaseStore? pendingStore,
-  Future<void> Function(String conversationRef, String paymentReference)?
-  onConsumableVerified,
+  ConsumableVerifiedCallback? onConsumableVerified,
 }) {
   return IapNotifier(
     iap: iap ?? buildIap(),
     api: api ?? FakeBillingApi(),
     store: store ?? InMemoryPassCredentialStore(),
     pendingStore: pendingStore,
-    onConsumableVerified: onConsumableVerified ?? (_, __) async {},
+    onConsumableVerified: onConsumableVerified ?? (_, __, ___) async {},
   );
 }
 
@@ -74,10 +73,17 @@ void main() {
           api: FakeBillingApi(),
           store: InMemoryPassCredentialStore(),
           pendingStore: InMemoryPendingPurchaseStore(),
-          onConsumableVerified: (conversation, payment) async {
+          onConsumableVerified: (conversation, payment, publicUuid) async {
             expect(iap.finished, isEmpty);
             expect(conversation, 'conversation-1');
             expect(payment, isNotEmpty);
+            expect(
+              publicUuid,
+              isNotEmpty,
+              reason:
+                  'cancelling this portrait later has to name the buyer to '
+                  'free the purchase, and nothing else remembers it',
+            );
             order.add('durable');
           },
         );
@@ -484,7 +490,7 @@ void main() {
         api: HttpBillingApi(dio: _stubDio(requests)),
         store: InMemoryPassCredentialStore(),
         pendingStore: InMemoryPendingPurchaseStore(),
-        onConsumableVerified: (_, __) async {},
+        onConsumableVerified: (_, __, ___) async {},
       );
       await notifier.loadPrices();
 
@@ -528,7 +534,7 @@ void main() {
         api: HttpBillingApi(dio: _stubDio(requests)),
         store: InMemoryPassCredentialStore(),
         pendingStore: InMemoryPendingPurchaseStore(),
-        onConsumableVerified: (_, __) async {},
+        onConsumableVerified: (_, __, ___) async {},
       );
       await notifier.loadPrices();
 
@@ -570,7 +576,7 @@ void main() {
           api: HttpBillingApi(dio: _stubDio(requests)),
           store: InMemoryPassCredentialStore(),
           pendingStore: InMemoryPendingPurchaseStore(),
-          onConsumableVerified: (_, __) async {},
+          onConsumableVerified: (_, __, ___) async {},
         );
         await notifier.loadPrices();
 
@@ -611,7 +617,7 @@ void main() {
         api: HttpBillingApi(dio: _stubDio(requests)),
         store: InMemoryPassCredentialStore(),
         pendingStore: InMemoryPendingPurchaseStore(),
-        onConsumableVerified: (_, __) async {},
+        onConsumableVerified: (_, __, ___) async {},
       );
       await notifier.loadPrices();
 
@@ -645,7 +651,7 @@ void main() {
         api: HttpBillingApi(dio: _stubDio([], statusCode: 422)),
         store: InMemoryPassCredentialStore(),
         pendingStore: InMemoryPendingPurchaseStore(),
-        onConsumableVerified: (_, __) async {},
+        onConsumableVerified: (_, __, ___) async {},
       );
       await notifier.loadPrices();
 

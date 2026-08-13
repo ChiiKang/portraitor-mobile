@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import 'package:portraitor_mobile/core/storage/pending_job.dart';
-import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/features/processing/application/pending_job_recovery_provider.dart';
+import 'package:portraitor_mobile/features/processing/presentation/pending_job_actions.dart';
 
 /// Inline card announcing an unfinished portrait left over from a prior run.
 ///
@@ -31,56 +30,42 @@ class PendingJobResumeCard extends ConsumerStatefulWidget {
 }
 
 class PendingJobResumeCardState extends ConsumerState<PendingJobResumeCard> {
+  /// Guards re-entry, and covers the confirmation dialog as well as the work.
   bool _busy = false;
+
+  /// True only while something is actually happening, so a button does not
+  /// spin at someone who is still deciding whether to cancel.
+  bool _working = false;
 
   PendingJob get _job => widget.classification.job;
   RecoveryStatus get _status => widget.classification.status;
 
-  Future<void> _onResume() async {
+  Future<void> _onContinue() async {
     if (_busy) return;
-    setState(() => _busy = true);
-
-    // Drop the classification so the card disappears while resume is in
-    // flight. The processing screen owns the lifecycle from here.
-    ref.read(pendingJobRecoveryProvider.notifier).dropClassification(_job.id);
-
-    if (!mounted) return;
-    // Same arg shape as the normal start flow in app.dart; resume reuses the
-    // same route.
-    GoRouter.of(context).push(
-      '/processing',
-      extra: {
-        'normalizedText': _job.inputText,
-        'targetName': _job.targetName ?? '',
-        'conversationId': _job.id,
-        'paymentReference': _job.paymentSessionId,
-        // Only used if the row vanishes before the screen reads it and the
-        // screen falls back to a fresh start. resumeProcessing otherwise
-        // takes the address straight off the job.
-        'deliveryEmail': _job.deliveryEmail,
-        'dateRange': _job.dateRange,
-        'resume': true,
-      },
-    );
+    setState(() {
+      _busy = true;
+      _working = true;
+    });
+    continuePendingJob(context, ref, _job);
   }
 
   Future<void> _onCancel() async {
     if (_busy) return;
     setState(() => _busy = true);
-    await ref.read(pendingJobRecoveryProvider.notifier).cancel(_job);
-    if (mounted) setState(() => _busy = false);
-  }
-
-  Future<void> _onClear() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-
-    // Stale or 404 row - drop locally without trying to release a queue slot
-    // or cancel a payment we have no valid handle for.
-    await StorageService.instance.deletePendingJob(_job.id);
-    ref.read(pendingJobRecoveryProvider.notifier).dropClassification(_job.id);
-
-    if (mounted) setState(() => _busy = false);
+    await cancelPendingJob(
+      context,
+      ref,
+      _job,
+      onConfirmed: () {
+        if (mounted) setState(() => _working = true);
+      },
+    );
+    if (mounted) {
+      setState(() {
+        _busy = false;
+        _working = false;
+      });
+    }
   }
 
   String get _title {
@@ -106,21 +91,21 @@ class PendingJobResumeCardState extends ConsumerState<PendingJobResumeCard> {
         return targetText == null
             ? 'The store is still processing this purchase. Your portrait will be ready to continue after approval.'
             : 'The store is still processing the purchase for $targetText. '
-                  'The portrait will be ready to continue after approval.';
+                'The portrait will be ready to continue after approval.';
       case RecoveryStatus.resumable:
         return targetText == null
-            ? 'Continue where you left off, or keep it for later.'
-            : 'Continue the portrait for $targetText, or keep it for later.';
+            ? 'Continue where you left off, or cancel it.'
+            : 'Continue the portrait for $targetText, or cancel it.';
       case RecoveryStatus.serverFinalizing:
         return targetText == null
             ? 'The server is finishing this portrait. Check back shortly.'
             : 'The server is finishing the portrait for $targetText. '
-                  'Check back shortly.';
+                'Check back shortly.';
       case RecoveryStatus.cancelOnly:
         return targetText == null
-            ? 'This portrait can no longer be resumed. Clear it to continue.'
-            : 'The portrait for $targetText can no longer be resumed. '
-                  'Clear it to continue.';
+            ? 'This portrait can no longer be continued. Cancel it to clear it.'
+            : 'The portrait for $targetText can no longer be continued. '
+                'Cancel it to clear it.';
       case RecoveryStatus.serverCompleted:
         return 'You can find it in your library.';
     }
@@ -138,14 +123,16 @@ class PendingJobResumeCardState extends ConsumerState<PendingJobResumeCard> {
       label: '$_title. $_body',
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: _isAccent
-              ? PortraitorTokens.brandSoft
-              : PortraitorTokens.surfaceMuted,
+          color:
+              _isAccent
+                  ? PortraitorTokens.brandSoft
+                  : PortraitorTokens.surfaceMuted,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: _isAccent
-                ? PortraitorTokens.onboardingPrimary.withValues(alpha: 0.32)
-                : PortraitorTokens.borderSoft,
+            color:
+                _isAccent
+                    ? PortraitorTokens.onboardingPrimary.withValues(alpha: 0.32)
+                    : PortraitorTokens.borderSoft,
           ),
         ),
         child: Padding(
@@ -206,13 +193,13 @@ class PendingJobResumeCardState extends ConsumerState<PendingJobResumeCard> {
           TextButton(
             key: const Key('pending_job_cancel_button'),
             onPressed: _busy ? null : _onCancel,
-            child: const Text('Later'),
+            child: const Text('Cancel'),
           ),
           const SizedBox(width: 8),
           FilledButton(
             key: const Key('pending_job_resume_button'),
-            onPressed: _busy ? null : _onResume,
-            child: _busy ? const _ButtonSpinner() : const Text('Resume'),
+            onPressed: _busy ? null : _onContinue,
+            child: _working ? const _ButtonSpinner() : const Text('Continue'),
           ),
         ];
       case RecoveryStatus.serverFinalizing:
@@ -221,11 +208,14 @@ class PendingJobResumeCardState extends ConsumerState<PendingJobResumeCard> {
         return const [];
       case RecoveryStatus.cancelOnly:
       case RecoveryStatus.serverCompleted:
+        // Cancel, not a separate Clear. These rows can still carry a purchase -
+        // a 404 from job-status says the server lost the run, not the money -
+        // so they go through the same path that frees it.
         return [
           FilledButton(
-            key: const Key('pending_job_clear_button'),
-            onPressed: _busy ? null : _onClear,
-            child: _busy ? const _ButtonSpinner() : const Text('Clear'),
+            key: const Key('pending_job_cancel_button'),
+            onPressed: _busy ? null : _onCancel,
+            child: _working ? const _ButtonSpinner() : const Text('Cancel'),
           ),
         ];
     }
@@ -268,9 +258,10 @@ class _StatusGlyph extends StatelessWidget {
       height: 8,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: status == RecoveryStatus.resumable
-            ? PortraitorTokens.onboardingPrimary
-            : PortraitorTokens.onboardingMutedLight,
+        color:
+            status == RecoveryStatus.resumable
+                ? PortraitorTokens.onboardingPrimary
+                : PortraitorTokens.onboardingMutedLight,
       ),
     );
   }

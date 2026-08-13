@@ -18,7 +18,8 @@ PendingJob _job() {
     inputText: 'hello chat',
     targetName: 'Alice',
     dateRange: 'Jan 2026',
-    paymentSessionId: 'pi_conv_resumable',
+    paymentSessionId: 'apl_0123456789abcdef0123456789abcdef',
+    publicUuid: 'uuid-buyer-1',
     status: 'processing',
     chunksCompleted: 1,
     chunksTotal: 3,
@@ -34,7 +35,7 @@ PendingJob _job() {
 }
 
 /// Records what the card asked the notifier to do, and lets a test hold
-/// `cancel` open so the busy state can be observed.
+/// `cancelJob` open so the busy state can be observed.
 class _RecordingNotifier extends PendingJobRecoveryNotifier {
   _RecordingNotifier() : super(api: _NoOpApi());
 
@@ -43,9 +44,13 @@ class _RecordingNotifier extends PendingJobRecoveryNotifier {
   Completer<void>? blockCancel;
 
   @override
-  Future<void> cancel(PendingJob job) async {
+  Future<CancelOutcome> cancelJob(PendingJob job) async {
     cancelCount++;
     if (blockCancel != null) await blockCancel!.future;
+    return const CancelOutcome.discarded(
+      funding: PendingJobFunding.storePurchase,
+      purchaseKept: true,
+    );
   }
 
   @override
@@ -74,11 +79,15 @@ Widget _harness({
     routes: [
       GoRoute(
         path: '/home',
-        builder: (_, __) => Scaffold(
-          body: PendingJobResumeCard(
-            classification: RecoveryClassification(job: _job(), status: status),
-          ),
-        ),
+        builder:
+            (_, __) => Scaffold(
+              body: PendingJobResumeCard(
+                classification: RecoveryClassification(
+                  job: _job(),
+                  status: status,
+                ),
+              ),
+            ),
       ),
       GoRoute(
         path: '/processing',
@@ -114,13 +123,23 @@ void main() {
       expect(find.byType(FilledButton), findsNothing);
     });
 
-    testWidgets('a resumable portrait offers Resume and Later', (tester) async {
+    testWidgets('a resumable portrait offers Continue and Cancel', (
+      tester,
+    ) async {
       await tester.pumpWidget(_harness(status: RecoveryStatus.resumable));
 
       expect(find.text('Unfinished portrait'), findsOneWidget);
       expect(
-        find.text('Continue the portrait for Alice, or keep it for later.'),
+        find.text('Continue the portrait for Alice, or cancel it.'),
         findsOneWidget,
+      );
+      expect(find.text('Continue'), findsOneWidget);
+      expect(
+        find.text('Later'),
+        findsNothing,
+        reason:
+            'Later meant "ask me again", forever. Cancel is the way out the '
+            'banner never had',
       );
       expect(
         find.byKey(const Key('pending_job_resume_button')),
@@ -157,12 +176,17 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
     });
 
-    testWidgets('an unresumable portrait offers Clear only', (tester) async {
+    testWidgets('an unresumable portrait offers Cancel only', (tester) async {
       await tester.pumpWidget(_harness(status: RecoveryStatus.cancelOnly));
 
       expect(find.byKey(const Key('pending_job_resume_button')), findsNothing);
-      expect(find.byKey(const Key('pending_job_cancel_button')), findsNothing);
-      expect(find.byKey(const Key('pending_job_clear_button')), findsOneWidget);
+      expect(
+        find.byKey(const Key('pending_job_cancel_button')),
+        findsOneWidget,
+        reason:
+            'a 404 from job-status means the server lost the run, not the '
+            'money, so this goes through the path that frees the purchase',
+      );
     });
   });
 
@@ -190,7 +214,7 @@ void main() {
       expect(extra['conversationId'], 'conv_resumable');
       expect(
         extra['paymentReference'],
-        'pi_conv_resumable',
+        'apl_0123456789abcdef0123456789abcdef',
         reason:
             'the route carries an opaque Portraitor reference, never a '
             "provider's own transaction id",
@@ -211,7 +235,61 @@ void main() {
       );
     });
 
-    testWidgets('a double tap on Cancel cancels once', (tester) async {
+    testWidgets('Cancel asks before it destroys anything', (tester) async {
+      final notifier = _RecordingNotifier();
+      await tester.pumpWidget(
+        _harness(status: RecoveryStatus.resumable, notifier: notifier),
+      );
+
+      await tester.tap(find.byKey(const Key('pending_job_cancel_button')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('pending_job_cancel_dialog')),
+        findsOneWidget,
+      );
+      expect(
+        notifier.cancelCount,
+        0,
+        reason: 'nothing may go until the user says so',
+      );
+
+      await tester.tap(find.byKey(const Key('pending_job_cancel_dismiss')));
+      await tester.pumpAndSettle();
+
+      expect(notifier.cancelCount, 0);
+      expect(find.byKey(const Key('pending_job_cancel_dialog')), findsNothing);
+    });
+
+    testWidgets('a store-funded cancel promises the purchase, truthfully', (
+      tester,
+    ) async {
+      final notifier = _RecordingNotifier();
+      await tester.pumpWidget(
+        _harness(status: RecoveryStatus.resumable, notifier: notifier),
+      );
+
+      await tester.tap(find.byKey(const Key('pending_job_cancel_button')));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('You keep what you paid for'),
+        findsOneWidget,
+        reason:
+            'the store charged at confirmation; telling the buyer the money '
+            'is gone would be a lie',
+      );
+
+      await tester.tap(find.byKey(const Key('pending_job_cancel_confirm')));
+      await tester.pumpAndSettle();
+
+      expect(notifier.cancelCount, 1);
+      expect(
+        find.textContaining('saved for your next portrait'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a double confirm cancels once', (tester) async {
       final notifier = _RecordingNotifier()..blockCancel = Completer<void>();
       await tester.pumpWidget(
         _harness(status: RecoveryStatus.resumable, notifier: notifier),
@@ -219,6 +297,8 @@ void main() {
 
       final cancel = find.byKey(const Key('pending_job_cancel_button'));
       await tester.tap(cancel);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pending_job_cancel_confirm')));
       await tester.pump();
       await tester.tap(cancel, warnIfMissed: false);
       await tester.pump();

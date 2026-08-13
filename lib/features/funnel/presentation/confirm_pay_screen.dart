@@ -11,6 +11,7 @@ import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/pass_funding_provider.dart';
+import 'package:portraitor_mobile/features/payment/application/portrait_credit_provider.dart';
 import 'package:portraitor_mobile/features/payment/services/pass_grant_api.dart';
 import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/domain/purchase_outcome.dart';
@@ -144,6 +145,17 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     // this the button shows the disabled "Pay Unavailable" that this feature
     // exists to remove, then flips a moment later.
     final passChecking = !showPass && passFundingAsync.isLoading;
+
+    // A purchase freed by cancelling an earlier portrait. Already paid for, so
+    // it is offered ahead of both the Pass and the store: leaving it idle while
+    // the customer pays again is the one outcome cancelling was meant to avoid.
+    final freedCredit =
+        showPass
+            ? null
+            : creditForTier(
+              ref.watch(portraitCreditsProvider).valueOrNull ?? const [],
+              draft.selectedTier.name,
+            );
     final purchaseError =
         iapState.status == IapStatus.failed &&
                 iapState.products.isNotEmpty &&
@@ -160,20 +172,25 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
               ? (FunnelTier.pass.canPurchase
                   ? 'Subscribe ${_priceFor(FunnelTier.pass)}'
                   : 'Subscribe — coming soon')
-              : passFunded
-                  ? 'Use my Pass'
-                  : passChecking
-                      ? 'Checking your Pass…'
-                      : 'Pay ${_priceFor(draft.selectedTier)}',
+              : freedCredit != null
+                  ? 'Use your paid portrait'
+                  : passFunded
+                      ? 'Use my Pass'
+                      : passChecking
+                          ? 'Checking your Pass…'
+                          : 'Pay ${_priceFor(draft.selectedTier)}',
       // The email gates the purchase. The server re-validates it, but letting
       // Opening the store without one would take money we cannot deliver against.
       ctaEnabled:
           !purchaseBusy &&
-          !passChecking &&
+          (!passChecking || freedCredit != null) &&
           _emailValid &&
-          // A Pass-funded run needs neither a purchasable tier nor a store
-          // price, so it bypasses both store gates rather than relaxing them.
-          (passFunded || (activeTier.canPurchase && productReady)),
+          // Neither a freed credit nor a Pass-funded run needs a purchasable
+          // tier or a store price, so both bypass the store gates rather than
+          // relaxing them.
+          (freedCredit != null ||
+              passFunded ||
+              (activeTier.canPurchase && productReady)),
       ctaLoading: purchaseBusy,
       onCta: () => _onCta(context),
       body: Column(
@@ -296,6 +313,18 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     final draft = ref.read(funnelDraftProvider);
     final tier = _passOpen ? FunnelTier.pass : draft.selectedTier;
 
+    // Spend a freed purchase before anything else. It is already paid for, so
+    // letting a Pass use or a fresh charge go first would waste it.
+    if (!_passOpen) {
+      final credits = await ref.read(portraitCreditsProvider.future);
+      final credit = creditForTier(credits, tier.name);
+      if (credit != null) {
+        if (!context.mounted) return;
+        await _completeCreditRun(context, credit);
+        return;
+      }
+    }
+
     // A held Pass funds the run server-side, so no store transaction happens.
     //
     // Re-resolved here rather than trusting what `build` watched: a use spent
@@ -358,6 +387,47 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     }
 
     await _completeStorePurchase(context, tier);
+  }
+
+  /// Run funded by a purchase the customer already made and then freed by
+  /// cancelling the portrait it was bought for.
+  ///
+  /// No store round trip and no network call: the server already holds the
+  /// payment, bound to the conversation ref this row carries, which is why the
+  /// run has to reuse that ref rather than mint a fresh one.
+  Future<void> _completeCreditRun(
+    BuildContext context,
+    PendingJob credit,
+  ) async {
+    final payload = _funnelPayload(context);
+    if (payload == null) return;
+
+    try {
+      await stageCreditRun(credit: credit, payload: payload);
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'This portrait could not start safely. Free some storage and try again.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    // The row is no longer a credit, so anything still offering it has to stop.
+    ref.invalidate(portraitCreditsProvider);
+
+    if (!context.mounted) return;
+    context.pushReplacement(
+      '/processing',
+      extra: {
+        ...payload,
+        'conversationId': credit.id,
+        'paymentReference': credit.paymentSessionId,
+      },
+    );
   }
 
   /// Pass-funded run. The reserved use IS the payment, so the grant token takes

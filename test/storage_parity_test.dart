@@ -62,6 +62,11 @@ void main() {
           // customer, so the address has to be stored and replayed on the
           // generation request or the backend refuses the run.
           'delivery_email',
+          // Mobile-only. Cancelling a store-funded portrait frees its purchase
+          // rather than destroying it, and that call has to name the buyer with
+          // the exact uuid the app gave the store. Nothing else on the device
+          // remembers it once the transaction is finished.
+          'public_uuid',
           'status',
           'chunks_completed',
           'chunks_total',

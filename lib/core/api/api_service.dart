@@ -103,6 +103,37 @@ class ApiService {
     return response;
   }
 
+  // ── Store purchases ────────────────────────────────────────
+
+  /// POST /api/store/purchase/reassign.php — re-point a paid store purchase at
+  /// a fresh conversation.
+  ///
+  /// Apple and Google charge at confirmation, so an abandoned portrait cannot
+  /// be refunded from here. What the customer bought is a portrait, not one
+  /// attempt at one, and this is what keeps it spendable after they cancel.
+  ///
+  /// [publicUuid] must be the exact value the app handed the store as
+  /// `appAccountToken` for this purchase. A mismatch is answered with the same
+  /// 404 as an unknown reference, deliberately.
+  ///
+  /// A 200 is success even when the body reports `reassigned: false`: that
+  /// means the credit was already on this conversation, which is what a retry
+  /// looks like. Failures arrive as an [ApiException] carrying the server's
+  /// `code`, and [PendingJobRecoveryNotifier] decides from it whether the
+  /// portrait may be discarded.
+  Future<Map<String, dynamic>> reassignStorePurchase({
+    required String paymentReference,
+    required String clientConversationRef,
+    required String publicUuid,
+  }) async {
+    final response = await _post('/api/store/purchase/reassign.php', {
+      'payment_reference': paymentReference,
+      'client_conversation_ref': clientConversationRef,
+      'public_uuid': publicUuid,
+    });
+    return response;
+  }
+
   // ── SSE Streams ────────────────────────────────────────────
 
   /// POST /api/gemini-proxy-stream.php — SSE analysis stream

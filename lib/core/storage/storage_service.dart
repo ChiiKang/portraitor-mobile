@@ -14,7 +14,7 @@ class StorageService {
 
   static const String _deviceIdKey = 'portraitor_device_id';
   static const int _maxConversations = 100;
-  static const int _dbVersion = 7;
+  static const int _dbVersion = 8;
 
   Database? _db;
   String? _deviceId;
@@ -112,6 +112,7 @@ class StorageService {
             date_range TEXT,
             payment_session_id TEXT,
             delivery_email TEXT,
+            public_uuid TEXT,
             status TEXT DEFAULT 'processing',
             chunks_completed INTEGER DEFAULT 0,
             chunks_total INTEGER DEFAULT 0,
@@ -247,6 +248,13 @@ class StorageService {
       // with "Payment email not found". A resumed job rebuilds its request
       // from this row, so the address has to be stored here too.
       await _addColumnIfMissing(db, 'pending_jobs', 'delivery_email TEXT');
+    }
+    if (oldVersion < 8) {
+      // Freeing an abandoned store purchase names the buyer, and the
+      // purchase-time context is dropped as soon as the store transaction is
+      // finished. Rows written before this column simply carry no uuid; the
+      // reassign call then fails loudly rather than discarding the portrait.
+      await _addColumnIfMissing(db, 'pending_jobs', 'public_uuid TEXT');
     }
   }
 
@@ -443,6 +451,7 @@ class StorageService {
     int? chunksCompleted,
     String? status,
     String? paymentSessionId,
+    String? publicUuid,
   }) async {
     final db = _db;
     if (db == null) {
@@ -454,6 +463,9 @@ class StorageService {
     if (status != null) updates['status'] = status;
     if (paymentSessionId != null) {
       updates['payment_session_id'] = paymentSessionId;
+    }
+    if (publicUuid != null && publicUuid.isNotEmpty) {
+      updates['public_uuid'] = publicUuid;
     }
     updates['updated_at'] = DateTime.now().toUtc().toIso8601String();
 
@@ -495,9 +507,26 @@ class StorageService {
       throw StateError('Pending-job storage is unavailable.');
     }
     await db.transaction((txn) async {
+      final row = job.toDbMap();
+      // Only the purchase knows the buyer's correlation id, and every later
+      // write of this row comes from generation, which does not. A replacing
+      // insert would therefore erase the one field a cancel needs to free the
+      // purchase, so an empty incoming value defers to what is already stored.
+      if (job.publicUuid.isEmpty) {
+        final existing = await txn.query(
+          'pending_jobs',
+          columns: ['public_uuid'],
+          where: 'id = ?',
+          whereArgs: [job.id],
+          limit: 1,
+        );
+        final stored =
+            existing.isEmpty ? null : existing.first['public_uuid'] as String?;
+        if (stored != null && stored.isNotEmpty) row['public_uuid'] = stored;
+      }
       await txn.insert(
         'pending_jobs',
-        job.toDbMap(),
+        row,
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
       final rows = await txn.rawQuery(
@@ -634,9 +663,31 @@ class StorageService {
     if (db == null) return [];
     final rows = await db.query(
       'pending_jobs',
-      where: 'device_id = ? AND status NOT IN (?, ?, ?)',
-      whereArgs: [_deviceId, 'completed', 'canceled', 'stale'],
+      where: 'device_id = ? AND status NOT IN (?, ?, ?, ?)',
+      whereArgs: [
+        _deviceId,
+        'completed',
+        'canceled',
+        'stale',
+        pendingJobCreditStatus,
+      ],
       orderBy: 'created_at DESC',
+    );
+    return rows.map(PendingJob.fromDbMap).toList(growable: false);
+  }
+
+  /// Purchases that outlived the portrait they were bought for.
+  ///
+  /// Oldest first, so the credit that has been waiting longest is offered
+  /// first rather than the one the customer just freed.
+  Future<List<PendingJob>> getSpendablePortraitCredits() async {
+    final db = _db;
+    if (db == null) return [];
+    final rows = await db.query(
+      'pending_jobs',
+      where: 'device_id = ? AND status = ?',
+      whereArgs: [_deviceId, pendingJobCreditStatus],
+      orderBy: 'created_at ASC',
     );
     return rows.map(PendingJob.fromDbMap).toList(growable: false);
   }

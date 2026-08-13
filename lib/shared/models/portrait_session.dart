@@ -1,3 +1,4 @@
+import 'package:portraitor_mobile/core/storage/pending_job.dart';
 import 'package:portraitor_mobile/features/results/application/portraits_provider.dart';
 
 /// One generation session for Home Recent + Portraits tab (prototype session cards).
@@ -11,6 +12,8 @@ class PortraitSession {
     this.rangeLabel,
     this.stripped,
     this.resultIds = const [],
+    this.isUnfinished = false,
+    this.sortAt,
   });
 
   final String id;
@@ -23,6 +26,13 @@ class PortraitSession {
 
   /// Conversation IDs to open (first person for Partner).
   final List<String> resultIds;
+
+  /// A portrait that was paid for and never delivered.
+  final bool isUnfinished;
+
+  /// When this session started, for merging finished and unfinished entries
+  /// into one chronological list. Null on demo samples, which are never merged.
+  final DateTime? sortAt;
 
   String get namesLabel => people.map((p) => p.name).join(' · ');
 
@@ -89,8 +99,39 @@ class PortraitSession {
         overview: p.outputSummary,
         rangeLabel: null,
         resultIds: [p.id],
+        sortAt: _parseWhen(p.createdAt),
       );
     }).toList();
+  }
+
+  /// Map an unfinished job into the same card the finished ones use, so the
+  /// Portraits tab can list both in one chronological run.
+  static PortraitSession fromPendingJob(PendingJob job) {
+    final names = [
+      for (final name in job.people)
+        if (name.trim().isNotEmpty) name.trim(),
+    ];
+    final fallback = job.targetName?.trim() ?? '';
+    final resolved =
+        names.isNotEmpty
+            ? names
+            : [fallback.isEmpty ? 'Portrait' : fallback];
+
+    return PortraitSession(
+      id: job.id,
+      bundle: _bundleLabel(job.tier),
+      whenLabel: _relativeWhen(job.createdAt.toIso8601String()),
+      people: [
+        for (final name in resolved)
+          SessionPerson(
+            name: name,
+            initial: name.isEmpty ? 'P' : name[0].toUpperCase(),
+            color: sessionAvColorFromName(name),
+          ),
+      ],
+      isUnfinished: true,
+      sortAt: job.createdAt,
+    );
   }
 
   static String _bundleLabel(String mode) {
@@ -102,6 +143,14 @@ class PortraitSession {
         return 'Family';
       default:
         return 'You';
+    }
+  }
+
+  static DateTime? _parseWhen(String iso) {
+    try {
+      return DateTime.parse(iso);
+    } catch (_) {
+      return null;
     }
   }
 
