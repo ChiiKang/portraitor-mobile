@@ -17,6 +17,50 @@ Invocation also requires an explicit user request such as `/no-mistakes` or
 a failed gate. Small UI, copy, documentation, and low-risk refactoring changes do
 not require `no-mistakes` unless the user explicitly requests it.
 
+## Building a shareable APK
+
+When asked to compile, build, or produce an APK for a client, teammate, or
+tester, run the script. Never hand-assemble the `--dart-define` flags.
+
+```sh
+./tool/build_tester_apk.sh
+```
+
+It runs `flutter analyze` and the full test suite, verifies the backend
+precondition, builds, and copies a dated APK to `~/Desktop/Portraitor-Builds/`.
+Report the folder and filename back to the user, because their next action is
+attaching that file to a message.
+
+| Ask | Command |
+|---|---|
+| Default. Simulated purchase, real backend, real portrait, real email. | `./tool/build_tester_apk.sh` |
+| Screens only. No backend, local sample portrait. | `./tool/build_tester_apk.sh --demo` |
+| Target production instead of staging. | `./tool/build_tester_apk.sh --api-base https://portraitor.ai` |
+| Analyze and tests already green this session. | `./tool/build_tester_apk.sh --skip-checks` |
+
+Two rules that are easy to get wrong and expensive to get wrong:
+
+**Never build a tester APK with `--release`.** `FAKE_BILLING` and `DEMO_IAP` are
+defined in `lib/core/config/build_flags.dart` as
+`!kReleaseMode && bool.fromEnvironment(...)`, so a release build compiles them
+out, falls through to real Google Play Billing, and fails on every phone because
+the Play Console catalog does not exist yet. Profile mode is the correct choice
+and needs no keystore.
+
+**The default build needs the backend's payment mode set to `mock`.** The script
+checks and warns. If it warns, say so plainly rather than shipping the build
+quietly: the tester will be stopped at the pay screen. The fix is to set
+**Payment Mode** to **Mock (testing)** at `https://staging.portraitor.ai/admin.php`,
+leaving **Email Mode** on a real SMTP option so portraits are still emailed.
+
+Do not work around a failing `flutter analyze` or `flutter test` with
+`--skip-checks`. A build sent to a client is the worst place to find a
+regression.
+
+There is a matching `build-apk` skill in `.claude/skills/`, and the full
+distribution plan, including iPhone and TestFlight, is in
+[`docs/client-testing-distribution-plan.md`](docs/client-testing-distribution-plan.md).
+
 <claude-mem-context>
 # Memory Context
 
