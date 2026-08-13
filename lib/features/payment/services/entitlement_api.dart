@@ -44,7 +44,13 @@ class Entitlement {
   factory Entitlement.fromJson(Map<String, dynamic> json) {
     return Entitlement(
       state: json['state'] as String? ?? 'none',
-      grantsAccess: json['grants_access'] as bool? ?? false,
+      // `has_access` is the server's field, and it is a COMPUTED answer, not
+      // the raw `grants_access` column: current.php requires a verification
+      // timestamp and an access_until still in the future before it says yes.
+      // Reading `grants_access` here meant the key was always missing, the
+      // `?? false` swallowed it, and an active Pass with ten uses rendered as
+      // "No active Pass" behind a perfectly healthy 200.
+      grantsAccess: json['has_access'] as bool? ?? false,
       usesRemaining: (json['uses_remaining'] as num?)?.toInt() ?? 0,
       usesTotal: (json['uses_total'] as num?)?.toInt() ?? 0,
       accessUntil: json['access_until'] as String?,

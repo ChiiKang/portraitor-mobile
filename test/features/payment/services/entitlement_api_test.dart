@@ -3,10 +3,15 @@ import 'package:portraitor_mobile/features/payment/services/entitlement_api.dart
 
 void main() {
   group('Entitlement parsing', () {
+    // This test was named for the server payload but written from the client's
+    // assumption: it sent `grants_access`, which current.php has never emitted.
+    // Because the parser defaulted a missing key to false, the mismatch was
+    // invisible in production and green in CI. The field is `has_access`, and
+    // the full server shape is pinned in entitlement_contract_test.dart.
     test('reads the server payload', () {
       final entitlement = Entitlement.fromJson(const {
         'state': 'active',
-        'grants_access': true,
+        'has_access': true,
         'uses_remaining': 7,
         'uses_total': 10,
         'access_until': '2026-09-11 00:00:00',
