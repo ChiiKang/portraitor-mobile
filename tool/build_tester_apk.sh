@@ -86,6 +86,15 @@ if [[ "$MODE" == "tester" ]]; then
   # request body claims another. A backend that accepts demo tokens still stops
   # at the account-token check, so the probe proves the branch was taken without
   # minting a payment row nobody will ever spend.
+  #
+  # DO NOT copy this probe to /api/apple/purchase/verify.php. The trick relies on
+  # Google cross-checking the request's public_uuid against the one the store
+  # reports, and Apple deliberately does not: AppleVerifyHandler treats
+  # product_id and public_uuid as correlation hints because a signed JWS is the
+  # authority (design spec 3.2). An Apple probe therefore VERIFIES rather than
+  # bounces, and every build would mint a real credit - or, on the Pass product,
+  # a real Pass with a real code. Measured, not assumed: probing the Apple
+  # endpoint this way created Pass id 8 on staging.
   PROBE_TOKEN="demo.v1.$(b64url "{\"product_id\":\"$PROBE_SKU\",\"public_uuid\":\"$(new_uuid)\"}")"
   PROBE_UUID="$(new_uuid)"
 
