@@ -10,11 +10,39 @@ import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
+import 'package:portraitor_mobile/features/payment/application/pass_funding_provider.dart';
+import 'package:portraitor_mobile/features/payment/services/pass_grant_api.dart';
 import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/domain/purchase_outcome.dart';
 import 'package:portraitor_mobile/features/payment/presentation/apple_iap_sheet.dart';
 import 'package:portraitor_mobile/features/payment/presentation/save_pass_screen.dart';
 import 'package:portraitor_mobile/shared/widgets/funnel_chrome.dart';
+
+/// The tier name the server prices against.
+///
+/// Must match the arms of `UsageService::costForPortraitRequest`. A Pass holder
+/// buys a portrait tier, never another Pass, so the pass tier never reaches the
+/// server as a name.
+String passTierNameFor(FunnelTier tier) =>
+    tier == FunnelTier.pass ? 'you' : tier.name;
+
+/// Uses a run costs, mirroring `UsageService::costForPortraitRequest`.
+///
+/// Duplicated deliberately so the funnel can refuse locally instead of letting
+/// the user commit and then discovering an exhausted pool. The server stays
+/// authoritative and still rejects an underfunded reserve with a 402; if its
+/// pricing changes, this must change with it.
+int passUseCostFor(FunnelTier tier, int personCount) {
+  switch (tier) {
+    case FunnelTier.partner:
+      return 2;
+    case FunnelTier.family:
+      return personCount < 1 ? 1 : (personCount > 5 ? 5 : personCount);
+    case FunnelTier.you:
+    case FunnelTier.pass:
+      return 1;
+  }
+}
 
 /// Step 4/4 — Confirm & pay.
 /// Real builds use the platform-selected native store for every product.
@@ -96,6 +124,26 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
         iapState.status == IapStatus.verifying;
     final activeTier = showPass ? FunnelTier.pass : draft.selectedTier;
     final productReady = iapState.priceFor(activeTier) != null;
+
+    // A held Pass funds the run server-side, so the store catalog is irrelevant
+    // to it. Watched here rather than only read at tap, because `ctaEnabled`
+    // gates on `productReady` - false on a build with no store catalog, which
+    // is exactly the build this path exists to serve. Gated on canCover, not
+    // isUsable: offering "Use my Pass" for a five-use Family run with one use
+    // left is a promise the reserve call breaks after the user commits.
+    final passFundingAsync = ref.watch(passFundingProvider);
+    final passUseCost = passUseCostFor(
+      draft.selectedTier,
+      draft.selectedNames.length,
+    );
+    final passFunded =
+        !showPass &&
+        (passFundingAsync.valueOrNull?.canCover(passUseCost) ?? false);
+
+    // Resolving is a network call, so the first frame has no answer. Without
+    // this the button shows the disabled "Pay Unavailable" that this feature
+    // exists to remove, then flips a moment later.
+    final passChecking = !showPass && passFundingAsync.isLoading;
     final purchaseError =
         iapState.status == IapStatus.failed &&
                 iapState.products.isNotEmpty &&
@@ -112,14 +160,20 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
               ? (FunnelTier.pass.canPurchase
                   ? 'Subscribe ${_priceFor(FunnelTier.pass)}'
                   : 'Subscribe — coming soon')
-              : 'Pay ${_priceFor(draft.selectedTier)}',
+              : passFunded
+                  ? 'Use my Pass'
+                  : passChecking
+                      ? 'Checking your Pass…'
+                      : 'Pay ${_priceFor(draft.selectedTier)}',
       // The email gates the purchase. The server re-validates it, but letting
       // Opening the store without one would take money we cannot deliver against.
       ctaEnabled:
           !purchaseBusy &&
-          activeTier.canPurchase &&
-          productReady &&
-          _emailValid,
+          !passChecking &&
+          _emailValid &&
+          // A Pass-funded run needs neither a purchasable tier nor a store
+          // price, so it bypasses both store gates rather than relaxing them.
+          (passFunded || (activeTier.canPurchase && productReady)),
       ctaLoading: purchaseBusy,
       onCta: () => _onCta(context),
       body: Column(
@@ -242,6 +296,45 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     final draft = ref.read(funnelDraftProvider);
     final tier = _passOpen ? FunnelTier.pass : draft.selectedTier;
 
+    // A held Pass funds the run server-side, so no store transaction happens.
+    //
+    // Re-resolved here rather than trusting what `build` watched: a use spent
+    // on another device changes the answer. `_passOpen` is excluded because
+    // with the Pass card open the CTA subscribes, and a holder tapping it must
+    // not silently spend a use of the Pass they already have.
+    if (!_passOpen) {
+      final funding = await ref.read(passFundingResolverProvider).resolve();
+      final personCount = ref.read(funnelDraftProvider).selectedNames.length;
+      final useCost = passUseCostFor(tier, personCount);
+
+      if (funding.canCover(useCost)) {
+        if (!context.mounted) return;
+        await _completePassRun(context, tier, funding, personCount);
+        return;
+      }
+
+      // The button said "Use my Pass" when it was drawn, so something changed
+      // underneath. Say so rather than falling through to a store purchase
+      // that cannot succeed on a build with no catalog.
+      if (funding.isUsable && !funding.canCover(useCost)) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Your Pass has ${funding.usesRemaining} '
+              '${funding.usesRemaining == 1 ? 'portrait' : 'portraits'} left, '
+              'and this needs $useCost.',
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
+    // The Pass check above awaits, so everything below it now crosses an async
+    // gap that did not exist before this branch was added.
+    if (!context.mounted) return;
+
     if (!tier.canPurchase) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('The Pass needs a store-enabled build.')),
@@ -265,6 +358,112 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     }
 
     await _completeStorePurchase(context, tier);
+  }
+
+  /// Pass-funded run. The reserved use IS the payment, so the grant token takes
+  /// the `paymentReference` slot a store purchase would fill and nothing
+  /// downstream of `/processing` needs to know the difference.
+  ///
+  /// Everything after a successful reserve is compensated: if the local write
+  /// fails, the use goes straight back rather than sitting reserved until the
+  /// server's expiry sweep notices, which can take fifteen minutes.
+  Future<void> _completePassRun(
+    BuildContext context,
+    FunnelTier tier,
+    PassFunding funding,
+    int personCount,
+  ) async {
+    final payload = _funnelPayload(context);
+    if (payload == null) return;
+
+    final conversationId =
+        'conv_${DateTime.now().millisecondsSinceEpoch}_'
+        '${const Uuid().v4().substring(0, 8)}';
+
+    // Staged before reserving, so a storage failure costs no use at all.
+    try {
+      await _stagePendingGeneration(
+        conversationId: conversationId,
+        payload: payload,
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'This portrait could not start safely. Free some storage and try again.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final sessionToken = funding.sessionToken!;
+    final String grantToken;
+    try {
+      grantToken = await ref
+          .read(passGrantApiProvider)
+          .reserve(
+            sessionToken: sessionToken,
+            tier: passTierNameFor(tier),
+            // The PERSON count. The server prices the run itself.
+            personCount: personCount,
+          );
+    } on PassGrantException catch (error) {
+      await StorageService.instance.deletePendingJob(conversationId);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.isSessionExpired
+                ? 'Your Pass session expired. Re-enter your Pass code in Profile.'
+                : error.message,
+          ),
+        ),
+      );
+      return;
+    }
+
+    // From here a use is spent, so every failure path hands it back before
+    // returning. Awaited, not fire-and-forget: the user is about to see an
+    // error and the count they check next has to be right.
+    try {
+      await StorageService.instance.updatePendingJob(
+        conversationId,
+        paymentSessionId: grantToken,
+        status: 'ready',
+      );
+    } catch (_) {
+      await ref
+          .read(passGrantApiProvider)
+          .release(sessionToken: sessionToken, grantToken: grantToken);
+      await StorageService.instance.deletePendingJob(conversationId);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'This portrait could not start. Your Pass use was returned.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (!context.mounted) {
+      // Nothing left to hand off to. Give the use back rather than stranding it.
+      await ref
+          .read(passGrantApiProvider)
+          .release(sessionToken: sessionToken, grantToken: grantToken);
+      return;
+    }
+    context.pushReplacement(
+      '/processing',
+      extra: {
+        ...payload,
+        'conversationId': conversationId,
+        'paymentReference': grantToken,
+      },
+    );
   }
 
   /// Real store purchase. The platform renders its own sheet, so the funnel

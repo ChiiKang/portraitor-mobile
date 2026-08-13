@@ -24,9 +24,23 @@ class HttpPassSessionApi implements PassSessionApi {
   Future<String> attach({required String passCode}) async {
     try {
       final response = await _dio.post<Map<String, dynamic>>(
-        '/api/auth/session.php',
-        data: {'pass_code': passCode},
+        '/api/pass/redeem.php',
+        // `native: true` asks the server to put the session token in the body.
+        // The web client reads it from an httpOnly cookie, and Dio has no
+        // cookie jar - deliberately, see RequestSessionResolver - so without
+        // this the app redeems a valid Pass and keeps nothing it can use.
+        data: {'code': passCode, 'native': true},
       );
+
+      // ApiService sets `validateStatus: (_) => true`, so a 4xx arrives here as
+      // an ordinary response and the DioException branch below never fires for
+      // it. Checking the status explicitly is what preserves the server's
+      // message; without it every rejection reads as "the token was missing".
+      final status = response.statusCode ?? 0;
+      if (status >= 400) {
+        throw PassSessionException(_messageFrom(response.data));
+      }
+
       final body = response.data;
       final nested = body?['data'];
       final payload = nested is Map ? nested : body;
@@ -38,16 +52,19 @@ class HttpPassSessionApi implements PassSessionApi {
     } on PassSessionException {
       rethrow;
     } on DioException catch (error) {
-      final body = error.response?.data;
-      final message = body is Map
-          ? body['message'] ?? body['error'] ?? body['detail']
-          : null;
-      throw PassSessionException(
-        message is String && message.trim().isNotEmpty
-            ? message
-            : 'That Pass code could not be attached.',
-      );
+      // Still reachable for transport failures - no connection, timeout, or a
+      // caller that supplied a stricter validateStatus.
+      throw PassSessionException(_messageFrom(error.response?.data));
     }
+  }
+
+  static String _messageFrom(Object? body) {
+    final message = body is Map
+        ? body['message'] ?? body['error'] ?? body['detail']
+        : null;
+    return message is String && message.trim().isNotEmpty
+        ? message
+        : 'That Pass code could not be attached.';
   }
 }
 
