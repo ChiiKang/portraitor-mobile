@@ -5,13 +5,17 @@ import 'gradient_text.dart';
 
 class HeroCard extends StatelessWidget {
   final String name;
+
+  /// Optional. The result screen leaves it empty on purpose: anything drawn
+  /// from the portrait's own opening lines just repeats what the document
+  /// prints directly below this card.
   final String oneliner;
   final List<String> traits;
 
   const HeroCard({
     super.key,
     required this.name,
-    required this.oneliner,
+    this.oneliner = '',
     this.traits = const [],
   });
 
@@ -34,13 +38,15 @@ class HeroCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           GradientText(name, style: PortraitorTokens.titleLg),
-          const SizedBox(height: PortraitorTokens.space8),
-          Text(
-            oneliner,
-            style: PortraitorTokens.bodyMd,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
+          if (oneliner.isNotEmpty) ...[
+            const SizedBox(height: PortraitorTokens.space8),
+            Text(
+              oneliner,
+              style: PortraitorTokens.bodyMd,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
           if (traits.isNotEmpty) ...[
             const SizedBox(height: PortraitorTokens.space16),
             Wrap(

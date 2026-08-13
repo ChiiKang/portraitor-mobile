@@ -13,7 +13,7 @@ import 'package:portraitor_mobile/shared/widgets/ghost_button.dart';
 import 'package:portraitor_mobile/shared/widgets/gradient_background.dart';
 import 'package:portraitor_mobile/shared/widgets/gradient_button.dart';
 import 'package:portraitor_mobile/shared/widgets/hero_card.dart';
-import 'package:portraitor_mobile/shared/widgets/markdown_text.dart';
+import 'package:portraitor_mobile/shared/widgets/portrait_document.dart';
 
 class ResultScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -60,7 +60,6 @@ class PortraitTabs extends StatelessWidget {
 
 class _ResultScreenState extends ConsumerState<ResultScreen> {
   Map<String, dynamic>? _portrait;
-  List<_Section> _sections = [];
   List<Map<String, dynamic>> _portraits = const [];
   int _selectedPortrait = 0;
   bool _isLoading = true;
@@ -88,7 +87,6 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                     .map((item) => Map<String, dynamic>.from(item))
                     .toList(growable: false)
                 : const [];
-        _sections = _parseSections(_currentOutput(data));
         _isLoading = false;
       });
     } else if (mounted) {
@@ -107,86 +105,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
           : _portrait?['target_name'] as String? ?? 'Portrait';
 
   void _selectPortrait(int index) {
-    setState(() {
-      _selectedPortrait = index;
-      _sections = _parseSections(_currentOutput());
-    });
-  }
-
-  List<_Section> _parseSections(String markdown) {
-    final sections = <_Section>[];
-    final lines = markdown.split('\n');
-    String? currentTitle;
-    final currentContent = StringBuffer();
-    String? currentSummary;
-
-    for (final line in lines) {
-      if (line.startsWith('## ') || line.startsWith('### ')) {
-        if (currentTitle != null) {
-          sections.add(
-            _Section(
-              title: currentTitle,
-              summary: currentSummary ?? '',
-              detail: currentContent.toString().trim(),
-              icon: _iconForSection(currentTitle),
-            ),
-          );
-        }
-        currentTitle = line.replaceFirst(RegExp(r'^#{2,3}\s*'), '').trim();
-        currentContent.clear();
-        currentSummary = null;
-      } else if (currentTitle != null) {
-        if (currentSummary == null && line.trim().isNotEmpty) {
-          currentSummary = line.trim();
-        } else {
-          currentContent.writeln(line);
-        }
-      }
-    }
-
-    if (currentTitle != null) {
-      sections.add(
-        _Section(
-          title: currentTitle,
-          summary: currentSummary ?? '',
-          detail: currentContent.toString().trim(),
-          icon: _iconForSection(currentTitle),
-        ),
-      );
-    }
-
-    if (sections.isEmpty && markdown.isNotEmpty) {
-      sections.add(
-        _Section(
-          title: 'Portrait',
-          summary:
-              markdown.length > 100
-                  ? '${markdown.substring(0, 100)}...'
-                  : markdown,
-          detail: markdown,
-          icon: Icons.psychology,
-        ),
-      );
-    }
-
-    return sections;
-  }
-
-  IconData _iconForSection(String title) {
-    final lower = title.toLowerCase();
-    if (lower.contains('personality')) return Icons.psychology;
-    if (lower.contains('communication')) return Icons.chat_bubble_outline;
-    if (lower.contains('strength')) return Icons.star_outline;
-    if (lower.contains('blind') || lower.contains('weakness')) {
-      return Icons.visibility_off_outlined;
-    }
-    if (lower.contains('care') || lower.contains('love')) {
-      return Icons.favorite_outline;
-    }
-    if (lower.contains('drive') || lower.contains('motiv')) {
-      return Icons.bolt_outlined;
-    }
-    return Icons.article_outlined;
+    setState(() => _selectedPortrait = index);
   }
 
   Rect _shareOrigin(BuildContext sourceContext) {
@@ -283,8 +202,11 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     }
 
     final name = _currentName;
-    final oneliner = _sections.isNotEmpty ? _sections.first.summary : '';
-    final traits = _sections.take(3).map((s) => s.title).toList();
+    // No oneliner or trait pills. Both were derived from the portrait's own
+    // opening lines, so the hero repeated verbatim what the document said
+    // immediately below it, and the pills were just whatever headings the model
+    // happened to emit.
+    final output = _currentOutput();
 
     return Scaffold(
       body: GradientBackground(
@@ -311,20 +233,32 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                        child: HeroCard(
-                          name: name,
-                          oneliner: oneliner,
-                          traits: traits,
-                        ),
+                        child: HeroCard(name: name),
                       ),
                     ),
-                    SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) => _SectionCard(
-                          section: _sections[index],
-                          initiallyExpanded: index == 0,
+                    // One card, the whole portrait, always laid out the same
+                    // way. Nothing is collapsed: a reader who paid for this
+                    // should not have to tap to see what they bought.
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(
+                            PortraitorTokens.space20,
+                          ),
+                          decoration: BoxDecoration(
+                            color: PortraitorTokens.surface,
+                            borderRadius: BorderRadius.circular(
+                              PortraitorTokens.radiusXl,
+                            ),
+                            border: Border.all(
+                              color: PortraitorTokens.borderSoft,
+                            ),
+                            boxShadow: PortraitorTokens.shadowSubtle,
+                          ),
+                          child: PortraitDocument(output),
                         ),
-                        childCount: _sections.length,
                       ),
                     ),
                     const SliverToBoxAdapter(child: SizedBox(height: 100)),
@@ -424,123 +358,3 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
   }
 }
 
-class _Section {
-  final String title;
-  final String summary;
-  final String detail;
-  final IconData icon;
-
-  const _Section({
-    required this.title,
-    required this.summary,
-    required this.detail,
-    required this.icon,
-  });
-}
-
-class _SectionCard extends StatefulWidget {
-  final _Section section;
-  final bool initiallyExpanded;
-
-  const _SectionCard({required this.section, this.initiallyExpanded = false});
-
-  @override
-  State<_SectionCard> createState() => _SectionCardState();
-}
-
-class _SectionCardState extends State<_SectionCard> {
-  late bool _expanded;
-
-  @override
-  void initState() {
-    super.initState();
-    _expanded = widget.initiallyExpanded;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      child: Container(
-        decoration: BoxDecoration(
-          color: PortraitorTokens.surface,
-          borderRadius: BorderRadius.circular(PortraitorTokens.radiusXl),
-          border: Border.all(color: PortraitorTokens.borderSoft),
-          boxShadow: PortraitorTokens.shadowSubtle,
-        ),
-        child: Column(
-          children: [
-            InkWell(
-              onTap: () => setState(() => _expanded = !_expanded),
-              borderRadius: BorderRadius.circular(PortraitorTokens.radiusXl),
-              child: Padding(
-                padding: const EdgeInsets.all(PortraitorTokens.space16),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: PortraitorTokens.brandSoft,
-                        borderRadius: BorderRadius.circular(
-                          PortraitorTokens.radiusSm,
-                        ),
-                      ),
-                      child: Icon(
-                        widget.section.icon,
-                        size: 18,
-                        color: PortraitorTokens.brandPurple,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.section.title,
-                            style: PortraitorTokens.titleSm,
-                          ),
-                          if (!_expanded && widget.section.summary.isNotEmpty)
-                            Text(
-                              widget.section.summary,
-                              style: PortraitorTokens.bodySm,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                        ],
-                      ),
-                    ),
-                    AnimatedRotation(
-                      turns: _expanded ? 0.5 : 0,
-                      duration: PortraitorTokens.durBase,
-                      child: const Icon(
-                        Icons.expand_more,
-                        color: PortraitorTokens.inkMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            AnimatedCrossFade(
-              firstChild: const SizedBox.shrink(),
-              secondChild: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: MarkdownText(
-                  widget.section.detail,
-                  style: PortraitorTokens.bodyMd,
-                ),
-              ),
-              crossFadeState:
-                  _expanded
-                      ? CrossFadeState.showSecond
-                      : CrossFadeState.showFirst,
-              duration: PortraitorTokens.durBase,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
