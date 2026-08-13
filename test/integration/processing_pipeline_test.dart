@@ -122,11 +122,22 @@ void main() {
               text: 'conversation',
               paymentSessionId: 'payment-one',
               conversationId: 'conversation-one',
+              deliveryEmail: 'buyer@example.com',
             );
 
         expect(portraits.map((item) => item['person']), ['Alice', 'Bob']);
         expect(analysisMetadata, hasLength(2));
         expect(validationMetadata, hasLength(2));
+        // Every person in the pack is a separate authorized request. One
+        // missing address refuses that person's generation outright.
+        expect(
+          analysisMetadata.map((m) => m['delivery_email']),
+          everyElement('buyer@example.com'),
+        );
+        expect(
+          validationMetadata.map((m) => m['delivery_email']),
+          everyElement('buyer@example.com'),
+        );
         expect(validationMetadata.first['pack_more_coming'], isTrue);
         expect(
           validationMetadata.last.containsKey('pack_more_coming'),
@@ -258,6 +269,7 @@ void main() {
             targetName: 'Natalia',
             paymentSessionId: 'pi_test',
             conversationId: 'conversation-test',
+            deliveryEmail: 'buyer@example.com',
           );
 
       expect(result, 'merged result');
@@ -318,6 +330,7 @@ void main() {
             dateRange: 'May 2024',
             paymentSessionId: 'pi_test',
             conversationId: 'conversation-test',
+            deliveryEmail: 'buyer@example.com',
           );
 
       expect(calls.map((c) => c['promptTemplate']), [
@@ -336,6 +349,58 @@ void main() {
         'date_range': 'May 2024',
       });
       expect(calls.every((c) => c.containsKey('prompt')), isFalse);
+    });
+
+    test('every map-reduce request carries the delivery address', () async {
+      // gemini-proxy-stream.php reads metadata.delivery_email and refuses the
+      // run without it, because a store purchase leaves no Stripe customer to
+      // resolve a recipient from. Chunk 1 fails just as hard as single-shot,
+      // so the assertion covers the chunk requests AND the merge request.
+      final fakeApi = FakeApiService();
+      final metadataByPhase = <String, Map<String, dynamic>>{};
+
+      fakeApi.onStreamAnalysis = ({
+        required promptTemplate,
+        required templateVars,
+        previousPortrait,
+        required payload,
+        required paymentSessionId,
+        required clientConversationRef,
+        dateRange,
+        required metadata,
+        leaseToken,
+        forceFallback = false,
+      }) {
+        final phase = metadata['phase'] as String;
+        final chunk = metadata['chunk'] as Map<String, dynamic>?;
+        final key = phase == 'chunk' ? 'chunk-${chunk?['index']}' : phase;
+        metadataByPhase[key] = Map<String, dynamic>.from(metadata);
+        return Stream.value('done\x00{"text":"$key result"}');
+      };
+
+      final container = ProviderContainer(
+        overrides: [processingApiProvider.overrideWithValue(fakeApi)],
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(processingProvider.notifier)
+          .processMapReduceForTesting(
+            chunks: const ['chunk one', 'chunk two'],
+            targetName: 'Natalia',
+            paymentSessionId: 'pi_test',
+            conversationId: 'conversation-test',
+            deliveryEmail: 'buyer@example.com',
+          );
+
+      expect(metadataByPhase.keys, containsAll(['chunk-1', 'chunk-2', 'merge']));
+      for (final entry in metadataByPhase.entries) {
+        expect(
+          entry.value['delivery_email'],
+          'buyer@example.com',
+          reason: '${entry.key} request had no delivery_email',
+        );
+      }
     });
   });
 
@@ -400,6 +465,7 @@ void main() {
               dateRange: 'May 2024',
               paymentSessionId: 'pi_test',
               conversationId: 'conversation-test',
+              deliveryEmail: 'buyer@example.com',
             );
 
         expect(result, 'portrait after 3');
@@ -447,6 +513,12 @@ void main() {
                 'rolling',
           ),
           isTrue,
+        );
+        expect(
+          calls.map(
+            (c) => (c['metadata'] as Map<String, dynamic>)['delivery_email'],
+          ),
+          everyElement('buyer@example.com'),
         );
       },
     );

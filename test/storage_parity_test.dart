@@ -57,6 +57,11 @@ void main() {
           'target_name',
           'date_range',
           'payment_session_id',
+          // Mobile-only. Web resolves the recipient from the Stripe customer
+          // on the payments row; an Apple/Google purchase has no such
+          // customer, so the address has to be stored and replayed on the
+          // generation request or the backend refuses the run.
+          'delivery_email',
           'status',
           'chunks_completed',
           'chunks_total',

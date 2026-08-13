@@ -154,6 +154,7 @@ class _StubProcessing extends StateNotifier<ProcessingState>
     required String targetName,
     required String conversationId,
     required String paymentSessionId,
+    required String deliveryEmail,
     String? dateRange,
     List<String> people = const [],
     String tier = 'you',

@@ -22,6 +22,12 @@ class ProcessingScreen extends ConsumerStatefulWidget {
   /// Opaque, Portraitor-generated. Authorizes generation. Never a provider's
   /// own transaction id.
   final String paymentReference;
+
+  /// The address the buyer typed in the funnel. Travels with the run because
+  /// a store purchase has no Stripe customer for the backend to resolve a
+  /// recipient from; generation is refused outright without it. Empty on the
+  /// resume path, where the saved job carries the address instead.
+  final String deliveryEmail;
   final String? dateRange;
 
   /// When true, the screen looks up the saved [PendingJob] by
@@ -38,6 +44,7 @@ class ProcessingScreen extends ConsumerStatefulWidget {
     required this.targetName,
     required this.conversationId,
     required this.paymentReference,
+    this.deliveryEmail = '',
     this.dateRange,
     this.isResume = false,
     this.people = const [],
@@ -77,6 +84,7 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
                 paymentSessionId: widget.paymentReference,
                 normalizedText: widget.normalizedText,
                 targetName: widget.targetName,
+                deliveryEmail: widget.deliveryEmail,
                 dateRange: widget.dateRange,
                 people: widget.people,
                 tier: widget.tier,
@@ -93,6 +101,7 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
             paymentSessionId: widget.paymentReference,
             normalizedText: widget.normalizedText,
             targetName: widget.targetName,
+            deliveryEmail: widget.deliveryEmail,
             dateRange: widget.dateRange,
             people: widget.people,
             tier: widget.tier,

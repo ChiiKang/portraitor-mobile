@@ -62,6 +62,44 @@ Future<Database> _openLegacyV4TestDb() async {
   );
 }
 
+Future<Database> _openLegacyV6TestDb() async {
+  // Open at version 6 with the pending_jobs shape that shipped before
+  // delivery_email existed, so the v6 -> v7 ALTER can be exercised on a real
+  // pre-existing install rather than a freshly created table.
+  return databaseFactoryFfi.openDatabase(
+    inMemoryDatabasePath,
+    options: OpenDatabaseOptions(
+      version: 6,
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE pending_jobs (
+            id TEXT PRIMARY KEY,
+            device_id TEXT NOT NULL,
+            client_conversation_ref TEXT NOT NULL,
+            input_text TEXT,
+            target_name TEXT,
+            date_range TEXT,
+            payment_session_id TEXT,
+            status TEXT DEFAULT 'processing',
+            chunks_completed INTEGER DEFAULT 0,
+            chunks_total INTEGER DEFAULT 0,
+            chunk_results TEXT DEFAULT '[]',
+            chunking_mode TEXT,
+            token_limit INTEGER,
+            chunk_overlap_tokens INTEGER,
+            tier TEXT DEFAULT 'you',
+            people TEXT DEFAULT '[]',
+            portraits_completed TEXT DEFAULT '[]',
+            active_person_index INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+          )
+        ''');
+      },
+    ),
+  );
+}
+
 PendingJob _makeJob({
   String id = 'conv_1',
   String? inputText = 'hello chat',
@@ -560,6 +598,77 @@ void main() {
       await StorageService.onUpgradeSchema(db, 4, StorageService.dbVersion);
       // If we got here, no exception was thrown by re-adding columns or
       // re-creating indexes.
+      expect(true, isTrue);
+    });
+  });
+
+  group('v6 -> v7 migration (delivery_email)', () {
+    late Database db;
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    test('upgrade adds delivery_email to an existing install', () async {
+      db = await _openLegacyV6TestDb();
+      // A row that predates the column: the buyer's address was never stored.
+      await db.insert('pending_jobs', {
+        'id': 'legacy_v6',
+        'device_id': _testDeviceId,
+        'client_conversation_ref': 'legacy_v6',
+        'input_text': 'pre-upgrade text',
+        'payment_session_id': 'pi_legacy_v6',
+        'status': 'processing',
+        'chunks_completed': 0,
+        'chunks_total': 1,
+        'chunk_results': '[]',
+        'created_at': DateTime.utc(2026, 8, 12).toIso8601String(),
+        'updated_at': DateTime.utc(2026, 8, 12).toIso8601String(),
+      });
+
+      await StorageService.onUpgradeSchema(db, 6, StorageService.dbVersion);
+
+      // Existing rows survive the ALTER and read back with no recipient, which
+      // is what makes resumeProcessing refuse them instead of emailing nobody.
+      final legacyRows = await db.query(
+        'pending_jobs',
+        where: 'id = ?',
+        whereArgs: ['legacy_v6'],
+      );
+      expect(legacyRows, hasLength(1));
+      expect(PendingJob.fromDbMap(legacyRows.single).deliveryEmail, isEmpty);
+      expect(legacyRows.single['input_text'], 'pre-upgrade text');
+
+      // And the column is writable for jobs created after the upgrade.
+      await db.insert('pending_jobs', {
+        'id': 'post_upgrade',
+        'device_id': _testDeviceId,
+        'client_conversation_ref': 'post_upgrade',
+        'input_text': 'post-upgrade text',
+        'payment_session_id': 'pi_post_upgrade',
+        'delivery_email': 'buyer@example.com',
+        'status': 'processing',
+        'chunks_completed': 0,
+        'chunks_total': 1,
+        'chunk_results': '[]',
+        'created_at': DateTime.utc(2026, 8, 13).toIso8601String(),
+        'updated_at': DateTime.utc(2026, 8, 13).toIso8601String(),
+      });
+      final upgradedRows = await db.query(
+        'pending_jobs',
+        where: 'id = ?',
+        whereArgs: ['post_upgrade'],
+      );
+      expect(
+        PendingJob.fromDbMap(upgradedRows.single).deliveryEmail,
+        'buyer@example.com',
+      );
+    });
+
+    test('upgrade is idempotent — running twice does not error', () async {
+      db = await _openLegacyV6TestDb();
+      await StorageService.onUpgradeSchema(db, 6, StorageService.dbVersion);
+      await StorageService.onUpgradeSchema(db, 6, StorageService.dbVersion);
       expect(true, isTrue);
     });
   });

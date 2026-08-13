@@ -117,6 +117,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     String? dateRange,
     required String paymentSessionId,
     required String conversationId,
+    required String deliveryEmail,
   }) {
     return _processMapReduce(
       chunks: chunks,
@@ -124,6 +125,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       dateRange: dateRange,
       paymentSessionId: paymentSessionId,
       conversationId: conversationId,
+      deliveryEmail: deliveryEmail,
       updatePendingJob: false,
     );
   }
@@ -135,6 +137,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     String? dateRange,
     required String paymentSessionId,
     required String conversationId,
+    required String deliveryEmail,
   }) {
     return _processRolling(
       chunks: chunks,
@@ -142,6 +145,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       dateRange: dateRange,
       paymentSessionId: paymentSessionId,
       conversationId: conversationId,
+      deliveryEmail: deliveryEmail,
       updatePendingJob: false,
     );
   }
@@ -153,6 +157,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     required String text,
     required String paymentSessionId,
     required String conversationId,
+    required String deliveryEmail,
   }) async {
     final portraits = <Map<String, dynamic>>[];
     for (var i = 0; i < people.length; i++) {
@@ -178,12 +183,14 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
         targetName: people[i],
         paymentSessionId: paymentSessionId,
         conversationId: conversationId,
+        deliveryEmail: deliveryEmail,
         pack: pack,
       );
       final validated = await _runValidation(
         text: analysis,
         clientConversationRef: conversationId,
         paymentSessionId: paymentSessionId,
+        deliveryEmail: deliveryEmail,
         pack: pack,
       );
       portraits.add({'person': people[i], 'output': validated});
@@ -191,11 +198,17 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     return portraits;
   }
 
+  /// [deliveryEmail] is the address the buyer typed in the funnel. It has to
+  /// ride along on every generation request: a store purchase writes an
+  /// Apple/Google payments row with no Stripe customer, so the backend has
+  /// no recipient to resolve and refuses the run with "Payment email not
+  /// found" unless it finds `metadata.delivery_email` on the request itself.
   Future<void> startProcessing({
     required String conversationId,
     required String paymentSessionId,
     required String normalizedText,
     required String targetName,
+    required String deliveryEmail,
     String? dateRange,
     List<String> people = const [],
     String tier = 'you',
@@ -220,6 +233,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
         conversationId: conversationId,
         paymentSessionId: paymentSessionId,
         normalizedText: normalizedText,
+        deliveryEmail: deliveryEmail,
         people: packPeople,
         tier: tier,
         dateRange: dateRange,
@@ -271,6 +285,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
           targetName: targetName,
           dateRange: dateRange,
           paymentSessionId: paymentSessionId,
+          deliveryEmail: deliveryEmail,
           status: 'processing',
           chunksCompleted: 0,
           chunksTotal: chunks.length,
@@ -317,6 +332,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
             dateRange: dateRange,
             paymentSessionId: paymentSessionId,
             conversationId: conversationId,
+            deliveryEmail: deliveryEmail,
             forceFallback: forceFallback,
           ),
           phase: 'single-shot',
@@ -330,6 +346,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
           dateRange: dateRange,
           paymentSessionId: paymentSessionId,
           conversationId: conversationId,
+          deliveryEmail: deliveryEmail,
         );
       } else {
         analysisResult = await _processMapReduce(
@@ -338,6 +355,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
           dateRange: dateRange,
           paymentSessionId: paymentSessionId,
           conversationId: conversationId,
+          deliveryEmail: deliveryEmail,
         );
       }
 
@@ -355,6 +373,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
           text: analysisResult,
           clientConversationRef: conversationId,
           paymentSessionId: paymentSessionId,
+          deliveryEmail: deliveryEmail,
           dateRange: dateRange,
           forceFallback: forceFallback,
         ),
@@ -558,6 +577,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
         conversationId: job.id,
         paymentSessionId: job.paymentSessionId,
         normalizedText: job.inputText,
+        deliveryEmail: job.deliveryEmail,
         people: job.people,
         tier: job.tier,
         dateRange: job.dateRange,
@@ -595,6 +615,18 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       state = state.copyWith(
         status: ProcessingStatus.error,
         error: 'Pending portrait is missing required fields',
+      );
+      return;
+    }
+
+    // Rows written before the v7 delivery_email column have no recipient, and
+    // a store payment carries no Stripe customer to fall back on. Generating
+    // anyway would burn the queue slot and finish with the portrait emailed to
+    // nobody, so stop here instead.
+    if (job.deliveryEmail.trim().isEmpty) {
+      state = state.copyWith(
+        status: ProcessingStatus.error,
+        error: 'Pending portrait is missing its delivery email',
       );
       return;
     }
@@ -655,6 +687,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
             dateRange: job.dateRange,
             paymentSessionId: job.paymentSessionId,
             conversationId: job.id,
+            deliveryEmail: job.deliveryEmail,
             forceFallback: forceFallback,
           ),
           phase: 'single-shot-resume',
@@ -675,6 +708,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
           dateRange: job.dateRange,
           paymentSessionId: job.paymentSessionId,
           conversationId: job.id,
+          deliveryEmail: job.deliveryEmail,
           initialChunkIndex: startIndex,
           initialPortrait: initialPortrait,
         );
@@ -685,6 +719,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
           dateRange: job.dateRange,
           paymentSessionId: job.paymentSessionId,
           conversationId: job.id,
+          deliveryEmail: job.deliveryEmail,
           initialChunkResults: completedByIndex,
         );
       }
@@ -702,6 +737,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
           text: analysisResult,
           clientConversationRef: job.id,
           paymentSessionId: job.paymentSessionId,
+          deliveryEmail: job.deliveryEmail,
           dateRange: job.dateRange,
           forceFallback: forceFallback,
         ),
@@ -777,6 +813,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     required String conversationId,
     required String paymentSessionId,
     required String normalizedText,
+    required String deliveryEmail,
     required List<String> people,
     required String tier,
     String? dateRange,
@@ -841,6 +878,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
             targetName: people.first,
             dateRange: dateRange,
             paymentSessionId: paymentSessionId,
+            deliveryEmail: deliveryEmail,
             status: 'processing',
             chunksCompleted: 0,
             chunksTotal: firstChunks.length,
@@ -911,6 +949,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
               dateRange: dateRange,
               paymentSessionId: paymentSessionId,
               conversationId: conversationId,
+              deliveryEmail: deliveryEmail,
               forceFallback: fallback,
               pack: pack,
             ),
@@ -926,6 +965,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
             dateRange: dateRange,
             paymentSessionId: paymentSessionId,
             conversationId: conversationId,
+            deliveryEmail: deliveryEmail,
             pack: pack,
           );
         } else {
@@ -935,6 +975,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
             dateRange: dateRange,
             paymentSessionId: paymentSessionId,
             conversationId: conversationId,
+            deliveryEmail: deliveryEmail,
             pack: pack,
           );
         }
@@ -948,6 +989,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
             text: analysis,
             clientConversationRef: conversationId,
             paymentSessionId: paymentSessionId,
+            deliveryEmail: deliveryEmail,
             dateRange: dateRange,
             forceFallback: fallback,
             pack: pack,
@@ -1064,6 +1106,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     String? dateRange,
     required String paymentSessionId,
     required String conversationId,
+    required String deliveryEmail,
     bool forceFallback = false,
     PortraitPackContext? pack,
   }) async {
@@ -1091,6 +1134,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
             'chunk': {'index': 1, 'total': 1},
             'include_thoughts': true,
             'conversation_ref': conversationId,
+            'delivery_email': deliveryEmail,
             if (_leaseToken != null) 'lease_token': _leaseToken,
           }) ??
           {
@@ -1098,6 +1142,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
             'chunk': {'index': 1, 'total': 1},
             'include_thoughts': true,
             'conversation_ref': conversationId,
+            'delivery_email': deliveryEmail,
             if (_leaseToken != null) 'lease_token': _leaseToken,
           },
     );
@@ -1126,6 +1171,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     String? dateRange,
     required String paymentSessionId,
     required String conversationId,
+    required String deliveryEmail,
     bool forceFallback = false,
     bool updatePendingJob = true,
     Map<int, String>? initialChunkResults,
@@ -1173,6 +1219,10 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
               'chunk': {'index': i + 1, 'total': chunks.length},
               'include_thoughts': i == 0,
               'conversation_ref': conversationId,
+              // Every chunk is its own authorized request, so every chunk
+              // needs the address too. Omitting it here fails the run on
+              // chunk 1 even when the single-shot path is correct.
+              'delivery_email': deliveryEmail,
               if (_leaseToken != null) 'lease_token': _leaseToken,
             },
           );
@@ -1263,6 +1313,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
                 },
                 'include_thoughts': true,
                 'conversation_ref': conversationId,
+                'delivery_email': deliveryEmail,
                 if (_leaseToken != null) 'lease_token': _leaseToken,
               }) ??
               {
@@ -1274,6 +1325,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
                 },
                 'include_thoughts': true,
                 'conversation_ref': conversationId,
+                'delivery_email': deliveryEmail,
                 if (_leaseToken != null) 'lease_token': _leaseToken,
               },
         );
@@ -1308,6 +1360,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     String? dateRange,
     required String paymentSessionId,
     required String conversationId,
+    required String deliveryEmail,
     bool forceFallback = false,
     bool updatePendingJob = true,
     int initialChunkIndex = 0,
@@ -1380,6 +1433,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
                       'chunk': {'index': i + 1, 'total': chunks.length},
                       'include_thoughts': true,
                       'conversation_ref': conversationId,
+                      'delivery_email': deliveryEmail,
                       'is_final': true,
                       if (_leaseToken != null) 'lease_token': _leaseToken,
                     })
@@ -1389,6 +1443,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
                       'chunk': {'index': i + 1, 'total': chunks.length},
                       'include_thoughts': true,
                       'conversation_ref': conversationId,
+                      'delivery_email': deliveryEmail,
                       if (isLast) 'is_final': true,
                       if (_leaseToken != null) 'lease_token': _leaseToken,
                     },
@@ -1430,12 +1485,18 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     required String text,
     required String clientConversationRef,
     required String paymentSessionId,
+    required String deliveryEmail,
     String? dateRange,
     bool forceFallback = false,
     PortraitPackContext? pack,
   }) async {
     final resultBuffer = StringBuffer();
     final parser = SseParser();
+
+    // This is the request that actually sends the portrait and captures the
+    // payment, so the recipient matters most here. A store payments row has
+    // no Stripe customer behind it for the server to look one up from.
+    final metadata = {'delivery_email': deliveryEmail};
 
     final stream = _api.streamValidation(
       text: text,
@@ -1444,7 +1505,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       leaseToken: _leaseToken,
       dateRange: dateRange,
       forceFallback: forceFallback,
-      metadata: pack?.applyMetadata(const {}) ?? const {},
+      metadata: pack?.applyMetadata(metadata) ?? metadata,
     );
 
     await for (final rawData in stream) {

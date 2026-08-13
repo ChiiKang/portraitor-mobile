@@ -14,7 +14,7 @@ class StorageService {
 
   static const String _deviceIdKey = 'portraitor_device_id';
   static const int _maxConversations = 100;
-  static const int _dbVersion = 6;
+  static const int _dbVersion = 7;
 
   Database? _db;
   String? _deviceId;
@@ -111,6 +111,7 @@ class StorageService {
             target_name TEXT,
             date_range TEXT,
             payment_session_id TEXT,
+            delivery_email TEXT,
             status TEXT DEFAULT 'processing',
             chunks_completed INTEGER DEFAULT 0,
             chunks_total INTEGER DEFAULT 0,
@@ -238,6 +239,14 @@ class StorageService {
         'pending_jobs',
         'active_person_index INTEGER DEFAULT 1',
       );
+    }
+    if (oldVersion < 7) {
+      // A store purchase has no Stripe customer behind it, so the backend
+      // cannot look a recipient up from the payments row: both generation
+      // endpoints read metadata.delivery_email off the request or refuse
+      // with "Payment email not found". A resumed job rebuilds its request
+      // from this row, so the address has to be stored here too.
+      await _addColumnIfMissing(db, 'pending_jobs', 'delivery_email TEXT');
     }
   }
 

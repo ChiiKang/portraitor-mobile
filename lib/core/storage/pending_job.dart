@@ -14,6 +14,7 @@ class PendingJob {
     required this.updatedAt,
     this.targetName,
     this.dateRange,
+    this.deliveryEmail = '',
     this.status = 'processing',
     this.chunkingMode,
     this.tokenLimit,
@@ -31,6 +32,14 @@ class PendingJob {
   final String? targetName;
   final String? dateRange;
   final String paymentSessionId;
+
+  /// Where the finished portrait is emailed. Persisted because a store
+  /// purchase creates an Apple/Google payments row with no Stripe customer
+  /// attached, so the backend has nothing to resolve a recipient from: it
+  /// reads `metadata.delivery_email` off the generation request or refuses
+  /// the run. A job resumed after an app kill has to carry the address it
+  /// was bought with, or generation fails with "Payment email not found".
+  final String deliveryEmail;
   final String status;
   final int chunksCompleted;
   final int chunksTotal;
@@ -62,6 +71,7 @@ class PendingJob {
       'target_name': targetName,
       'date_range': dateRange,
       'payment_session_id': paymentSessionId,
+      'delivery_email': deliveryEmail,
       'status': status,
       'chunks_completed': chunksCompleted,
       'chunks_total': chunksTotal,
@@ -103,6 +113,9 @@ class PendingJob {
       targetName: row['target_name'] as String?,
       dateRange: row['date_range'] as String?,
       paymentSessionId: (row['payment_session_id'] as String?) ?? '',
+      // Null on rows written before the v7 column existed. Resume refuses
+      // those loudly rather than generating a portrait nobody receives.
+      deliveryEmail: (row['delivery_email'] as String?) ?? '',
       status: (row['status'] as String?) ?? 'processing',
       chunksCompleted: (row['chunks_completed'] as int?) ?? 0,
       chunksTotal: (row['chunks_total'] as int?) ?? 0,

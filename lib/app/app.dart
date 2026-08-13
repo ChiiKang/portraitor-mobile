@@ -118,6 +118,7 @@ final router = GoRouter(
           targetName: extra['targetName'] as String? ?? '',
           conversationId: extra['conversationId'] as String? ?? '',
           paymentReference: extra['paymentReference'] as String? ?? '',
+          deliveryEmail: extra['deliveryEmail'] as String? ?? '',
           dateRange: extra['dateRange'] as String?,
           isResume: extra['resume'] as bool? ?? false,
           people:

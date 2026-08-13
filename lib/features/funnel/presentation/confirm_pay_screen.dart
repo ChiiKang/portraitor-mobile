@@ -396,6 +396,7 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
         targetName: payload['targetName'] as String,
         dateRange: payload['dateRange'] as String?,
         paymentSessionId: '',
+        deliveryEmail: payload['deliveryEmail'] as String? ?? '',
         status: 'awaiting_purchase',
         chunksCompleted: 0,
         chunksTotal: 0,
@@ -430,6 +431,11 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     return {
       'normalizedText': normalized.text,
       'targetName': draft.selectedNames.first,
+      // Rides through to the generation requests. A store purchase leaves an
+      // Apple/Google payments row with no Stripe customer, so the backend has
+      // no recipient to resolve and refuses every generation call that does
+      // not carry the address the buyer typed here.
+      'deliveryEmail': _email,
       'people': List<String>.unmodifiable(draft.selectedNames),
       'tier': draft.selectedTier.name,
       'tokenEstimate': draft.tokenEstimate,

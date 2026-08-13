@@ -111,8 +111,35 @@ void main() {
         paymentSessionId: 'pi_test',
         leaseToken: 'lease-abc',
         dateRange: 'Jan 2024',
+        metadata: const {'delivery_email': 'buyer@example.com'},
       );
       expect(stream, isA<Stream<String>>());
+    });
+
+    test('streamValidation body keeps caller metadata such as the '
+        'delivery address', () {
+      // gemini-validate-stream.php:197 reads metadata.delivery_email and
+      // refuses the run without it, because a store purchase has no Stripe
+      // customer to resolve a recipient from. The caller's map is spread
+      // LAST so the built-in defaults can never drop or overwrite it.
+      final source = File('lib/core/api/api_service.dart').readAsStringSync();
+      final start = source.indexOf('Stream<String> streamValidation');
+      final end = source.indexOf('/// Parse raw byte stream', start);
+      final method = source.substring(start, end);
+
+      final metadataStart = method.indexOf("'metadata': {");
+      expect(metadataStart, greaterThan(0));
+      final metadataBlock = method.substring(
+        metadataStart,
+        method.indexOf('},', metadataStart),
+      );
+      expect(metadataBlock, contains('...metadata'));
+      expect(
+        metadataBlock.trimRight().endsWith('...metadata,'),
+        isTrue,
+        reason:
+            'caller metadata must be spread last so delivery_email survives',
+      );
     });
 
     test('stream proxy retries Hostinger CDN 405 like web client', () {

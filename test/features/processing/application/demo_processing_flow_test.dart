@@ -58,6 +58,7 @@ void main() {
           paymentSessionId: 'demo-credit-local',
           normalizedText: 'Dan: Hello\nAlex: Hi there',
           targetName: 'Dan',
+          deliveryEmail: 'demo@example.com',
           people: const ['Dan', 'Alex'],
           tier: 'partner',
           dateRange: 'Jan 2026',

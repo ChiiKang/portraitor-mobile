@@ -352,6 +352,7 @@ void main() {
           paymentSessionId: 'pi_save_before_queue',
           normalizedText: 'hello chat log',
           targetName: 'Alice',
+          deliveryEmail: 'buyer@example.com',
           dateRange: 'Jan 2026',
         );
 
@@ -369,6 +370,14 @@ void main() {
         expect(row.paymentSessionId, 'pi_save_before_queue');
         expect(row.targetName, 'Alice');
         expect(row.dateRange, 'Jan 2026');
+        expect(
+          row.deliveryEmail,
+          'buyer@example.com',
+          reason:
+              'a resumed run rebuilds its request from this row and a store '
+              'payment has no Stripe customer to resolve a recipient from, '
+              'so the address must be persisted with the job',
+        );
         expect(row.chunkingMode, isNotNull);
         expect(row.tokenLimit, isNotNull);
         expect(row.chunkOverlapTokens, isNotNull);
@@ -378,6 +387,99 @@ void main() {
           reason: 'catch block must have marked status=failed',
         );
       },
+    );
+
+    test(
+      'startProcessing puts the delivery address on the generation and '
+      'validation requests',
+      () async {
+        // The bug this guards: a store purchase records the credit but every
+        // generation call came back "Payment email not found", because an
+        // Apple/Google payments row has no Stripe customer for the backend to
+        // resolve a recipient from. Both endpoints read
+        // metadata.delivery_email off the request or refuse the run.
+        final analysisMetadata = <Map<String, dynamic>>[];
+        final validationMetadata = <Map<String, dynamic>>[];
+
+        fakeApi.onEnqueue =
+            ({
+              required String paymentSessionId,
+              required String clientConversationRef,
+            }) async => {'status': 'processing', 'lease_token': 'lease_test'};
+
+        fakeApi.onStreamAnalysis =
+            ({
+              required String promptTemplate,
+              required Map<String, dynamic> templateVars,
+              String? previousPortrait,
+              required String payload,
+              required String paymentSessionId,
+              required String clientConversationRef,
+              String? dateRange,
+              required Map<String, dynamic> metadata,
+              String? leaseToken,
+              bool forceFallback = false,
+            }) {
+              analysisMetadata.add(Map<String, dynamic>.from(metadata));
+              return Stream.value('done\x00{"text":"analysis result"}');
+            };
+
+        fakeApi.onStreamValidation =
+            ({
+              required String text,
+              required String clientConversationRef,
+              required String paymentSessionId,
+              String? leaseToken,
+              String? dateRange,
+              bool forceFallback = false,
+              required Map<String, dynamic> metadata,
+            }) {
+              validationMetadata.add(Map<String, dynamic>.from(metadata));
+              return Stream.value(
+                'done\x00{"text":"validated portrait","email_sent":true,'
+                '"payment_action":"captured"}',
+              );
+            };
+
+        await notifier.startProcessing(
+          conversationId: 'conv_delivery_email',
+          paymentSessionId: 'pi_delivery_email',
+          normalizedText: 'a short chat log for single-shot processing',
+          targetName: 'Alice',
+          deliveryEmail: 'buyer@example.com',
+        );
+        // startProcessing refreshes the portraits list without awaiting it.
+        // Let that settle before teardown closes the database under it.
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        final state = container.read(processingProvider);
+        expect(
+          state.status,
+          ProcessingStatus.done,
+          reason: 'run must complete. error: ${state.error}',
+        );
+        expect(analysisMetadata, hasLength(1));
+        expect(analysisMetadata.single['delivery_email'], 'buyer@example.com');
+        expect(validationMetadata, hasLength(1));
+        expect(
+          validationMetadata.single['delivery_email'],
+          'buyer@example.com',
+          reason:
+              'validation is where the portrait is emailed and the payment '
+              'captured, so a missing address there loses the delivery',
+        );
+
+        // Persisted for the resume path, which rebuilds the same requests.
+        final row = await StorageService.instance.getPendingJobById(
+          'conv_delivery_email',
+        );
+        expect(
+          row,
+          isNull,
+          reason: 'a completed run cleans up its pending row',
+        );
+      },
+      timeout: const Timeout(Duration(seconds: 30)),
     );
   });
 
@@ -442,7 +544,17 @@ void main() {
         'Future<void> resumeProcessing(PendingJob job)',
       );
       expect(start, greaterThan(0));
-      final body = source.substring(start, start + 2500);
+      // Scoped to the end of the method rather than a fixed character count,
+      // so adding a guard near the top does not push the lease call out of
+      // the window and fail this test for the wrong reason.
+      final nextMethod = source.indexOf(
+        RegExp(r'\n  (?:Future|void|String|@)'),
+        start + 100,
+      );
+      final body = source.substring(
+        start,
+        nextMethod > start ? nextMethod : source.length,
+      );
       expect(body, contains('_acquireQueueLease('));
       expect(body, contains('_startHeartbeat('));
     });
@@ -573,6 +685,7 @@ void main() {
         targetName: 'Alice',
         dateRange: 'Jan 2026',
         paymentSessionId: 'pi_$id',
+        deliveryEmail: 'buyer@example.com',
         status: 'processing',
         chunksCompleted: chunkResults.length,
         chunksTotal: 3,
@@ -665,6 +778,7 @@ void main() {
           targetName: 'HappyPath',
           dateRange: 'Jun 2026',
           paymentSessionId: 'pi_resume_happy',
+          deliveryEmail: 'buyer@example.com',
           status: 'processing',
           chunksCompleted: 0,
           chunksTotal: 1,
@@ -695,6 +809,9 @@ void main() {
               'lease_token': leaseToken ?? 'lease_test',
             };
 
+        final analysisMetadata = <Map<String, dynamic>>[];
+        final validationMetadata = <Map<String, dynamic>>[];
+
         // SSE events must use the eventType\x00jsonData format the
         // production SseParser.feedParsed reads (see sse_service.dart:132).
         fakeApi.onStreamAnalysis =
@@ -709,10 +826,13 @@ void main() {
               required Map<String, dynamic> metadata,
               String? leaseToken,
               bool forceFallback = false,
-            }) => Stream.fromIterable([
-              'response\x00{"text":"raw analysis result"}',
-              'done\x00{"text":"final analysis result"}',
-            ]);
+            }) {
+              analysisMetadata.add(Map<String, dynamic>.from(metadata));
+              return Stream.fromIterable([
+                'response\x00{"text":"raw analysis result"}',
+                'done\x00{"text":"final analysis result"}',
+              ]);
+            };
 
         fakeApi.onStreamValidation =
             ({
@@ -723,12 +843,18 @@ void main() {
               String? dateRange,
               bool forceFallback = false,
               required Map<String, dynamic> metadata,
-            }) => Stream.fromIterable([
-              'response\x00{"text":"raw validated"}',
-              'done\x00{"text":"final validated portrait","email_sent":true,"payment_action":"captured"}',
-            ]);
+            }) {
+              validationMetadata.add(Map<String, dynamic>.from(metadata));
+              return Stream.fromIterable([
+                'response\x00{"text":"raw validated"}',
+                'done\x00{"text":"final validated portrait","email_sent":true,"payment_action":"captured"}',
+              ]);
+            };
 
         await notifier.resumeProcessing(job);
+        // The portraits-list refresh is fire-and-forget; let it settle before
+        // teardown closes the database out from under it.
+        await Future<void>.delayed(const Duration(milliseconds: 50));
 
         final state = container.read(processingProvider);
 
@@ -771,8 +897,117 @@ void main() {
         );
         expect(conv['payment_session_id'], 'pi_resume_happy');
         expect(conv['client_conversation_ref'], 'conv_resume_happy');
+
+        // The whole point of persisting the address: the rebuilt requests
+        // must carry it. Without it the backend refuses generation with
+        // "Payment email not found" because a store payment has no Stripe
+        // customer to resolve a recipient from.
+        expect(analysisMetadata, hasLength(1));
+        expect(analysisMetadata.single['delivery_email'], 'buyer@example.com');
+        expect(validationMetadata, hasLength(1));
+        expect(
+          validationMetadata.single['delivery_email'],
+          'buyer@example.com',
+        );
       },
       timeout: const Timeout(Duration(seconds: 30)),
     );
+
+    test(
+      'resumeProcessing refuses a job with no delivery email instead of '
+      'generating a portrait nobody receives',
+      () async {
+        // Rows written before the v7 delivery_email column read back empty.
+        // Running them anyway burns the paid queue slot and finishes with the
+        // portrait emailed nowhere, so resume has to stop first.
+        var enqueueCalls = 0;
+        fakeApi.onEnqueue = ({
+          required String paymentSessionId,
+          required String clientConversationRef,
+        }) async {
+          enqueueCalls++;
+          return {'status': 'processing', 'lease_token': 'lease_test'};
+        };
+
+        final now = DateTime.utc(2026, 8, 13);
+        final legacyJob = PendingJob(
+          id: 'conv_legacy_no_email',
+          deviceId: 'device_test',
+          clientConversationRef: 'conv_legacy_no_email',
+          inputText: 'a short chat log',
+          targetName: 'Legacy',
+          paymentSessionId: 'pi_legacy',
+          status: 'processing',
+          chunksCompleted: 0,
+          chunksTotal: 1,
+          chunkResults: const [],
+          createdAt: now,
+          updatedAt: now,
+        );
+
+        await notifier.resumeProcessing(legacyJob);
+
+        final state = container.read(processingProvider);
+        expect(state.status, ProcessingStatus.error);
+        expect(state.error, contains('delivery email'));
+        expect(
+          enqueueCalls,
+          0,
+          reason: 'must fail before taking a queue slot',
+        );
+      },
+    );
+  });
+
+  group('Pending job carries the delivery address across a kill', () {
+    late Database db;
+    late ProviderContainer container;
+
+    setUpAll(() {
+      sqfliteFfiInit();
+    });
+
+    setUp(() async {
+      db = await databaseFactoryFfi.openDatabase(
+        inMemoryDatabasePath,
+        options: OpenDatabaseOptions(
+          version: StorageService.dbVersion,
+          onCreate: StorageService.onCreateSchema,
+          onUpgrade: StorageService.onUpgradeSchema,
+        ),
+      );
+      StorageService.instance.initForTesting(db: db, deviceId: 'device_test');
+      container = ProviderContainer();
+    });
+
+    tearDown(() async {
+      container.dispose();
+      await StorageService.instance.resetForTesting();
+    });
+
+    test('delivery email survives a write and read back', () async {
+      final now = DateTime.utc(2026, 8, 13);
+      await StorageService.instance.savePendingJobRecord(
+        PendingJob(
+          id: 'conv_email_roundtrip',
+          deviceId: 'device_test',
+          clientConversationRef: 'conv_email_roundtrip',
+          inputText: 'chat log',
+          paymentSessionId: 'pi_roundtrip',
+          deliveryEmail: 'buyer@example.com',
+          chunksCompleted: 0,
+          chunksTotal: 1,
+          chunkResults: const [],
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+
+      final row = await StorageService.instance.getPendingJobById(
+        'conv_email_roundtrip',
+      );
+      expect(row, isNotNull);
+      expect(row!.deliveryEmail, 'buyer@example.com');
+    });
   });
 }

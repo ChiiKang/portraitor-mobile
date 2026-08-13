@@ -54,6 +54,10 @@ class PendingJobResumeCardState extends ConsumerState<PendingJobResumeCard> {
         'targetName': _job.targetName ?? '',
         'conversationId': _job.id,
         'paymentReference': _job.paymentSessionId,
+        // Only used if the row vanishes before the screen reads it and the
+        // screen falls back to a fresh start. resumeProcessing otherwise
+        // takes the address straight off the job.
+        'deliveryEmail': _job.deliveryEmail,
         'dateRange': _job.dateRange,
         'resume': true,
       },

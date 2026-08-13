@@ -71,6 +71,7 @@ This is where the kill-and-resume feature lives. Every column maps to web behavi
 | `target_name` | `target_name` | Prompt envelope + UI. |
 | `date_range` | implicit | Rolling-final envelope uses this; preserved across sessions. |
 | `payment_session_id` | `payment_session_id` | Reused on resume so the same Stripe authorization captures. No double charge. |
+| `delivery_email` | — (mobile-only) | Web resolves the recipient from the Stripe customer on the payments row. An Apple/Google purchase writes a payments row with no Stripe customer, so both generation endpoints read `metadata.delivery_email` off the request instead and refuse the run without it. A resumed job rebuilds those requests, so the address the buyer typed has to survive the app kill here. |
 | `status` | (derived) | `processing` / `failed` / `stale`. Web infers from row presence; mobile stores explicitly so recovery UI can distinguish stale legacy rows from genuinely-resumable ones. |
 | `chunks_completed` | `chunks_completed.length` | Integer count for the UI progress meter. |
 | `chunks_total` | `chunks_total` | Total chunks computed at start. |
@@ -109,6 +110,12 @@ The v5 migration is purely additive:
 4. Add the two new indexes for fast resumable-job queries: `(device_id, status)` and `(device_id, updated_at)`.
 
 Migration is idempotent — running `onUpgradeSchema` twice does not error (verified by `storage_service_pending_job_test.dart`).
+
+## Migration (v6 → v7)
+
+Adds `delivery_email` to `pending_jobs`, using the same additive `_addColumnIfMissing` mechanism.
+
+Rows written before v7 read back with an empty address. They are not marked `stale`, because the money and the conversation text are both still there; instead `resumeProcessing` refuses them with "Pending portrait is missing its delivery email" before taking a queue slot. Running one anyway would burn the paid slot and finish with the portrait emailed to nobody.
 
 ## Resume algorithm parity
 
