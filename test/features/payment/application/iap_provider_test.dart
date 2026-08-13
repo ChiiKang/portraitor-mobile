@@ -1,21 +1,29 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
 import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/domain/purchase_outcome.dart';
+import 'package:portraitor_mobile/features/payment/domain/store_provider.dart';
 import 'package:portraitor_mobile/features/payment/services/billing_api.dart';
 import 'package:portraitor_mobile/features/payment/services/iap_service.dart';
 import 'package:portraitor_mobile/features/payment/services/pass_credential_store.dart';
 import 'package:portraitor_mobile/features/payment/services/pending_purchase_store.dart';
 
 const _youSku = 'com.portraitor.portrait.you';
+const _partnerSku = 'com.portraitor.portrait.partner';
+const _familySku = 'com.portraitor.portrait.family';
 const _passSku = 'com.portraitor.pass.monthly';
+const _allProducts = {
+  _youSku: r'$29.00',
+  _partnerSku: r'$49.00',
+  _familySku: r'$79.00',
+  _passSku: r'$50.00',
+};
 
-FakeIapService buildIap() => FakeIapService(
-  products: const {_youSku: r'HK$78.00', _passSku: r'HK$388.00'},
-);
+FakeIapService buildIap() => FakeIapService(products: _allProducts);
 
 IapNotifier buildNotifier({
   FakeIapService? iap,
@@ -93,8 +101,8 @@ void main() {
       final notifier = buildNotifier();
       await notifier.loadPrices();
 
-      expect(notifier.state.priceFor(FunnelTier.you), r'HK$78.00');
-      expect(notifier.state.priceFor(FunnelTier.pass), r'HK$388.00');
+      expect(notifier.state.priceFor(FunnelTier.you), r'$29.00');
+      expect(notifier.state.priceFor(FunnelTier.pass), r'$50.00');
     });
 
     test('loadPrices fails cleanly and can be retried', () async {
@@ -110,7 +118,64 @@ void main() {
       await notifier.loadPrices();
 
       expect(notifier.state.status, IapStatus.idle);
-      expect(notifier.state.priceFor(FunnelTier.you), r'HK$78.00');
+      expect(notifier.state.priceFor(FunnelTier.you), r'$29.00');
+    });
+
+    test('an empty store response becomes unavailable, not idle', () async {
+      final notifier = buildNotifier(iap: FakeIapService(products: const {}));
+
+      await notifier.loadPrices();
+
+      expect(notifier.state.status, IapStatus.failed);
+      expect(notifier.state.error, contains('unavailable'));
+      expect(notifier.state.products, isEmpty);
+    });
+
+    test(
+      'a stale Pass session is cleared and the purchase continues',
+      () async {
+        final store = InMemoryPassCredentialStore();
+        await store.writePassCode('KEEP-THIS-CODE');
+        await store.writeSessionToken('expired-session');
+        final api = _ExpiredSessionBillingApi();
+        final notifier = buildNotifier(api: api, store: store);
+        await notifier.loadPrices();
+
+        final outcome = await notifier.buy(
+          FunnelTier.you,
+          clientConversationRef: 'conv_recovered',
+        );
+
+        expect(outcome, isA<PurchaseVerified>());
+        expect(api.prepareCalls, 1);
+        expect(await store.readSessionToken(), isNull);
+        expect(
+          await store.readPassCode(),
+          'KEEP-THIS-CODE',
+          reason: 'an expired session must never delete the one-time Pass code',
+        );
+      },
+    );
+
+    test('an unexpected prepare error never reaches UI as Dio text', () async {
+      final store = InMemoryPassCredentialStore();
+      await store.writeSessionToken('existing-session');
+      final notifier = buildNotifier(
+        api: _RawPrepareFailureBillingApi(),
+        store: store,
+      );
+      await notifier.loadPrices();
+
+      final outcome = await notifier.buy(
+        FunnelTier.you,
+        clientConversationRef: 'conv_clean_error',
+      );
+
+      expect(outcome, isA<PurchaseFailed>());
+      final message = (outcome as PurchaseFailed).message;
+      expect(message, contains('No charge was made'));
+      expect(message, isNot(contains('DioException')));
+      expect(notifier.state.error, message);
     });
 
     test('a one-off bundle mints no Pass and reveals no code', () async {
@@ -456,7 +521,7 @@ class _BlockingLaunchIapService extends FakeIapService {
 }
 
 class _FlakyProductIapService extends FakeIapService {
-  _FlakyProductIapService() : super(products: const {_youSku: r'HK$78.00'});
+  _FlakyProductIapService() : super(products: _allProducts);
 
   int attempts = 0;
 
@@ -465,5 +530,30 @@ class _FlakyProductIapService extends FakeIapService {
     attempts++;
     if (attempts == 1) throw StateError('offline');
     return super.loadProducts(productIds);
+  }
+}
+
+class _ExpiredSessionBillingApi extends FakeBillingApi {
+  int prepareCalls = 0;
+
+  @override
+  Future<PreparedPurchase> preparePurchase({
+    required String? sessionToken,
+    bool isSubscription = false,
+    StoreProvider provider = StoreProvider.apple,
+  }) async {
+    prepareCalls++;
+    throw const PassSessionExpiredException();
+  }
+}
+
+class _RawPrepareFailureBillingApi extends FakeBillingApi {
+  @override
+  Future<PreparedPurchase> preparePurchase({
+    required String? sessionToken,
+    bool isSubscription = false,
+    StoreProvider provider = StoreProvider.apple,
+  }) async {
+    throw DioException(requestOptions: RequestOptions(path: '/prepare'));
   }
 }

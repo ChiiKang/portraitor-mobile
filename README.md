@@ -72,6 +72,20 @@ flutter run -d "iPhone 17 Pro"
 
 The app will build via Xcode (~5-10s after first build) and launch on the simulator.
 
+### Complete local demo flow
+
+Use one flag to test import, plan selection, simulated Apple checkout,
+processing, saved portrait, and result screens without store accounts or a
+backend payment row:
+
+```sh
+flutter run -d "iPhone 17 Pro" --dart-define=DEMO_IAP=true
+```
+
+Demo mode charges nothing, uploads no conversation, and sends no email. It
+creates a clearly labeled sample portrait locally. Omit the flag when testing
+real StoreKit or Google Play Billing.
+
 ## Launch on Android Emulator (macOS)
 
 ```sh

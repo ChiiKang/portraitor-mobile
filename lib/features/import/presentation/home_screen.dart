@@ -85,12 +85,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 onSession: (session) {
                   if (portraits.portraits.isEmpty ||
                       session.resultIds.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Demo session — generate a portrait to open a real result',
-                        ),
-                      ),
+                    showMainTabSnackBar(
+                      context,
+                      'Demo session - generate a portrait to open a real result',
                     );
                     return;
                   }

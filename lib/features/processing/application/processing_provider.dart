@@ -11,9 +11,11 @@ import 'package:portraitor_mobile/core/api/sse_service.dart';
 import 'package:portraitor_mobile/core/storage/pending_job.dart';
 import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/features/import/services/token_calculator.dart';
+import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/results/application/portraits_provider.dart';
 import 'package:portraitor_mobile/features/results/services/portrait_pdf_service.dart';
 import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
+import 'package:portraitor_mobile/features/processing/services/demo_portrait_factory.dart';
 
 enum ProcessingStatus { idle, queued, processing, validating, done, error }
 
@@ -199,6 +201,20 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     String tier = 'you',
   }) async {
     final packPeople = people.where((name) => name.trim().isNotEmpty).toList();
+    if (kDemoIapPurchase &&
+        (paymentSessionId.startsWith('demo_') ||
+            paymentSessionId.startsWith('demo-credit-'))) {
+      await _processDemoPortrait(
+        conversationId: conversationId,
+        paymentSessionId: paymentSessionId,
+        normalizedText: normalizedText,
+        targetName: targetName,
+        people: packPeople,
+        tier: tier,
+        dateRange: dateRange,
+      );
+      return;
+    }
     if (packPeople.length > 1) {
       await _processPortraitPack(
         conversationId: conversationId,
@@ -420,6 +436,112 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       state = state.copyWith(
         status: ProcessingStatus.error,
         error: e.toString(),
+      );
+    }
+  }
+
+  Future<void> _processDemoPortrait({
+    required String conversationId,
+    required String paymentSessionId,
+    required String normalizedText,
+    required String targetName,
+    required List<String> people,
+    required String tier,
+    String? dateRange,
+  }) async {
+    final demoPeople = people.isEmpty ? <String>[targetName] : people;
+    final safePeople =
+        demoPeople
+            .map((name) => name.trim())
+            .where((name) => name.isNotEmpty)
+            .toList();
+    if (safePeople.isEmpty) safePeople.add('Someone');
+
+    state = state.copyWith(
+      status: ProcessingStatus.queued,
+      conversationId: conversationId,
+      error: null,
+      thinkingText: '',
+      resultMarkdown: '',
+      percentage: 0.1,
+      chunksCompleted: 0,
+      chunksTotal: safePeople.length,
+      emailSent: false,
+      paymentCaptured: false,
+      statusMessage: 'Preparing local demo...',
+      thinkingPhaseLabel: 'Demo mode',
+      estimatedSecondsRemaining: 2,
+    );
+
+    try {
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      state = state.copyWith(
+        status: ProcessingStatus.processing,
+        percentage: 0.5,
+        statusMessage:
+            safePeople.length == 1
+                ? 'Creating sample portrait...'
+                : 'Creating ${safePeople.length} sample portraits...',
+        thinkingPhaseLabel: 'Local preview',
+        estimatedSecondsRemaining: 1,
+      );
+
+      final portraits = <Map<String, dynamic>>[
+        for (final person in safePeople)
+          {
+            'person': person,
+            'output': DemoPortraitFactory.build(targetName: person),
+          },
+      ];
+
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      state = state.copyWith(
+        status: ProcessingStatus.validating,
+        percentage: 0.85,
+        chunksCompleted: safePeople.length,
+        statusMessage: 'Finishing demo preview...',
+        estimatedSecondsRemaining: 0,
+      );
+
+      await StorageService.instance.createConversation(
+        id: conversationId,
+        targetName: safePeople.first,
+        inputText: normalizedText,
+        clientConversationRef: conversationId,
+        dateRange: dateRange,
+        paymentSessionId: paymentSessionId,
+        outputSummary: portraits.first['output']!,
+        chunks: const [],
+        mode: safePeople.length > 1 ? 'pack' : 'demo',
+        tokenEstimate: TokenCalculator.estimateTokens(normalizedText),
+        tokenLimit: 250000,
+        tier: tier,
+        people: safePeople,
+        portraits: safePeople.length > 1 ? portraits : const [],
+      );
+      await StorageService.instance.deletePendingJob(conversationId);
+      _ref.read(portraitsProvider.notifier).loadPortraits();
+
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      state = state.copyWith(
+        status: ProcessingStatus.done,
+        percentage: 1,
+        resultMarkdown: portraits.first['output']!,
+        statusMessage:
+            safePeople.length == 1
+                ? 'Demo portrait complete!'
+                : 'All ${safePeople.length} demo portraits complete!',
+        thinkingPhaseLabel: 'Done',
+        estimatedSecondsRemaining: 0,
+      );
+    } catch (_) {
+      await StorageService.instance.markPendingJobStatus(
+        conversationId,
+        'failed',
+      );
+      state = state.copyWith(
+        status: ProcessingStatus.error,
+        error: 'The demo preview could not be saved. Please go back and retry.',
       );
     }
   }

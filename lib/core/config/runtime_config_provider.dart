@@ -2,11 +2,45 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:portraitor_mobile/core/api/api_service.dart';
 
+/// Display-side entitlement limits published by the backend.
+///
+/// These values keep mobile copy and selection caps aligned with the server.
+/// They never grant access: purchase verification and entitlement enforcement
+/// remain backend responsibilities.
+class RuntimeEntitlements {
+  const RuntimeEntitlements({
+    this.youMaxPortraits = 1,
+    this.partnerMaxPortraits = 2,
+    this.familyMaxPortraits = 5,
+    this.passPortraitsPerMonth = 10,
+  });
+
+  final int youMaxPortraits;
+  final int partnerMaxPortraits;
+  final int familyMaxPortraits;
+  final int passPortraitsPerMonth;
+
+  factory RuntimeEntitlements.fromJson(Map<String, dynamic> json) {
+    final you = _mapSafe(json['you']);
+    final partner = _mapSafe(json['partner']);
+    final family = _mapSafe(json['family']);
+    final pass = _mapSafe(json['pass']);
+
+    return RuntimeEntitlements(
+      youMaxPortraits: _positiveInt(you['maxPortraits'], fallback: 1),
+      partnerMaxPortraits: _positiveInt(partner['maxPortraits'], fallback: 2),
+      familyMaxPortraits: _positiveInt(family['maxPortraits'], fallback: 5),
+      passPortraitsPerMonth: _positiveInt(
+        pass['portraitsPerMonth'],
+        fallback: 10,
+      ),
+    );
+  }
+}
+
 class RuntimeConfig {
   final String configVersion;
-  final int priceCents;
-  final String currency;
-  final String amountDisplay;
+  final RuntimeEntitlements entitlements;
   final bool paymentAvailable;
   final String chunkingMode;
   final int tokenLimit;
@@ -18,9 +52,7 @@ class RuntimeConfig {
 
   const RuntimeConfig({
     this.configVersion = 'local-default',
-    this.priceCents = 500,
-    this.currency = 'usd',
-    this.amountDisplay = r'$5.00',
+    this.entitlements = const RuntimeEntitlements(),
     this.paymentAvailable = true,
     this.chunkingMode = 'map-reduce',
     this.tokenLimit = 250000,
@@ -31,9 +63,6 @@ class RuntimeConfig {
     this.pdfDownloadEnabled = true,
   });
 
-  double get priceUsd => priceCents / 100.0;
-  String get priceDisplay => amountDisplay;
-
   /// Parse the response from GET /api/mobile-config.php.
   /// Response shape: { status: "ok", data: { configVersion, payment, processing, ui } }
   factory RuntimeConfig.fromJson(Map<String, dynamic> json) {
@@ -42,22 +71,17 @@ class RuntimeConfig {
     final processing = data['processing'] as Map<String, dynamic>? ?? const {};
     final ui = data['ui'] as Map<String, dynamic>? ?? const {};
 
-    final priceCents = _parseIntSafe(payment['priceCents']) ?? 500;
     final tokenLimit = _parseIntSafe(processing['tokenLimit']) ?? 250000;
-    final chunkOverlap =
-        _parseIntSafe(processing['chunkOverlapTokens']) ?? 250;
+    final chunkOverlap = _parseIntSafe(processing['chunkOverlapTokens']) ?? 250;
 
     final maxPerChunk =
         (tokenLimit - chunkOverlap).clamp(10000, tokenLimit).toInt();
 
     return RuntimeConfig(
-      configVersion:
-          _parseStringSafe(data['configVersion']) ?? 'local-default',
-      priceCents: priceCents,
-      currency: _parseStringSafe(payment['currency']) ?? 'usd',
-      amountDisplay:
-          _parseStringSafe(payment['amountDisplay']) ??
-          _formatAmount(priceCents),
+      configVersion: _parseStringSafe(data['configVersion']) ?? 'local-default',
+      entitlements: RuntimeEntitlements.fromJson(
+        _mapSafe(data['entitlements']),
+      ),
       paymentAvailable: _parseBoolSafe(payment['available']) ?? true,
       chunkingMode:
           _parseStringSafe(processing['chunkingMode']) ?? 'map-reduce',
@@ -93,10 +117,29 @@ class RuntimeConfig {
     if (value is String && value.isNotEmpty) return value;
     return null;
   }
+}
 
-  static String _formatAmount(int cents) {
-    return '\$${(cents / 100.0).toStringAsFixed(2)}';
+Map<String, dynamic> _mapSafe(dynamic value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) {
+    try {
+      return Map<String, dynamic>.from(value);
+    } on TypeError {
+      return const {};
+    }
   }
+  return const {};
+}
+
+int _positiveInt(dynamic value, {required int fallback}) {
+  final parsed = switch (value) {
+    int value => value,
+    double value when value.isFinite && value == value.truncateToDouble() =>
+      value.toInt(),
+    String value => int.tryParse(value),
+    _ => null,
+  };
+  return parsed != null && parsed > 0 ? parsed : fallback;
 }
 
 typedef RuntimeConfigFetcher = Future<Map<String, dynamic>> Function();
@@ -109,6 +152,14 @@ final runtimeConfigProvider = FutureProvider<RuntimeConfig>((ref) async {
   final fetchConfig = ref.watch(runtimeConfigFetcherProvider);
   final response = await fetchConfig();
   return RuntimeConfig.fromJson(response);
+});
+
+/// Non-blocking UI projection. Launch renders conservative defaults, then
+/// updates when `/api/mobile-config.php` completes. A failed config request
+/// keeps the defaults; the backend still enforces the real entitlement.
+final runtimeEntitlementsProvider = Provider<RuntimeEntitlements>((ref) {
+  return ref.watch(runtimeConfigProvider).valueOrNull?.entitlements ??
+      const RuntimeEntitlements();
 });
 
 Future<RuntimeConfig> readLatestRuntimeConfig(Ref ref) {

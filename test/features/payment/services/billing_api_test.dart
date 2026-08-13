@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/features/payment/services/billing_api.dart';
 
@@ -155,4 +156,57 @@ void main() {
       },
     );
   });
+
+  group('HttpBillingApi prepare', () {
+    test('maps a stale Pass 401 to a recoverable domain error', () async {
+      final dio = Dio(BaseOptions(baseUrl: 'https://example.test'))
+        ..httpClientAdapter = _StatusAdapter(401);
+
+      await expectLater(
+        HttpBillingApi(
+          dio: dio,
+        ).preparePurchase(sessionToken: 'expired-session'),
+        throwsA(isA<PassSessionExpiredException>()),
+      );
+    });
+
+    test(
+      'never exposes Dio internals for other preparation failures',
+      () async {
+        final dio = Dio(BaseOptions(baseUrl: 'https://example.test'))
+          ..httpClientAdapter = _StatusAdapter(503);
+
+        await expectLater(
+          HttpBillingApi(dio: dio).preparePurchase(sessionToken: 'session'),
+          throwsA(
+            isA<PurchasePreparationException>().having(
+              (error) => error.message,
+              'message',
+              allOf(contains('No charge was made'), isNot(contains('Dio'))),
+            ),
+          ),
+        );
+      },
+    );
+  });
+}
+
+class _StatusAdapter implements HttpClientAdapter {
+  _StatusAdapter(this.statusCode);
+
+  final int statusCode;
+
+  @override
+  Future<ResponseBody> fetch(RequestOptions options, _, __) async {
+    return ResponseBody.fromString(
+      '{"status":"error","message":"backend detail"}',
+      statusCode,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }

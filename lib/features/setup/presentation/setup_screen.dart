@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/import/services/chat_normalizer.dart';
 import 'package:portraitor_mobile/features/setup/application/setup_provider.dart';
@@ -69,8 +68,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   @override
   Widget build(BuildContext context) {
     final setup = ref.watch(setupProvider);
-    final configAsync = ref.watch(runtimeConfigProvider);
-    final priceDisplay = configAsync.valueOrNull?.amountDisplay ?? r'$5.00';
 
     return Scaffold(
       body: GradientBackground(
@@ -139,7 +136,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               ),
               _BottomBar(
                 tokenEstimate: setup.tokenEstimate,
-                priceDisplay: priceDisplay,
                 onGenerate:
                     setup.targetName.isNotEmpty
                         ? () => _navigateToPayment(setup)
@@ -711,14 +707,9 @@ class _DateRangeSelectorState extends State<_DateRangeSelector> {
 
 class _BottomBar extends StatelessWidget {
   final int tokenEstimate;
-  final String priceDisplay;
   final VoidCallback? onGenerate;
 
-  const _BottomBar({
-    required this.tokenEstimate,
-    required this.priceDisplay,
-    this.onGenerate,
-  });
+  const _BottomBar({required this.tokenEstimate, this.onGenerate});
 
   @override
   Widget build(BuildContext context) {
@@ -730,46 +721,25 @@ class _BottomBar extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'TOKEN ESTIMATE',
-                    style: PortraitorTokens.labelSm.copyWith(
-                      color: PortraitorTokens.inkMuted,
-                      letterSpacing: 0.8,
-                    ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'TOKEN ESTIMATE',
+                  style: PortraitorTokens.labelSm.copyWith(
+                    color: PortraitorTokens.inkMuted,
+                    letterSpacing: 0.8,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '~${_formatTokens(tokenEstimate)}',
-                    style: PortraitorTokens.titleMd,
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    'PRICE',
-                    style: PortraitorTokens.labelSm.copyWith(
-                      color: PortraitorTokens.inkMuted,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    priceDisplay,
-                    style: PortraitorTokens.titleMd.copyWith(
-                      color: PortraitorTokens.brandPurple,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '~${_formatTokens(tokenEstimate)}',
+                  style: PortraitorTokens.titleMd,
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: PortraitorTokens.space16),
           GradientButton(

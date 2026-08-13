@@ -214,12 +214,13 @@ class FakeApiService extends Fake implements ApiService {
       'status': 'ok',
       'data': {
         'configVersion': 'mock-default',
-        'payment': {
-          'priceCents': 500,
-          'currency': 'usd',
-          'amountDisplay': r'$5.00',
-          'available': true,
+        'entitlements': {
+          'you': {'maxPortraits': 1},
+          'partner': {'maxPortraits': 2},
+          'family': {'maxPortraits': 5},
+          'pass': {'portraitsPerMonth': 10},
         },
+        'payment': {'available': true},
         'processing': {
           'chunkingMode': 'map-reduce',
           'tokenLimit': 250000,

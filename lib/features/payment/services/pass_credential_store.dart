@@ -15,6 +15,7 @@ abstract class PassCredentialStore {
   Future<String?> readPassCode();
   Future<void> writeSessionToken(String token);
   Future<String?> readSessionToken();
+  Future<void> clearSessionToken();
 
   /// Whether the code was ever delivered to this device. Holding a session is
   /// not the same thing.
@@ -47,6 +48,9 @@ class KeychainPassCredentialStore implements PassCredentialStore {
   Future<String?> readSessionToken() => _storage.read(key: _sessionKey);
 
   @override
+  Future<void> clearSessionToken() => _storage.delete(key: _sessionKey);
+
+  @override
   Future<bool> hasPassCode() async => (await readPassCode()) != null;
 
   @override
@@ -72,6 +76,9 @@ class InMemoryPassCredentialStore implements PassCredentialStore {
 
   @override
   Future<String?> readSessionToken() async => _session;
+
+  @override
+  Future<void> clearSessionToken() async => _session = null;
 
   @override
   Future<bool> hasPassCode() async => _code != null;

@@ -92,8 +92,12 @@ void main() {
       findsOneWidget,
       reason: 'the first thing read should be the cause, not a stack trace',
     );
-    // The raw error stays for support, just not as the headline.
-    expect(find.textContaining('Payment not found'), findsOneWidget);
+    expect(
+      find.textContaining('Payment not found'),
+      findsNothing,
+      reason: 'transport and server details belong in diagnostics, not UI',
+    );
+    expect(find.textContaining('ApiException'), findsNothing);
   });
 
   testWidgets('a failed run stops showing progress', (tester) async {

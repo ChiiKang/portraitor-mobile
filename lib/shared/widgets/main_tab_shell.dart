@@ -58,6 +58,25 @@ double mainTabContentBottomInset(BuildContext context) {
   return 88 + MediaQuery.viewPaddingOf(context).bottom;
 }
 
+/// Shows transient feedback above the floating tab dock instead of beneath it.
+void showMainTabSnackBar(BuildContext context, String message) {
+  final messenger = ScaffoldMessenger.of(context);
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          mainTabContentBottomInset(context),
+        ),
+        content: Text(message),
+      ),
+    );
+}
+
 class _GlassTabDock extends StatelessWidget {
   const _GlassTabDock({required this.index, required this.onSelect});
 
@@ -82,7 +101,10 @@ class _GlassTabDock extends StatelessWidget {
                 const Color(0x99FCE8F3),
               ],
             ),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.72), width: 1.5),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.72),
+              width: 1.5,
+            ),
             boxShadow: [
               BoxShadow(
                 color: const Color(0x4D211A37).withValues(alpha: 0.24),
@@ -164,7 +186,9 @@ class _TabItem extends StatelessWidget {
               borderRadius: BorderRadius.circular(24),
               color:
                   active
-                      ? PortraitorTokens.onboardingPrimary.withValues(alpha: 0.16)
+                      ? PortraitorTokens.onboardingPrimary.withValues(
+                        alpha: 0.16,
+                      )
                       : Colors.transparent,
             ),
             child: Column(

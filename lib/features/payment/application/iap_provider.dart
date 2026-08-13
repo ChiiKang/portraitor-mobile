@@ -4,15 +4,20 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:portraitor_mobile/core/config/build_flags.dart';
 import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/domain/purchase_outcome.dart';
+import 'package:portraitor_mobile/features/payment/domain/store_provider.dart';
 import 'package:portraitor_mobile/features/payment/services/billing_api.dart';
 import 'package:portraitor_mobile/features/payment/services/mock_stripe_billing_api.dart';
 import 'package:portraitor_mobile/features/payment/services/iap_service.dart';
 import 'package:portraitor_mobile/features/payment/services/pass_credential_store.dart';
 import 'package:portraitor_mobile/features/payment/services/pending_purchase_store.dart';
+
+export 'package:portraitor_mobile/core/config/build_flags.dart'
+    show kFakeBilling;
 
 enum IapStatus { idle, loadingProducts, purchasing, verifying, success, failed }
 
@@ -55,34 +60,45 @@ class IapState {
   }
 }
 
-/// Use the backend's mock Stripe rail for local store testing.
-///
-/// Enabled only by `--dart-define=FAKE_BILLING=true`. This keeps the platform
-/// store's sheet, transactions, and completion semantics in play while the mock
-/// backend endpoint creates a real payment row for generation.
-///
-/// Defaults off, like [kDemoIapPurchase], and must never be enabled in a release
-/// build because it authorizes portraits without a real store payment.
-const bool kFakeBilling = !kReleaseMode && bool.fromEnvironment('FAKE_BILLING');
-
 final iapServiceProvider = Provider<IapService>((ref) {
+  // Both demo paths simulate the store sheet. They differ only in what happens
+  // afterwards: [kDemoIapPurchase] keeps everything local, while [kFakeBilling]
+  // sends the verified purchase to the backend's mock Stripe rail so a real
+  // payment row exists and the queue admits a real generation run. A tester
+  // build has no store catalog to query, so a live store service would fail at
+  // loadProducts long before either path could be exercised.
+  if (kDemoIapPurchase || kFakeBilling) {
+    return FakeIapService(
+      provider:
+          defaultTargetPlatform == TargetPlatform.android
+              ? StoreProvider.google
+              : StoreProvider.apple,
+      products: {
+        for (final tier in FunnelTier.values)
+          IapProductCatalog.productIdFor(tier): tier.iapPriceLabel,
+      },
+    );
+  }
   return defaultTargetPlatform == TargetPlatform.android
       ? GooglePlayIapService()
       : StoreKitIapService();
 });
 
-final billingApiProvider = Provider<BillingApi>(
-  // Demo builds drive the mock Stripe rail rather than fabricating a
-  // reference. FakeBillingApi's invented `credit-<uuid>` matched no server row,
-  // so generation was always refused at queue admission and the demo could
-  // never reach the thing it existed to show.
-  (ref) => kFakeBilling ? MockStripeBillingApi() : HttpBillingApi(),
-);
+final billingApiProvider = Provider<BillingApi>((ref) {
+  if (kDemoIapPurchase) return LocalDemoBillingApi();
+  return kFakeBilling ? MockStripeBillingApi() : HttpBillingApi();
+});
 final passCredentialStoreProvider = Provider<PassCredentialStore>(
-  (ref) => KeychainPassCredentialStore(),
+  (ref) =>
+      kDemoIapPurchase
+          ? InMemoryPassCredentialStore()
+          : KeychainPassCredentialStore(),
 );
 final pendingPurchaseStoreProvider = Provider<PendingPurchaseStore>(
-  (ref) => SecurePendingPurchaseStore(),
+  (ref) =>
+      kDemoIapPurchase
+          ? InMemoryPendingPurchaseStore()
+          : SecurePendingPurchaseStore(),
 );
 
 final iapProvider = StateNotifierProvider<IapNotifier, IapState>((ref) {
@@ -122,10 +138,22 @@ class IapNotifier extends StateNotifier<IapState> {
     state = state.copyWith(status: IapStatus.loadingProducts);
     try {
       final products = await _iap.loadProducts(IapProductCatalog.allProductIds);
-      state = state.copyWith(
-        status: IapStatus.idle,
-        products: {for (final p in products) p.productId: p},
+      final productsById = {
+        for (final product in products) product.productId: product,
+      };
+      final missingProductIds = IapProductCatalog.allProductIds.difference(
+        productsById.keys.toSet(),
       );
+      if (missingProductIds.isNotEmpty) {
+        state = state.copyWith(
+          status: IapStatus.failed,
+          products: productsById,
+          error:
+              'Store products are unavailable. Check your connection and retry.',
+        );
+        return;
+      }
+      state = state.copyWith(status: IapStatus.idle, products: productsById);
     } catch (_) {
       state = state.copyWith(
         status: IapStatus.failed,
@@ -168,28 +196,41 @@ class IapNotifier extends StateNotifier<IapState> {
   }) async {
     final productId = IapProductCatalog.productIdFor(tier);
     final isSubscription = IapProductCatalog.isSubscription(tier);
-    final sessionToken = await _store.readSessionToken();
+    var sessionToken = await _store.readSessionToken();
 
-    final PreparedPurchase prepared;
+    late PreparedPurchase prepared;
     try {
       // No Pass yet means no round trip: the UUID is a correlation hint, and
       // the server derives every billing fact from the verified JWS anyway.
-      prepared = sessionToken == null
-          ? PreparedPurchase(publicUuid: const Uuid().v4())
-          : await _api.preparePurchase(
-              sessionToken: sessionToken,
-              isSubscription: isSubscription,
-              provider: _iap.provider,
-            );
+      prepared =
+          sessionToken == null
+              ? PreparedPurchase(publicUuid: const Uuid().v4())
+              : await _api.preparePurchase(
+                sessionToken: sessionToken,
+                isSubscription: isSubscription,
+                provider: _iap.provider,
+              );
     } on PassAlreadyFundedException {
       state = state.copyWith(
         status: IapStatus.failed,
         error: 'This Pass already has an active subscription.',
       );
       return const PurchaseFailed('Pass already funded');
-    } catch (e) {
-      state = state.copyWith(status: IapStatus.failed, error: e.toString());
-      return PurchaseFailed(e.toString());
+    } on PassSessionExpiredException {
+      // A session is replaceable; the one-time Pass code is not. Keep the code,
+      // drop only the stale session, and continue as a fresh purchase. The
+      // backend still verifies the platform transaction before granting value.
+      await _store.clearSessionToken();
+      sessionToken = null;
+      prepared = PreparedPurchase(publicUuid: const Uuid().v4());
+    } on PurchasePreparationException catch (e) {
+      state = state.copyWith(status: IapStatus.failed, error: e.message);
+      return PurchaseFailed(e.message);
+    } catch (_) {
+      const message =
+          'We could not prepare this purchase. No charge was made. Please try again.';
+      state = state.copyWith(status: IapStatus.failed, error: message);
+      return const PurchaseFailed(message);
     }
 
     final completer = Completer<IapTransaction>();
@@ -238,11 +279,10 @@ class IapNotifier extends StateNotifier<IapState> {
           return const PurchasePending();
         case IapTransactionStatus.error:
           await _pendingStore.remove(prepared.publicUuid);
-          state = state.copyWith(
-            status: IapStatus.failed,
-            error: 'The store could not complete this purchase.',
-          );
-          return const PurchaseFailed('store error');
+          const message =
+              'The store could not complete this purchase. No charge was made. Please try again.';
+          state = state.copyWith(status: IapStatus.failed, error: message);
+          return const PurchaseFailed(message);
         case IapTransactionStatus.purchased:
         case IapTransactionStatus.restored:
           break;
@@ -317,13 +357,17 @@ class IapNotifier extends StateNotifier<IapState> {
       debugPrint('[IAP] verification failed, transaction left unfinished');
       state = state.copyWith(status: IapStatus.failed, error: e.message);
       return PurchaseFailed(e.message, purchaseMayHaveCompleted: true);
-    } catch (e) {
+    } catch (_) {
       if (!transactionReceived) {
         await _pendingStore.remove(prepared.publicUuid);
       }
-      state = state.copyWith(status: IapStatus.failed, error: e.toString());
+      final message =
+          transactionReceived
+              ? 'We could not confirm this purchase. If the store approved it, it will be restored automatically. Please try again later.'
+              : 'We could not start this purchase. No charge was made. Please try again.';
+      state = state.copyWith(status: IapStatus.failed, error: message);
       return PurchaseFailed(
-        e.toString(),
+        message,
         purchaseMayHaveCompleted: transactionReceived,
       );
     } finally {

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:portraitor_mobile/core/storage/storage_service.dart';
+import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/processing/application/processing_provider.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/shared/widgets/markdown_text.dart';
@@ -118,8 +119,8 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
     return m > 0 ? '~${m}m ${s}s remaining' : '~${s}s remaining';
   }
 
-  /// Plain-language cause, so the first thing the user reads is not a stack
-  /// trace. The raw error is still shown beneath for support.
+  /// Plain-language cause. Raw transport and server errors stay in diagnostics,
+  /// never in user-facing copy.
   String _friendlyFailure(String? error) {
     final raw = error ?? '';
     if (raw.contains('Payment not found') ||
@@ -226,16 +227,6 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
                     GradientButton(
                       onPressed: () => context.go('/'),
                       child: const Text('Back to start'),
-                    ),
-                    const SizedBox(height: PortraitorTokens.space12),
-                    // The raw message stays, small and last: support needs it,
-                    // and hiding it entirely would make failures unreportable.
-                    Text(
-                      processing.error ?? 'An error occurred',
-                      style: PortraitorTokens.bodySm.copyWith(
-                        color: PortraitorTokens.inkDim,
-                      ),
-                      textAlign: TextAlign.center,
                     ),
                     const Spacer(),
                   ],
@@ -383,14 +374,16 @@ class ProcessingEmailNotice extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Icon(
-            Icons.mail_outline,
+            kDemoIapPurchase ? Icons.science_outlined : Icons.mail_outline,
             size: 22,
             color: PortraitorTokens.brandPurple,
           ),
           const SizedBox(width: 12),
           Expanded(
             child: MarkdownText(
-              'Our AI therapist is in session. **Your psychological portrait will be delivered to your email within 5-15 minutes.**',
+              kDemoIapPurchase
+                  ? '**Demo mode:** A sample portrait is being created locally. No payment is charged, no conversation is uploaded, and no email is sent.'
+                  : 'Your portrait is being created. **It will be delivered to your email within 5-15 minutes.**',
               style: PortraitorTokens.bodyMd.copyWith(
                 color: PortraitorTokens.ink,
                 height: 1.45,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
@@ -33,9 +34,11 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
   }
 
   /// The demo renders its own copy; real builds render what the store reports.
-  String _priceFor(FunnelTier tier) {
+  String _priceFor(FunnelTier tier, IapState iap) {
     if (kDemoIapPurchase) return tier.priceLabel;
-    return ref.watch(iapProvider).priceFor(tier) ?? 'Loading…';
+    final price = iap.priceFor(tier);
+    if (price != null) return price;
+    return iap.status == IapStatus.loadingProducts ? 'Loading…' : 'Unavailable';
   }
 
   @override
@@ -43,18 +46,35 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     final draft = ref.watch(funnelDraftProvider);
     final selected = draft.selectedTier;
     final iap = ref.watch(iapProvider);
+    final entitlements = ref.watch(runtimeEntitlementsProvider);
     final selectedProductReady =
         kDemoIapPurchase || iap.priceFor(selected) != null;
+    final pricesLoading =
+        !kDemoIapPurchase && iap.status == IapStatus.loadingProducts;
+    final retryRequired =
+        !kDemoIapPurchase &&
+        iap.status == IapStatus.failed &&
+        !selectedProductReady;
+    final hasStoreError = !kDemoIapPurchase && iap.status == IapStatus.failed;
 
     return FunnelChrome(
       step: 2,
       title: 'Who is this portrait for?',
-      lead: 'Choose a bundle. Each is a one-time payment.',
+      lead:
+          hasStoreError
+              ? 'Store prices are unavailable. Check ${defaultTargetPlatform == TargetPlatform.android ? 'Google Play' : 'the App Store'} and retry.'
+              : 'Choose a bundle. Each is a one-time payment.',
       lockBodyScroll: !_passOpen,
-      ctaLabel: _ctaLabel(selected, _passOpen),
+      ctaLabel: retryRequired ? 'Retry prices' : _ctaLabel(selected, _passOpen),
+      ctaLoading: pricesLoading,
       showCtaArrow: true,
-      ctaEnabled: selected.canPurchase && selectedProductReady,
+      ctaEnabled:
+          retryRequired || (selected.canPurchase && selectedProductReady),
       onCta: () {
+        if (retryRequired) {
+          ref.read(iapProvider.notifier).loadPrices();
+          return;
+        }
         // The demo cannot simulate a subscription, so the Pass still routes
         // to a notice there. With real store billing it is a first-class product.
         if (_passOpen && !FunnelTier.pass.canPurchase) {
@@ -93,7 +113,10 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                         _PlanTierCard(
                           tier: FunnelTier.you,
                           selected: selected == FunnelTier.you,
-                          priceLabel: _priceFor(FunnelTier.you),
+                          subtitle: FunnelTier.you.planSubtitleFor(
+                            entitlements,
+                          ),
+                          priceLabel: _priceFor(FunnelTier.you, iap),
                           onTap:
                               () => ref
                                   .read(funnelDraftProvider.notifier)
@@ -103,7 +126,10 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                         _PlanTierCard(
                           tier: FunnelTier.partner,
                           selected: selected == FunnelTier.partner,
-                          priceLabel: _priceFor(FunnelTier.partner),
+                          subtitle: FunnelTier.partner.planSubtitleFor(
+                            entitlements,
+                          ),
+                          priceLabel: _priceFor(FunnelTier.partner, iap),
                           onTap:
                               () => ref
                                   .read(funnelDraftProvider.notifier)
@@ -113,7 +139,10 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                         _PlanTierCard(
                           tier: FunnelTier.family,
                           selected: selected == FunnelTier.family,
-                          priceLabel: _priceFor(FunnelTier.family),
+                          subtitle: FunnelTier.family.planSubtitleFor(
+                            entitlements,
+                          ),
+                          priceLabel: _priceFor(FunnelTier.family, iap),
                           onTap:
                               () => ref
                                   .read(funnelDraftProvider.notifier)
@@ -125,6 +154,10 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
           ),
           _PassDrawer(
             open: _passOpen,
+            description: FunnelTier.pass.planSubtitleFor(entitlements),
+            priceLabel: _priceFor(FunnelTier.pass, iap),
+            showPricePeriod:
+                kDemoIapPurchase || iap.priceFor(FunnelTier.pass) != null,
             onToggle: () {
               setState(() {
                 _passOpen = !_passOpen;
@@ -165,12 +198,14 @@ class _PlanTierCard extends StatelessWidget {
   const _PlanTierCard({
     required this.tier,
     required this.selected,
+    required this.subtitle,
     required this.onTap,
     required this.priceLabel,
   });
 
   final FunnelTier tier;
   final bool selected;
+  final String subtitle;
   final VoidCallback onTap;
 
   /// Resolved by the parent: the demo's Dart string, or the platform store's
@@ -231,7 +266,7 @@ class _PlanTierCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          tier.planSubtitle,
+                          subtitle,
                           style: PortraitorTokens.bodySm.copyWith(
                             color: PortraitorTokens.onboardingMuted,
                             height: 1.4,
@@ -240,6 +275,7 @@ class _PlanTierCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                  const SizedBox(width: 12),
                   Text(
                     priceLabel,
                     style: PortraitorTokens.titleMd.copyWith(
@@ -344,11 +380,17 @@ class _PlanIcon extends StatelessWidget {
 class _PassDrawer extends StatelessWidget {
   const _PassDrawer({
     required this.open,
+    required this.description,
+    required this.priceLabel,
+    required this.showPricePeriod,
     required this.onToggle,
     required this.onShowPacks,
   });
 
   final bool open;
+  final String description;
+  final String priceLabel;
+  final bool showPricePeriod;
   final VoidCallback onToggle;
   final VoidCallback onShowPacks;
 
@@ -409,7 +451,7 @@ class _PassDrawer extends StatelessWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              '10 portraits a month with the Pass.',
+                              description,
                               style: PortraitorTokens.bodySm.copyWith(
                                 color: const Color(0xFF8A6A1E),
                                 height: 1.4,
@@ -422,7 +464,7 @@ class _PassDrawer extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            '\$50',
+                            priceLabel,
                             style: PortraitorTokens.titleMd.copyWith(
                               fontSize: 20,
                               fontWeight: FontWeight.w700,
@@ -431,14 +473,15 @@ class _PassDrawer extends StatelessWidget {
                               height: 1.05,
                             ),
                           ),
-                          Text(
-                            '/month',
-                            style: PortraitorTokens.bodySm.copyWith(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                              color: const Color(0xFF8A6A1E),
+                          if (showPricePeriod)
+                            Text(
+                              '/month',
+                              style: PortraitorTokens.bodySm.copyWith(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: const Color(0xFF8A6A1E),
+                              ),
                             ),
-                          ),
                         ],
                       ),
                       const SizedBox(width: 4),
@@ -504,7 +547,7 @@ class _PassDrawer extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            '\$50',
+                            priceLabel,
                             style: PortraitorTokens.titleMd.copyWith(
                               color: const Color(0xFF5C4A28),
                               fontWeight: FontWeight.w700,

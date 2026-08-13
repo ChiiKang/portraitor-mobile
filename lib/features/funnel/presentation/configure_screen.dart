@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/shared/widgets/funnel_chrome.dart';
@@ -44,7 +45,7 @@ class _ConfigureScreenState extends ConsumerState<ConfigureScreen> {
     _familyType = TextEditingController();
     _familySelected =
         draft.selectedNames.isNotEmpty
-            ? List<String>.from(draft.selectedNames.take(5))
+            ? List<String>.from(draft.selectedNames)
             : (detected.isNotEmpty ? [detected.first] : <String>[]);
   }
 
@@ -85,6 +86,8 @@ class _ConfigureScreenState extends ConsumerState<ConfigureScreen> {
   void _continue() {
     final draft = ref.read(funnelDraftProvider);
     final tier = draft.selectedTier;
+    final entitlements = ref.read(runtimeEntitlementsProvider);
+    final familyLimit = FunnelTier.family.portraitCount(entitlements);
 
     List<String> names;
     switch (tier) {
@@ -111,6 +114,10 @@ class _ConfigureScreenState extends ConsumerState<ConfigureScreen> {
           _toast('Add at least one person');
           return;
         }
+        if (_familySelected.length > familyLimit) {
+          _toast('Choose up to $familyLimit people');
+          return;
+        }
         names = List<String>.from(_familySelected);
         break;
     }
@@ -132,6 +139,8 @@ class _ConfigureScreenState extends ConsumerState<ConfigureScreen> {
   Widget build(BuildContext context) {
     final draft = ref.watch(funnelDraftProvider);
     final tier = draft.selectedTier;
+    final entitlements = ref.watch(runtimeEntitlementsProvider);
+    final familyLimit = FunnelTier.family.portraitCount(entitlements);
     final names = draft.normalized?.detectedNames ?? const <String>[];
     final dateRange = draft.dateRange;
     final start = draft.rangeStart ?? dateRange?.start;
@@ -140,7 +149,7 @@ class _ConfigureScreenState extends ConsumerState<ConfigureScreen> {
     return FunnelChrome(
       step: 3,
       title: 'Configure the read',
-      lead: tier.configureLead,
+      lead: tier.configureLeadFor(entitlements),
       ctaLabel: 'Continue',
       onCta: _continue,
       body: Column(
@@ -150,13 +159,13 @@ class _ConfigureScreenState extends ConsumerState<ConfigureScreen> {
           const SizedBox(height: 20),
           if (tier == FunnelTier.family)
             _FamilyBlock(
+              maxSelections: familyLimit,
               selected: _familySelected,
-              suggested: names
-                  .where((n) => !_familySelected.contains(n))
-                  .toList(),
+              suggested:
+                  names.where((n) => !_familySelected.contains(n)).toList(),
               typeController: _familyType,
               onAdd: (name) {
-                if (_familySelected.length >= 5) return;
+                if (_familySelected.length >= familyLimit) return;
                 setState(() {
                   if (!_familySelected.contains(name)) {
                     _familySelected = [..._familySelected, name];
@@ -208,7 +217,9 @@ class _ConfigureScreenState extends ConsumerState<ConfigureScreen> {
                 controller: _nameController,
                 hint: "Enter the person's name",
                 onChanged: (value) {
-                  ref.read(funnelDraftProvider.notifier).setSelectedNames(
+                  ref
+                      .read(funnelDraftProvider.notifier)
+                      .setSelectedNames(
                         value.trim().isEmpty ? const [] : [value.trim()],
                       );
                 },
@@ -229,9 +240,9 @@ class _ConfigureScreenState extends ConsumerState<ConfigureScreen> {
                     setState(() {});
                   } else {
                     _nameController.text = name;
-                    ref
-                        .read(funnelDraftProvider.notifier)
-                        .setSelectedNames([name]);
+                    ref.read(funnelDraftProvider.notifier).setSelectedNames([
+                      name,
+                    ]);
                     setState(() {});
                   }
                 },
@@ -241,7 +252,9 @@ class _ConfigureScreenState extends ConsumerState<ConfigureScreen> {
             _SwitchHint(
               partnerMode: tier == FunnelTier.partner,
               onSwitch: () {
-                ref.read(funnelDraftProvider.notifier).selectTier(
+                ref
+                    .read(funnelDraftProvider.notifier)
+                    .selectTier(
                       tier == FunnelTier.partner
                           ? FunnelTier.you
                           : FunnelTier.partner,
@@ -313,7 +326,10 @@ class _NameField extends StatelessWidget {
         ),
         filled: true,
         fillColor: const Color(0xFFF3F0FF),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
@@ -367,7 +383,9 @@ class _DetectedInitials extends StatelessWidget {
                           borderRadius: BorderRadius.circular(
                             PortraitorTokens.radiusPill,
                           ),
-                          border: Border.all(color: PortraitorTokens.borderSoft),
+                          border: Border.all(
+                            color: PortraitorTokens.borderSoft,
+                          ),
                         ),
                         child: Text(
                           _initials(name),
@@ -436,6 +454,7 @@ class _SwitchHint extends StatelessWidget {
 
 class _FamilyBlock extends StatelessWidget {
   const _FamilyBlock({
+    required this.maxSelections,
     required this.selected,
     required this.suggested,
     required this.typeController,
@@ -443,6 +462,7 @@ class _FamilyBlock extends StatelessWidget {
     required this.onRemove,
   });
 
+  final int maxSelections;
   final List<String> selected;
   final List<String> suggested;
   final TextEditingController typeController;
@@ -467,7 +487,7 @@ class _FamilyBlock extends StatelessWidget {
               ),
             ),
             Text(
-              '${selected.length} / 5',
+              '${selected.length} / $maxSelections',
               style: PortraitorTokens.bodySm.copyWith(
                 color: PortraitorTokens.onboardingMuted,
                 fontWeight: FontWeight.w600,
@@ -515,7 +535,9 @@ class _FamilyBlock extends StatelessWidget {
                         avatar: const Icon(Icons.add, size: 16),
                         label: Text(name),
                         onPressed:
-                            selected.length >= 5 ? null : () => onAdd(name),
+                            selected.length >= maxSelections
+                                ? null
+                                : () => onAdd(name),
                       ),
                     )
                     .toList(),
@@ -549,7 +571,7 @@ class _FamilyBlock extends StatelessWidget {
           ),
           onSubmitted: (value) {
             final name = value.trim();
-            if (name.isEmpty || selected.length >= 5) return;
+            if (name.isEmpty || selected.length >= maxSelections) return;
             onAdd(name);
             typeController.clear();
           },
@@ -698,11 +720,7 @@ class _SourceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final count = draft.normalized?.messageCount ?? 0;
     final names = draft.normalized?.detectedNames ?? const <String>[];
-    final other =
-        names
-            .where((n) => n.toLowerCase() != 'you')
-            .take(1)
-            .toList();
+    final other = names.where((n) => n.toLowerCase() != 'you').take(1).toList();
     final title =
         other.isNotEmpty ? 'Chat with ${other.first}' : 'Imported chat';
 

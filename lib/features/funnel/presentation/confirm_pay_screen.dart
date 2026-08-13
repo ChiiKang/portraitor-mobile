@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
 import 'package:portraitor_mobile/core/storage/pending_job.dart';
 import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
@@ -31,8 +32,8 @@ enum PostPurchaseDestination { processing, profile }
 
 PostPurchaseDestination postPurchaseDestinationFor(FunnelTier tier) =>
     IapProductCatalog.isSubscription(tier)
-    ? PostPurchaseDestination.profile
-    : PostPurchaseDestination.processing;
+        ? PostPurchaseDestination.profile
+        : PostPurchaseDestination.processing;
 
 class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
   bool _passOpen = false;
@@ -63,11 +64,9 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     // Idempotent: the plan screen usually loads these already, but this screen
     // is reachable directly and must never render a price the store did not
     // give us.
-    if (!kDemoIapPurchase) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ref.read(iapProvider.notifier).loadPrices();
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(iapProvider.notifier).loadPrices();
+    });
   }
 
   /// Demo renders its own copy; real builds render what the store reports.
@@ -84,27 +83,36 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
   Widget build(BuildContext context) {
     final draft = ref.watch(funnelDraftProvider);
     final iapState = ref.watch(iapProvider);
-    final name = draft.selectedNames.isNotEmpty
-        ? draft.selectedNames.first
-        : 'Someone';
+    final entitlements = ref.watch(runtimeEntitlementsProvider);
+    final passPortraits = FunnelTier.pass.portraitCount(entitlements);
+    final passPortraitLabel =
+        '$passPortraits ${passPortraits == 1 ? 'portrait' : 'portraits'}';
+    final name =
+        draft.selectedNames.isNotEmpty ? draft.selectedNames.first : 'Someone';
     final messages = draft.normalized?.messageCount ?? 0;
     final showPass = _passOpen;
     final purchaseBusy =
         iapState.status == IapStatus.purchasing ||
         iapState.status == IapStatus.verifying;
     final activeTier = showPass ? FunnelTier.pass : draft.selectedTier;
-    final productReady =
-        kDemoIapPurchase || iapState.priceFor(activeTier) != null;
+    final productReady = iapState.priceFor(activeTier) != null;
+    final purchaseError =
+        iapState.status == IapStatus.failed &&
+                iapState.products.isNotEmpty &&
+                !(iapState.error ?? '').startsWith('Store products')
+            ? iapState.error
+            : null;
 
     return FunnelChrome(
       step: 4,
       title: 'Confirm & pay',
       lead: 'Review what you’re about to generate.',
-      ctaLabel: showPass
-          ? (FunnelTier.pass.canPurchase
-                ? 'Subscribe ${_priceFor(FunnelTier.pass)}'
-                : 'Subscribe — coming soon')
-          : 'Pay ${_priceFor(draft.selectedTier)}',
+      ctaLabel:
+          showPass
+              ? (FunnelTier.pass.canPurchase
+                  ? 'Subscribe ${_priceFor(FunnelTier.pass)}'
+                  : 'Subscribe — coming soon')
+              : 'Pay ${_priceFor(draft.selectedTier)}',
       // The email gates the purchase. The server re-validates it, but letting
       // Opening the store without one would take money we cannot deliver against.
       ctaEnabled:
@@ -121,6 +129,7 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
             controller: _emailController,
             showError: _emailTouched && !_emailValid,
             isSubscription: showPass,
+            isDemo: kDemoIapPurchase,
             onChanged: (_) => setState(() => _emailTouched = true),
           ),
           if (!kDemoIapPurchase &&
@@ -146,69 +155,80 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
               ],
             ),
           ],
+          if (purchaseError != null) ...[
+            const SizedBox(height: 12),
+            _PurchaseErrorCard(message: purchaseError),
+          ],
           const SizedBox(height: 14),
           AnimatedSize(
             duration: const Duration(milliseconds: 280),
             curve: Curves.easeInOutCubic,
-            child: showPass
-                ? const SizedBox.shrink()
-                : Column(
-                    children: [
-                      _SummaryCard(
-                        children: [
-                          _SummaryRow(
-                            label: 'Bundle',
-                            value: draft.selectedTier.label,
-                          ),
-                          _SummaryRow(label: 'Portrait for', value: name),
-                          _SummaryRow(label: 'Messages', value: '$messages'),
-                          if (draft.rangeStart != null &&
-                              draft.rangeEnd != null)
-                            _SummaryRow(
-                              label: 'Range',
-                              value:
-                                  '${_fmt(draft.rangeStart!)} – ${_fmt(draft.rangeEnd!)}',
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.88),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: PortraitorTokens.borderSoft,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child:
+                showPass
+                    ? const SizedBox.shrink()
+                    : Column(
+                      children: [
+                        _SummaryCard(
                           children: [
-                            Text(
-                              'TOTAL',
-                              style: PortraitorTokens.labelMd.copyWith(
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.06,
-                                color: PortraitorTokens.onboardingMuted,
-                              ),
+                            _SummaryRow(
+                              label: 'Bundle',
+                              value: draft.selectedTier.label,
                             ),
-                            Text(
-                              _priceFor(draft.selectedTier),
-                              style: PortraitorTokens.displaySm.copyWith(
-                                fontSize: 28,
+                            _SummaryRow(label: 'Portrait for', value: name),
+                            _SummaryRow(label: 'Messages', value: '$messages'),
+                            if (draft.rangeStart != null &&
+                                draft.rangeEnd != null)
+                              _SummaryRow(
+                                label: 'Range',
+                                value:
+                                    '${_fmt(draft.rangeStart!)} – ${_fmt(draft.rangeEnd!)}',
                               ),
-                            ),
                           ],
                         ),
-                      ),
-                      const SizedBox(height: 14),
-                    ],
-                  ),
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.88),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: PortraitorTokens.borderSoft,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'TOTAL',
+                                style: PortraitorTokens.labelMd.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.06,
+                                  color: PortraitorTokens.onboardingMuted,
+                                ),
+                              ),
+                              Text(
+                                _priceFor(draft.selectedTier),
+                                style: PortraitorTokens.displaySm.copyWith(
+                                  fontSize: 28,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                    ),
           ),
           _PassInsteadCard(
-            priceCaption: FunnelTier.pass.canPurchase
-                ? '${_priceFor(FunnelTier.pass)}/month'
-                : '\$50/month · Coming soon',
+            priceCaption:
+                kDemoIapPurchase
+                    ? '\$50/month · Coming soon'
+                    : '${_priceFor(FunnelTier.pass)}/month',
+            detailsCaption:
+                kDemoIapPurchase
+                    ? 'Monthly · \$50/mo · $passPortraitLabel'
+                    : 'Monthly · ${_priceFor(FunnelTier.pass)}/month · '
+                        '$passPortraitLabel',
             open: showPass,
             onToggle: () => setState(() => _passOpen = !_passOpen),
             onShowOneOff: () => setState(() => _passOpen = false),
@@ -235,7 +255,9 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
         productTitle: tier.iapProductTitle,
         productKind: tier.iapProductKind,
         priceLabel: tier.iapPriceLabel,
-        priceCaption: tier.iapPriceCaption,
+        priceCaption: tier.iapPriceCaptionFor(
+          ref.read(runtimeEntitlementsProvider),
+        ),
         isSubscription: !tier.isOneOff,
         onConfirm: () => _completeDemoPurchase(context),
       );
@@ -252,9 +274,10 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     FunnelTier tier,
   ) async {
     final destination = postPurchaseDestinationFor(tier);
-    final payload = destination == PostPurchaseDestination.processing
-        ? _funnelPayload(context)
-        : null;
+    final payload =
+        destination == PostPurchaseDestination.processing
+            ? _funnelPayload(context)
+            : null;
     if (destination == PostPurchaseDestination.processing && payload == null) {
       return;
     }
@@ -304,10 +327,11 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
         if (IapProductCatalog.isSubscription(tier)) {
           await Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) => SavePassScreen(
-                passCode: passCode,
-                onContinue: () => Navigator.of(context).pop(),
-              ),
+              builder:
+                  (_) => SavePassScreen(
+                    passCode: passCode,
+                    onContinue: () => Navigator.of(context).pop(),
+                  ),
             ),
           );
           if (!context.mounted) return;
@@ -351,14 +375,10 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
             ),
           ),
         );
-      case PurchaseFailed(:final message):
+      case PurchaseFailed():
         if (shouldDiscardPendingGeneration(outcome)) {
           await StorageService.instance.deletePendingJob(conversationId);
         }
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -448,6 +468,7 @@ class _PassInsteadCard extends StatelessWidget {
     required this.onToggle,
     required this.onShowOneOff,
     required this.priceCaption,
+    required this.detailsCaption,
   });
 
   final bool open;
@@ -456,6 +477,7 @@ class _PassInsteadCard extends StatelessWidget {
 
   /// Resolved by the parent so this card stays free of provider lookups.
   final String priceCaption;
+  final String detailsCaption;
 
   @override
   Widget build(BuildContext context) {
@@ -518,7 +540,7 @@ class _PassInsteadCard extends StatelessWidget {
                   const Divider(height: 1, color: Color(0x33C1A354)),
                   const SizedBox(height: 12),
                   Text(
-                    'Monthly · \$50/mo · 10 portraits',
+                    detailsCaption,
                     style: PortraitorTokens.titleSm.copyWith(
                       color: const Color(0xFF5C4A28),
                     ),
@@ -544,12 +566,66 @@ class _PassInsteadCard extends StatelessWidget {
                 ],
               ),
             ),
-            crossFadeState: open
-                ? CrossFadeState.showSecond
-                : CrossFadeState.showFirst,
+            crossFadeState:
+                open ? CrossFadeState.showSecond : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 240),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PurchaseErrorCard extends StatelessWidget {
+  const _PurchaseErrorCard({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      label: 'Purchase problem. $message',
+      child: Container(
+        key: const ValueKey('purchase-error'),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF4F3),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFFFC9C5)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.error_outline_rounded,
+              size: 20,
+              color: Color(0xFFA63B32),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Purchase did not continue',
+                    style: PortraitorTokens.bodySm.copyWith(
+                      color: const Color(0xFF7B2F29),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    message,
+                    style: PortraitorTokens.bodySm.copyWith(
+                      color: const Color(0xFF6B3A36),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -621,12 +697,14 @@ class _DeliveryEmailField extends StatelessWidget {
     required this.controller,
     required this.showError,
     required this.isSubscription,
+    required this.isDemo,
     required this.onChanged,
   });
 
   final TextEditingController controller;
   final bool showError;
   final bool isSubscription;
+  final bool isDemo;
   final ValueChanged<String> onChanged;
 
   @override
@@ -659,11 +737,14 @@ class _DeliveryEmailField extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          isSubscription
+          isDemo
+              ? 'Demo mode does not charge or send email. This address only '
+                  'lets you preview the complete checkout flow.'
+              : isSubscription
               ? 'Your portraits and your Pass code are emailed here. Keep it - '
-                    'the code is the only way to use this Pass elsewhere.'
+                  'the code is the only way to use this Pass elsewhere.'
               : 'Your portrait is emailed here. The app keeps a copy on this '
-                    'device only, so the email is what survives.',
+                  'device only, so the email is what survives.',
           style: const TextStyle(
             fontFamily: PortraitorTokens.fontFamily,
             fontSize: 12,

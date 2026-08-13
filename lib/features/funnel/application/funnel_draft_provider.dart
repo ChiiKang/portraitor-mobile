@@ -1,23 +1,15 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:portraitor_mobile/core/config/build_flags.dart';
+import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
 import 'package:portraitor_mobile/features/import/services/chat_normalizer.dart';
 import 'package:portraitor_mobile/features/import/services/date_parser.dart';
 
+export 'package:portraitor_mobile/core/config/build_flags.dart'
+    show kDemoIapPurchase;
+
 /// Commercial tier for the four-step funnel.
 enum FunnelTier { you, partner, family, pass }
-
-/// Demo build: the native purchase sheet is simulated end to end, so every
-/// one-off bundle can start generation without a platform store or billing
-/// backend.
-///
-/// Enabled only by `--dart-define=DEMO_IAP=true`, and off in every other
-/// build. A hand-flipped constant is one forgotten revert away from shipping
-/// an app that gives away paid content, which loses revenue and violates store
-/// billing policy.
-///
-/// With the flag off, the platform-selected store handles all four products.
-const bool kDemoIapPurchase = !kReleaseMode && bool.fromEnvironment('DEMO_IAP');
 
 extension FunnelTierX on FunnelTier {
   /// Short badge / receipt label.
@@ -34,29 +26,39 @@ extension FunnelTierX on FunnelTier {
     }
   }
 
-  String get planSubtitle {
+  String planSubtitleFor(RuntimeEntitlements entitlements) {
+    final count = portraitCount(entitlements);
     switch (this) {
       case FunnelTier.you:
-        return 'Your personal portrait.';
+        return count == 1
+            ? 'Your personal portrait.'
+            : 'Up to ${_portraitLabel(count)} for you.';
       case FunnelTier.partner:
-        return "You and your partner's portrait.";
+        return count == 2
+            ? "You and your partner's portraits."
+            : 'Up to ${_portraitLabel(count)} for you and your partner.';
       case FunnelTier.family:
-        return 'Up to 5 people from a group chat.';
+        return 'Up to ${_portraitLabel(count)} from a group chat.';
       case FunnelTier.pass:
-        return '10 portraits a month with the Pass.';
+        return '${_portraitLabel(count)} a month with the Pass.';
     }
   }
 
-  String get configureLead {
+  String configureLeadFor(RuntimeEntitlements entitlements) {
+    final count = portraitCount(entitlements);
     switch (this) {
       case FunnelTier.you:
-        return 'One portrait — just for you.';
+        return count == 1
+            ? 'One portrait, just for you.'
+            : 'Choose up to ${_portraitLabel(count)} for you.';
       case FunnelTier.partner:
-        return 'Two portraits — one for each of you.';
+        return count == 2
+            ? 'Two portraits, one for each of you.'
+            : 'Up to ${_portraitLabel(count)} for you and your partner.';
       case FunnelTier.family:
-        return 'Up to five portraits from this chat.';
+        return 'Choose up to ${_portraitLabel(count)} from this chat.';
       case FunnelTier.pass:
-        return 'Pass includes every bundle.';
+        return '${_portraitLabel(count)} per month across every bundle.';
     }
   }
 
@@ -93,16 +95,16 @@ extension FunnelTierX on FunnelTier {
     }
   }
 
-  int get portraitCount {
+  int portraitCount(RuntimeEntitlements entitlements) {
     switch (this) {
       case FunnelTier.you:
-        return 1;
+        return entitlements.youMaxPortraits;
       case FunnelTier.partner:
-        return 2;
+        return entitlements.partnerMaxPortraits;
       case FunnelTier.family:
-        return 5;
+        return entitlements.familyMaxPortraits;
       case FunnelTier.pass:
-        return 10;
+        return entitlements.passPortraitsPerMonth;
     }
   }
 
@@ -110,10 +112,13 @@ extension FunnelTierX on FunnelTier {
 
   /// Whether the pay CTA may start a purchase.
   ///
-  /// The demo can only simulate one-off bundles: a subscription grants monthly
-  /// quota rather than a portrait, so a faked one cannot do anything truthful.
-  /// Real store billing ships all four products.
-  bool get canPurchase => kDemoIapPurchase ? isOneOff : true;
+  /// Neither demo path can simulate a subscription: it grants monthly quota
+  /// rather than a portrait, so a faked one cannot do anything truthful. Under
+  /// [kFakeBilling] the mock Stripe rail would additionally record it as a
+  /// one-off, and the caller would then skip queueing because it believes it
+  /// bought a subscription - a purchase that appears to succeed and generates
+  /// nothing. Real store billing ships all four products.
+  bool get canPurchase => kSimulatedStore ? isOneOff : true;
 
   /// Demo purchase-sheet title - prototype `"Portraitor · " + meta.label`.
   String get iapProductTitle =>
@@ -127,12 +132,15 @@ extension FunnelTierX on FunnelTier {
   String get iapPriceLabel => '$priceLabel.00';
 
   /// Caption under the price — prototype `"one-time · N portraits"`.
-  String get iapPriceCaption {
+  String iapPriceCaptionFor(RuntimeEntitlements entitlements) {
     if (this == FunnelTier.pass) return 'per month · renews until cancelled';
-    return 'one-time · $portraitCount '
-        '${portraitCount == 1 ? 'portrait' : 'portraits'}';
+    final count = portraitCount(entitlements);
+    return 'one-time · ${_portraitLabel(count)}';
   }
 }
+
+String _portraitLabel(int count) =>
+    '$count ${count == 1 ? 'portrait' : 'portraits'}';
 
 class FunnelDraft {
   final NormalizationResult? normalized;

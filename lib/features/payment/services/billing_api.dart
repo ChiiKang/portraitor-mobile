@@ -44,6 +44,27 @@ class PassAlreadyFundedException implements Exception {
   String toString() => 'Pass already has an active subscription.';
 }
 
+/// The saved Pass session is no longer accepted by the backend.
+///
+/// This is recoverable. The app keeps the one-time Pass code, discards only
+/// the stale session token, and starts the purchase as an unauthenticated
+/// purchase. Store proof remains authoritative during verification.
+class PassSessionExpiredException implements Exception {
+  const PassSessionExpiredException();
+
+  @override
+  String toString() => 'Your saved Pass session expired.';
+}
+
+class PurchasePreparationException implements Exception {
+  const PurchasePreparationException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class PurchaseNotVerifiedException implements Exception {
   const PurchaseNotVerifiedException(this.message);
   final String message;
@@ -111,7 +132,15 @@ class HttpBillingApi implements BillingApi {
       if (e.response?.statusCode == 409) {
         throw const PassAlreadyFundedException();
       }
-      rethrow;
+      if (e.response?.statusCode == 401) {
+        throw const PassSessionExpiredException();
+      }
+      final status = e.response?.statusCode;
+      throw PurchasePreparationException(
+        status == 429
+            ? 'The store service is busy. Please wait a moment and try again.'
+            : 'We could not prepare this purchase. No charge was made. Please try again.',
+      );
     }
   }
 
@@ -228,6 +257,42 @@ class FakeBillingApi implements BillingApi {
       passCodeDelivered: isSubscription && first,
       paymentReference: isSubscription ? null : 'credit-$publicUuid',
       passCode: (isSubscription && first) ? 'PASS-CODE-1' : null,
+    );
+  }
+}
+
+/// Local demo billing. Its reference is deliberately namespaced so processing
+/// can require both the debug build flag and unmistakable demo proof before it
+/// takes the network-free sample path.
+class LocalDemoBillingApi extends FakeBillingApi {
+  @override
+  Future<VerifiedPurchase> verifyPurchase({
+    required String verificationData,
+    required String publicUuid,
+    required String productId,
+    required String clientConversationRef,
+    String? deliveryEmail,
+    String? sessionToken,
+    StoreProvider provider = StoreProvider.apple,
+  }) async {
+    final verified = await super.verifyPurchase(
+      verificationData: verificationData,
+      publicUuid: publicUuid,
+      productId: productId,
+      clientConversationRef: clientConversationRef,
+      deliveryEmail: deliveryEmail,
+      sessionToken: sessionToken,
+      provider: provider,
+    );
+    return VerifiedPurchase(
+      sessionToken: verified.sessionToken,
+      productKey: verified.productKey,
+      passCodeDelivered: verified.passCodeDelivered,
+      paymentReference:
+          verified.paymentReference == null
+              ? null
+              : 'demo-${verified.paymentReference}',
+      passCode: verified.passCode,
     );
   }
 }
