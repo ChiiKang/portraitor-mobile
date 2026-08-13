@@ -30,11 +30,19 @@ So we split it in two:
 | The finished portrait and the email | **Real.** | This is the product. |
 
 The mechanism already exists in the codebase.
-`MockStripeBillingApi` (`lib/features/payment/services/mock_stripe_billing_api.dart`) drives the same mock Stripe rail the web app already uses for testing.
-It calls `POST /api/payment.php` to create a payment intent and `PUT /api/payment.php` to confirm it, which moves the row to `authorized` exactly as a real purchase would.
+Only the store sheet is faked.
+`FakeIapService` emits a `demo.v1.` Google purchase token, encoded by `DemoGooglePurchaseToken` (`lib/features/payment/services/demo_google_purchase_token.dart`) to match the backend's `DemoGooglePlayApi::encodeToken()` byte for byte.
+The app then posts it to the real `POST /api/google/purchase/verify.php` through the ordinary `HttpBillingApi`, exactly as a real Play purchase would, and the backend writes the same `authorized` row.
 
-This is deliberately **not** a bypass.
+This is deliberately **not** a bypass, and deliberately not a second rail.
+The backend replaces only its outbound call to Google; the product catalog, the account-token match, and the payment row are all the production path.
+That is the point: a tester build exercises the rail the app will actually ship on, so the demo cannot pass while the real thing is broken.
 Nothing on the server is weakened, and no code path grants free generation in a production build.
+
+> **Superseded on 2026-08-13.**
+> An earlier version of this routed the simulated purchase through `MockStripeBillingApi` and the web mock Stripe endpoints.
+> That made the tester build depend on staging's web `payment_mode` and, worse, meant the demo never touched the store rail it existed to prove.
+> The class and its test were deleted rather than deprecated.
 
 Do not confuse this with `DEMO_IAP=true`.
 That flag is a different thing entirely: it produces a labelled sample portrait **locally**, uploads nothing, contacts no backend, and sends no email.
@@ -98,7 +106,8 @@ That is why we can hand out a fully working Android app today with no Google Pla
 | Production | `https://portraitor.ai` | Yes. |
 
 **Use staging for all tester builds.**
-Staging is the only environment where the payment mode can be set to `mock`, which the demo payment requires.
+Staging is the only environment that may run with `GOOGLE_PLAY_DEMO_GRANTS` on, which the simulated purchase requires.
+Production refuses demo grants outright, regardless of that flag.
 
 The setting is read from the `API_BASE` build value and defaults to `https://staging.portraitor.ai`.
 
@@ -159,30 +168,26 @@ It also needs an import of `features/payment/domain/store_provider.dart`.
 `kFakeBilling` is already defined as `!kReleaseMode && bool.fromEnvironment('FAKE_BILLING')`.
 A release build cannot reach this branch no matter what flags are passed, so a production APK still cannot give away a free portrait.
 
-## Step 1: put the backend in mock payment mode
+## Step 1: turn on demo grants on the backend
 
 **Not done yet. This is the remaining blocker.**
 
-Verified on 2026-08-13: staging is running **real Stripe in test mode**, not mock.
-Confirming a payment intent against staging returns:
+Verified on 2026-08-13: staging does not set `GOOGLE_PLAY_DEMO_GRANTS`.
+The build script's preflight probes `/api/google/purchase/verify.php` with a `demo.v1.` token and an unprefixed control token, and both return HTTP 500 - the signature of a backend that fell through to real Google Play verification, which cannot work until the Play Console account exists.
 
-```json
-{"status":"error","message":"Confirmation only supported in mock mode"}
-```
-
-So a tester today would reach the pay screen and be stopped with
-"Demo purchases need the backend payment mode set to 'mock'."
+So a tester today would reach the pay screen and be stopped with "Purchase could not be verified".
 The app handles this honestly rather than pretending to succeed, but the tester cannot get a portrait.
 
-This is a database setting, not a code deploy, so it is a fast fix:
+This is a runtime environment variable, so it needs a deploy:
 
-1. Open `https://staging.portraitor.ai/admin.php`.
-2. Set **Payment Mode** to **Mock (testing)**.
-3. Leave **Email Mode** on a real SMTP option, Gmail or Hostinger, so testers still receive their portrait by email. These two settings are independent.
-4. Save.
+1. Add `SetEnv GOOGLE_PLAY_DEMO_GRANTS true` to the `.htaccess` profile staging **actually deploys**.
+2. Redeploy and confirm the active profile on the server.
+3. Leave **Email Mode** on a real SMTP option, Gmail or Hostinger, so testers still receive their portrait by email.
+4. Rerun `./tool/build_tester_apk.sh` and confirm the preflight reports the demo token as 422 and the control token as 500.
 
-Note that this switches staging's **web** checkout to mock as well, since both read the same `admin_config` row.
-Confirm nobody is mid-way through Stripe testing on staging before flipping it.
+**Do not touch Payment Mode in `admin.php`.**
+That setting governs the web Stripe rail.
+Staging stays on `stripe_sandbox` deliberately, and the mobile app no longer touches Stripe at all - which was the entire point of moving the tester rail onto the Google verify endpoint.
 
 ## Step 2: build the APK
 
@@ -191,7 +196,7 @@ Confirm nobody is mid-way through Stripe testing on staging before flipping it.
 ```
 
 That is the whole command.
-It runs `flutter analyze` and `flutter test`, checks that the backend is actually in mock mode, builds the APK, and copies it to `~/Desktop/Portraitor-Builds/` under a name that records the version, target, and date.
+It runs `flutter analyze` and `flutter test`, probes the backend for demo-grant readiness, builds the APK, and copies it to `~/Desktop/Portraitor-Builds/` under a name that records the version, target, and date.
 
 There is also a `build-apk` skill in `.claude/skills/`, so asking the agent to "compile an APK" runs the same script rather than improvising the flags.
 
@@ -378,7 +383,7 @@ For reference, this is what the real thing looks like:
 |---|---|---|
 | Android build | `--profile` with `FAKE_BILLING=true` | `--release`, signed with the upload keystore, as an AAB |
 | Android delivery | APK link | Google Play Store |
-| Payment | Simulated through mock Stripe | Google Play Billing and Apple StoreKit |
+| Payment | Simulated store sheet, real Google verify endpoint | Google Play Billing and Apple StoreKit |
 | iOS delivery | TestFlight | App Store |
 | Server | `staging.portraitor.ai` | `portraitor.ai` |
 
@@ -388,9 +393,10 @@ That is tracked separately in [`google-play-account-and-android-start-plan.md`](
 # Known gaps and risks
 
 **The `Pass` subscription tier misbehaved under `FAKE_BILLING`. Fixed on 2026-08-13.**
-`MockStripeBillingApi._tierFor()` maps any product that is not `.partner` or `.family` to `you`, so buying the monthly Pass created a one-off `you` payment row.
+The since-deleted `MockStripeBillingApi._tierFor()` mapped any product that was not `.partner` or `.family` to `you`, so buying the monthly Pass created a one-off `you` payment row.
 The caller then skipped queueing, because it believed it had bought a subscription, producing a purchase that appeared to succeed and generated nothing.
 `FunnelTier.canPurchase` now gates subscriptions out of both simulated-store builds, so testers only see the one-off tiers.
+The backend agrees independently: `DemoGooglePlayApi::subscription()` refuses outright, so a simulated Pass cannot mint a credential that outlives the demo.
 
 **Profile builds expose the Dart VM service.**
 It listens on the local network only and is not reachable from the internet, but it is a reason not to leave tester builds circulating longer than needed.
@@ -411,7 +417,8 @@ It is auto-generated, so it should be regenerated or dropped through claude-mem 
 - [x] Hide the Pass tier for simulated-store builds
 - [x] Add `tool/build_tester_apk.sh` and the `build-apk` skill so the build is one repeatable command
 - [x] Build the profile APK and verify it installs and launches on a device
-- [ ] **Set staging payment mode to `mock` in `admin.php`** (the remaining blocker)
+- [x] Move the tester rail off mock Stripe and onto the real Google verify endpoint, and delete `MockStripeBillingApi`
+- [ ] **Deploy `GOOGLE_PLAY_DEMO_GRANTS` to staging** (the remaining blocker)
 - [ ] Walk the full flow once on a device after the backend flip, all the way to a delivered portrait
 - [ ] Upload, share the link with the tester instructions
 

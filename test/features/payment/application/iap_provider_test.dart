@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,7 @@ import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/domain/purchase_outcome.dart';
 import 'package:portraitor_mobile/features/payment/domain/store_provider.dart';
 import 'package:portraitor_mobile/features/payment/services/billing_api.dart';
+import 'package:portraitor_mobile/features/payment/services/demo_google_purchase_token.dart';
 import 'package:portraitor_mobile/features/payment/services/iap_service.dart';
 import 'package:portraitor_mobile/features/payment/services/pass_credential_store.dart';
 import 'package:portraitor_mobile/features/payment/services/pending_purchase_store.dart';
@@ -463,6 +465,130 @@ void main() {
       },
     );
   });
+
+  /// The tester APK simulates the Google purchase sheet, but nothing after it.
+  /// These tests hold that line: a simulated purchase must leave through the
+  /// same endpoint a paid one does, carrying a token the backend can decode.
+  /// Verifying it anywhere else lets the demo pass while the shipping rail is
+  /// broken, which is exactly what the old mock Stripe path allowed.
+  group('the simulated Android purchase on the real rail', () {
+    test('verifies at the Google endpoint with a demo purchase token', () async {
+      final requests = <RequestOptions>[];
+      final iap = FakeIapService(
+        provider: StoreProvider.google,
+        products: const {_youSku: r'$29.00'},
+      );
+      final notifier = IapNotifier(
+        iap: iap,
+        api: HttpBillingApi(dio: _stubDio(requests)),
+        store: InMemoryPassCredentialStore(),
+        pendingStore: InMemoryPendingPurchaseStore(),
+        onConsumableVerified: (_, __) async {},
+      );
+      await notifier.loadPrices();
+
+      final outcome = await notifier.buy(
+        FunnelTier.you,
+        clientConversationRef: 'conv_tester',
+        deliveryEmail: 'tester@example.com',
+      );
+
+      expect(outcome, isA<PurchaseVerified>());
+      expect(requests.single.path, '/api/google/purchase/verify.php');
+
+      final body = requests.single.data as Map<String, dynamic>;
+      final token = body['purchase_token'] as String;
+      expect(token, startsWith(DemoGooglePurchaseToken.prefix));
+      expect(body.containsKey('jws'), isFalse);
+      expect(body['client_conversation_ref'], 'conv_tester');
+      expect(body['delivery_email'], 'tester@example.com');
+
+      // The backend compares the token's uuid against the request's, so a
+      // purchase whose two identities disagree is refused before it can fund
+      // anything. Proving they agree here is proving the purchase can complete.
+      final claims = _claims(token);
+      expect(claims['product_id'], _youSku);
+      expect(claims['public_uuid'], body['public_uuid']);
+      // Per-purchase, so the backend cannot mistake a second purchase for a
+      // replay of the first. Asserted as present rather than as a value,
+      // because it is deliberately random.
+      expect(claims['nonce'], isA<String>());
+      expect(body['product_id'], _youSku);
+    });
+
+    test('surfaces a refused demo grant instead of pretending', () async {
+      final iap = FakeIapService(
+        provider: StoreProvider.google,
+        products: const {_youSku: r'$29.00'},
+      );
+      final notifier = IapNotifier(
+        iap: iap,
+        // What a backend without GOOGLE_PLAY_DEMO_GRANTS actually returns.
+        api: HttpBillingApi(dio: _stubDio([], statusCode: 422)),
+        store: InMemoryPassCredentialStore(),
+        pendingStore: InMemoryPendingPurchaseStore(),
+        onConsumableVerified: (_, __) async {},
+      );
+      await notifier.loadPrices();
+
+      final outcome = await notifier.buy(
+        FunnelTier.you,
+        clientConversationRef: 'conv_tester',
+      );
+
+      expect(outcome, isA<PurchaseFailed>());
+      expect(
+        (outcome as PurchaseFailed).message,
+        'Purchase could not be verified',
+      );
+      expect(
+        iap.finished,
+        isEmpty,
+        reason: 'an unverified purchase must stay replayable',
+      );
+    });
+  });
+}
+
+Dio _stubDio(List<RequestOptions> requests, {int statusCode = 200}) {
+  final dio = Dio();
+  dio.options.validateStatus = (_) => true;
+  dio.httpClientAdapter = _VerifyAdapter(requests, statusCode: statusCode);
+  return dio;
+}
+
+Map<String, dynamic> _claims(String token) {
+  final segment = token.substring(DemoGooglePurchaseToken.prefix.length);
+  final padded = segment.padRight(
+    segment.length + (4 - segment.length % 4) % 4,
+    '=',
+  );
+  return jsonDecode(utf8.decode(base64Url.decode(padded)))
+      as Map<String, dynamic>;
+}
+
+class _VerifyAdapter implements HttpClientAdapter {
+  _VerifyAdapter(this.requests, {this.statusCode = 200});
+
+  final List<RequestOptions> requests;
+  final int statusCode;
+
+  @override
+  Future<ResponseBody> fetch(RequestOptions options, _, __) async {
+    requests.add(options);
+    return ResponseBody.fromString(
+      statusCode == 200
+          ? '{"status":"ok","data":{"session_token":"","product_key":"portrait_you","pass_code_delivered":true,"payment_reference":"GPA.DEMO-0123456789abcdef01234567"}}'
+          : '{"status":"error","message":"Purchase could not be verified"}',
+      statusCode,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }
 
 /// Finishing always throws, mirroring the StoreKit 2 plugin bug where

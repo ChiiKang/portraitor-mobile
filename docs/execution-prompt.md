@@ -22,7 +22,8 @@ FIXES
 Both Gemini proxies must recognize stored Apple/Google payment references instead of sending apl_ refs to Stripe. Name the helper for stored-payment authorization; it does not verify receipts. Add endpoint-level tests for both proxies - the existing helper test is insufficient.
 
 2. Failed store delivery
-PostProcessing::cancelAuthorizedPayment() must not cancel an already-paid Apple/Google consumable; make the credit reusable instead. Fix both validation endpoints in the same change: a failed email delivery must never return portrait text, or one purchase funds two results.
+PostProcessing::cancelAuthorizedPayment() must not cancel an already-paid Apple/Google consumable; make the credit reusable instead. Fix both validation endpoints in the same change: for a PAID run, a failed email delivery must never return portrait text, or one purchase funds two results.
+Scope the withholding to paid runs only. Gate it on !SubscriptionGrantService::isGrant($paymentSessionId). Grant runs (subgrant_ tokens, Pass holders) must keep today's behaviour - portrait returned, attempt consumed, never refunded - which is deliberate and live in production; see gemini-validate-stream.php:588 and its comment "(Paid runs still withhold + cancel.)". Withholding on both branches takes a working portrait away from paying Pass subscribers and still spends their use. Add a test proving a grant run still receives its portrait when email fails.
 Rewrite the contradictory assertions in tests/unit/apple-generation-path.test.php and apple-consumable-path.test.php. The "failed run leaves the credit reusable" title is the intended behavior. Cover Google too, or prove the shared provider path.
 
 3. Repeated consumable purchases

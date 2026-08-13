@@ -62,43 +62,84 @@ else
 fi
 
 # ── 2. Backend preflight ────────────────────────────────────────────────
-# The tester build's simulated purchase needs the backend's payment mode set to
-# 'mock'. Against live Stripe the confirm step 400s and the tester gets stuck at
-# the pay screen with a real portrait they can never reach. Catch that here,
-# not in the client's hands.
-if [[ "$MODE" == "tester" && "$API_BASE" == *"staging"* ]]; then
-  bold "3/4  Backend payment-mode preflight"
-  REF="apk-preflight-$(date +%s)"
-  INTENT="$(curl -sS -X POST "$API_BASE/api/payment.php" \
-    -H 'Content-Type: application/json' \
-    -d "{\"customer_email\":\"demo@portraitor.ai\",\"tier\":\"you\",\"client_conversation_ref\":\"$REF\",\"source\":\"manual-test\"}" \
-    --max-time 25 | sed -n 's/.*"payment_intent_id":"\([^"]*\)".*/\1/p')"
+# The tester build does not touch Stripe, so the backend's web payment mode is
+# irrelevant to it and staging deliberately stays on 'stripe_sandbox'. What it
+# needs is GOOGLE_PLAY_DEMO_GRANTS, which lets the real Google verify endpoint
+# accept a 'demo.v1.' purchase token. Probe that endpoint, because it is the one
+# the APK will actually call.
+#
+# Two probes, because no single response proves anything on its own. The demo
+# token exercises the demo branch; an unprefixed control token can only take the
+# real Google Play branch. Read together they separate "demo grants are on" from
+# "everything is rejected the same way".
+if [[ "$MODE" == "tester" ]]; then
+  bold "3/4  Backend demo-grant preflight"
 
-  if [[ -z "$INTENT" ]]; then
-    warn "Could not create a preflight payment intent. Is $API_BASE reachable?"
-  else
-    CONFIRM="$(curl -sS -X PUT "$API_BASE/api/payment.php" \
+  b64url() { printf '%s' "$1" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '='; }
+  new_uuid() {
+    uuidgen 2>/dev/null | tr '[:upper:]' '[:lower:]' \
+      || printf 'preflight-%s-%s' "$$" "$(date +%s)"
+  }
+
+  PROBE_SKU="com.portraitor.portrait.you"
+  # Deliberately mismatched identities: the token claims one uuid and the
+  # request body claims another. A backend that accepts demo tokens still stops
+  # at the account-token check, so the probe proves the branch was taken without
+  # minting a payment row nobody will ever spend.
+  PROBE_TOKEN="demo.v1.$(b64url "{\"product_id\":\"$PROBE_SKU\",\"public_uuid\":\"$(new_uuid)\"}")"
+  PROBE_UUID="$(new_uuid)"
+
+  probe() {
+    curl -sS -o /dev/null -w '%{http_code}' --max-time 25 \
+      -X POST "$API_BASE/api/google/purchase/verify.php" \
       -H 'Content-Type: application/json' \
-      -d "{\"payment_intent_id\":\"$INTENT\"}" --max-time 25)"
-    if [[ "$CONFIRM" == *'"confirmed":true'* ]]; then
-      echo "  Backend is in mock mode. Simulated purchases will produce real portraits."
-    else
-      warn ""
-      warn "  BACKEND IS NOT IN MOCK MODE."
-      warn "  Response: $CONFIRM"
-      warn ""
-      warn "  Testers will reach the pay screen and get:"
-      warn "    \"Demo purchases need the backend payment mode set to 'mock'.\""
-      warn ""
-      warn "  Fix: open $API_BASE/admin.php, set Payment Mode to"
-      warn "  'Mock (testing)', and save. Leave Email Mode on a real SMTP"
-      warn "  option so testers still receive their portrait by email."
-      warn ""
-      warn "  Building anyway. The APK is correct; the backend is not ready."
+      -d "{\"purchase_token\":\"$1\",\"product_id\":\"$PROBE_SKU\",\"public_uuid\":\"$PROBE_UUID\",\"client_conversation_ref\":\"apk-preflight-$(date +%s)\"}" \
+      2>/dev/null || printf 'unreachable'
+  }
+
+  DEMO_CODE="$(probe "$PROBE_TOKEN")"
+  CONTROL_CODE="$(probe "not-a-demo-token")"
+  echo "  demo token: HTTP $DEMO_CODE    control token: HTTP $CONTROL_CODE"
+
+  if [[ "$DEMO_CODE" == "422" && "$CONTROL_CODE" == "500" ]]; then
+    echo "  Demo grants are on. A simulated purchase will fund a real portrait."
+  elif [[ "$DEMO_CODE" == "500" && "$CONTROL_CODE" == "500" ]]; then
+    warn ""
+    warn "  DEMO GRANTS ARE OFF ON THIS BACKEND."
+    warn "  The demo token fell through to real Google Play verification, which"
+    warn "  cannot work until the Play Console account exists."
+    warn ""
+    warn "  Testers will reach the pay screen and get:"
+    warn "    \"Purchase could not be verified\""
+    warn ""
+    warn "  Fix: set 'SetEnv GOOGLE_PLAY_DEMO_GRANTS true' in the .htaccess"
+    warn "  profile that is actually deployed to $API_BASE, redeploy, and"
+    warn "  rerun this script. Do NOT change Payment Mode in admin.php - that"
+    warn "  governs the web Stripe rail and this build never touches it."
+    warn ""
+    warn "  Building anyway. The APK is correct; the backend is not ready."
+  else
+    warn ""
+    warn "  DEMO-GRANT READINESS IS UNKNOWN."
+    warn "  Expected HTTP 422 for the demo token and 500 for the control token."
+    warn ""
+    if [[ "$DEMO_CODE" == "unreachable" || "$CONTROL_CODE" == "unreachable" ]]; then
+      warn "  The endpoint did not answer. Check that $API_BASE is reachable."
+    elif [[ "$DEMO_CODE" == "429" || "$CONTROL_CODE" == "429" ]]; then
+      warn "  Rate limited. Wait for the verify window to reset and rerun."
+    elif [[ "$DEMO_CODE" == "422" && "$CONTROL_CODE" == "422" ]]; then
+      warn "  Real Google Play verification is configured, so both tokens are"
+      warn "  rejected identically and the status code cannot tell them apart."
     fi
+    warn ""
+    warn "  Check by hand before sending this build: confirm the deployed"
+    warn "  .htaccess on $API_BASE sets GOOGLE_PLAY_DEMO_GRANTS, then walk one"
+    warn "  simulated purchase on a device and confirm the portrait arrives."
+    warn ""
+    warn "  Building anyway. Nothing above says the APK is wrong."
   fi
 else
-  bold "3/4  Backend preflight skipped for this mode/target"
+  bold "3/4  Backend preflight skipped for this mode"
 fi
 
 # ── 3. Build ────────────────────────────────────────────────────────────

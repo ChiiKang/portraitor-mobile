@@ -11,7 +11,6 @@ import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
 import 'package:portraitor_mobile/features/payment/domain/purchase_outcome.dart';
 import 'package:portraitor_mobile/features/payment/domain/store_provider.dart';
 import 'package:portraitor_mobile/features/payment/services/billing_api.dart';
-import 'package:portraitor_mobile/features/payment/services/mock_stripe_billing_api.dart';
 import 'package:portraitor_mobile/features/payment/services/iap_service.dart';
 import 'package:portraitor_mobile/features/payment/services/pass_credential_store.dart';
 import 'package:portraitor_mobile/features/payment/services/pending_purchase_store.dart';
@@ -63,10 +62,11 @@ class IapState {
 final iapServiceProvider = Provider<IapService>((ref) {
   // Both demo paths simulate the store sheet. They differ only in what happens
   // afterwards: [kDemoIapPurchase] keeps everything local, while [kFakeBilling]
-  // sends the verified purchase to the backend's mock Stripe rail so a real
-  // payment row exists and the queue admits a real generation run. A tester
-  // build has no store catalog to query, so a live store service would fail at
-  // loadProducts long before either path could be exercised.
+  // sends the simulated purchase's demo token to the real Google verify
+  // endpoint, so a genuine payment row exists and the queue admits a real
+  // generation run. A tester build has no store catalog to query, so a live
+  // store service would fail at loadProducts long before either path could be
+  // exercised.
   if (kDemoIapPurchase || kFakeBilling) {
     return FakeIapService(
       provider:
@@ -85,8 +85,13 @@ final iapServiceProvider = Provider<IapService>((ref) {
 });
 
 final billingApiProvider = Provider<BillingApi>((ref) {
+  // Only the network-free demo gets a stand-in. A tester build verifies through
+  // the same HTTP rail a paying customer does - it just presents a demo
+  // purchase token instead of a Play one. A parallel mock rail here would let
+  // the demo pass while the shipping path was broken, which is the whole
+  // failure this arrangement exists to prevent.
   if (kDemoIapPurchase) return LocalDemoBillingApi();
-  return kFakeBilling ? MockStripeBillingApi() : HttpBillingApi();
+  return HttpBillingApi();
 });
 final passCredentialStoreProvider = Provider<PassCredentialStore>(
   (ref) =>

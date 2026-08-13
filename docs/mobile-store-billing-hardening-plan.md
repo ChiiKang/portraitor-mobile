@@ -24,7 +24,7 @@ Reverting is one command.
 
 | File | State | Verdict |
 | --- | --- | --- |
-| `src/Billing/StorePaymentVerifier.php` | New | Keep. Independently verified correct. |
+| `src/Billing/StorePaymentAuthorizer.php` | New | Shipped. Renamed from `StorePaymentVerifier`: it reads a settled payment, it does not verify a receipt. |
 | `public/api/gemini-proxy.php` | Edited | Keep. Branch placement confirmed correct. |
 | `public/api/gemini-proxy-stream.php` | Edited | Keep. Branch placement confirmed correct. |
 | `tests/unit/store-payment-verifier.test.php` | New | Keep, but insufficient on its own. |
@@ -99,6 +99,11 @@ If `GOOGLE_PLAY_DEMO_GRANTS` were ever true in production, the public verify end
 `gemini-validate.php` and `gemini-validate-stream.php` return the generated portrait text in the network response even when email delivery has failed.
 The browser hides that text, so nobody noticed. The response body still contains it.
 
+**This is a defect for paid runs only.** For a grant run - a Pass holder spending a monthly use - returning the portrait on a failed delivery is deliberate and correct, and it is live in production today.
+`gemini-validate-stream.php:588` branches on exactly this and says so: *"the portrait was produced and is rendered in-browser; a subscriber's email is best-effort. Count as success and consume the attempt below - never refund. (Paid runs still withhold + cancel.)"*
+Any fix must be gated on `!SubscriptionGrantService::isGrant($paymentSessionId)`.
+Applying it to both branches would take a working portrait away from paying subscribers and consume their use anyway, which is a regression of shipped behaviour rather than a fix.
+
 On its own this is a leak of something the customer already paid for, which is survivable.
 
 Combined with D2, it is not.
@@ -146,21 +151,24 @@ Required before a paying customer can buy on a phone. None of this depends on a 
 
 Fixes D1. **Already written.** Reviewed and confirmed correct by Codex.
 
-- `StorePaymentVerifier::isStoreReference()` routes on the `apl_` prefix so the Stripe path pays no extra query.
-- `StorePaymentVerifier::isAuthorized()` requires `status = 'authorized'` and `provider IN ('apple','google')`.
+- `StorePaymentAuthorizer::isStoreReference()` routes on the `apl_` prefix so the Stripe path pays no extra query. Routing only, never a security boundary: the prefix is caller-controlled.
+- `StorePaymentAuthorizer::isAuthorized()` requires `status = 'authorized'` and `provider IN ('apple','google')`. The provider filter, not the prefix, is what decides admission.
+- Both proxies now call the shared `Portraitor\Proxy\GenerationPaymentGate`. The decision used to be duplicated in each endpoint, which is why the store branch was added to neither.
 - One `elseif` branch in each proxy, placed after the grant branch and before the Stripe branch.
 
 Confirmed: the grant path is unchanged, and Stripe behaviour changes only for references beginning `apl_`.
 
 ### Phase 2 - Stop destroying paid store purchases, and stop leaking the portrait
 
-Fixes **D2 and D5 together**. **Not started.** This is the phase to prioritise above everything else in this document.
+Fixes **D2 and D5 together**. **Shipped.**
 
 The two must ship as one change.
 Fixing D2 alone converts a leak into a double-spend: once a failed delivery restores the credit, a caller can retrieve the portrait from the response body, force the delivery to fail, retry, and retrieve another.
 
 The rule to implement: a store payment must never be moved to a terminal state by a generation failure, because there is no authorization to release and no automatic refund.
-And a failed delivery must never return portrait text to the client.
+And for a paid run, a failed delivery must never return portrait text to the client.
+
+The words "for a paid run" are load-bearing. Grant runs deliberately return the portrait and consume the use, and that behaviour ships today. Gate the withholding on `!SubscriptionGrantService::isGrant($paymentSessionId)` and add a test proving a grant run still receives its portrait when email fails.
 
 An earlier draft proposed a one-line status swap from `canceled` to `authorized` inside `cancelAuthorizedPayment()`.
 That was rejected. It is wrong for several reasons beyond D5:
@@ -187,7 +195,7 @@ Then add the test Codex asked for: a paid store purchase survives a generation f
 
 ### Phase 3 - Stop the second one-off purchase from colliding
 
-Fixes D3. **Not started.**
+Fixes D3. **Shipped.**
 
 Options to decide between:
 
@@ -241,11 +249,12 @@ It must read `PORTRAITOR_ENVIRONMENT`, **not** `config['mode']` - they are separ
 
 ### Phase 6 - Mobile client changes
 
-**Not started.** Currently `FAKE_BILLING` still points at `MockStripeBillingApi`.
+**Shipped.** `FAKE_BILLING` keeps `FakeIapService` for the store sheet but verifies through `HttpBillingApi` against the real Google endpoint.
 
 - `FAKE_BILLING` switches to the real `HttpBillingApi`, so the demo runs the production rail.
 - `FakeIapService` emits a demo token in whatever form Phase 5 settles on.
 - `MockStripeBillingApi` and its test are deleted. This is what finally removes the mobile app's dependence on the web `payment_mode` setting.
+- The demo token carries a per-purchase nonce. Without it the token is a pure function of (product, buyer), the backend derives its Play order id from a hash of the token, and a buyer's SECOND one-off is recorded as a replay of the first: charged again, handed back a spent credit, no portrait. Found by tracing the two-purchase DONE criteria end to end after both fixes had landed.
 - Rebuild via `./tool/build_tester_apk.sh`, whose backend preflight needs updating to check demo grants rather than mock mode.
 
 ### Phase 7 - Deploy and verify

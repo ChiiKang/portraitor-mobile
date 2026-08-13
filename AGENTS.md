@@ -47,11 +47,19 @@ out, falls through to real Google Play Billing, and fails on every phone because
 the Play Console catalog does not exist yet. Profile mode is the correct choice
 and needs no keystore.
 
-**The default build needs the backend's payment mode set to `mock`.** The script
-checks and warns. If it warns, say so plainly rather than shipping the build
-quietly: the tester will be stopped at the pay screen. The fix is to set
-**Payment Mode** to **Mock (testing)** at `https://staging.portraitor.ai/admin.php`,
-leaving **Email Mode** on a real SMTP option so portraits are still emailed.
+**The default build needs `GOOGLE_PLAY_DEMO_GRANTS` on the backend.** The
+simulated purchase presents a `demo.v1.` Google purchase token to the real
+`/api/google/purchase/verify.php`, and that flag is what makes the backend
+accept it. The script probes that endpoint and warns. If it warns, say so
+plainly rather than shipping the build quietly: the tester will be stopped at
+the pay screen with "Purchase could not be verified". The fix is to set
+`SetEnv GOOGLE_PLAY_DEMO_GRANTS true` in the `.htaccess` profile that staging
+actually deploys, then redeploy.
+
+Do **not** reach for **Payment Mode** in `admin.php`. That governs the web
+Stripe rail, staging deliberately stays on `stripe_sandbox`, and the mobile app
+no longer touches Stripe at all. Leave **Email Mode** on a real SMTP option so
+portraits are still emailed.
 
 Do not work around a failing `flutter analyze` or `flutter test` with
 `--skip-checks`. A build sent to a client is the worst place to find a

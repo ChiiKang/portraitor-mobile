@@ -35,6 +35,40 @@ void main() {
     );
   });
 
+  test('only the network-free demo path gets a stand-in billing api', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    // Runs in every build, including a tester one. FAKE_BILLING simulates the
+    // store sheet and nothing past it, so its verification must land on the
+    // real HTTP rail. A second rail here is how a demo starts passing while
+    // the path the app ships on is broken.
+    expect(
+      container.read(billingApiProvider),
+      kDemoIapPurchase ? isA<LocalDemoBillingApi>() : isA<HttpBillingApi>(),
+      reason:
+          'a simulated purchase may fake the store, never the server it is '
+          'verified against',
+    );
+  });
+
+  test('FAKE_BILLING fakes the store sheet and nothing else', () {
+    if (!kFakeBilling) return;
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    expect(container.read(iapServiceProvider), isA<FakeIapService>());
+    expect(container.read(billingApiProvider), isA<HttpBillingApi>());
+    expect(
+      container.read(passCredentialStoreProvider),
+      isA<KeychainPassCredentialStore>(),
+    );
+    expect(
+      container.read(pendingPurchaseStoreProvider),
+      isA<SecurePendingPurchaseStore>(),
+    );
+  });
+
   test('DEMO_IAP is one complete, isolated local billing switch', () {
     if (!kDemoIapPurchase) return;
     final container = ProviderContainer();

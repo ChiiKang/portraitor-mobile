@@ -113,11 +113,11 @@ extension FunnelTierX on FunnelTier {
   /// Whether the pay CTA may start a purchase.
   ///
   /// Neither demo path can simulate a subscription: it grants monthly quota
-  /// rather than a portrait, so a faked one cannot do anything truthful. Under
-  /// [kFakeBilling] the mock Stripe rail would additionally record it as a
-  /// one-off, and the caller would then skip queueing because it believes it
-  /// bought a subscription - a purchase that appears to succeed and generates
-  /// nothing. Real store billing ships all four products.
+  /// rather than a portrait, so a faked one cannot do anything truthful, and a
+  /// simulated Pass would mint a credential that outlives the demo. The backend
+  /// refuses demo subscriptions for the same reason, so this gate keeps the app
+  /// from offering a purchase the server would only reject. Real store billing
+  /// ships all four products.
   bool get canPurchase => kSimulatedStore ? isOneOff : true;
 
   /// Demo purchase-sheet title - prototype `"Portraitor · " + meta.label`.

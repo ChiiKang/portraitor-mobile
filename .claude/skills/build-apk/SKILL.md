@@ -52,19 +52,26 @@ keeps the demo purchase working.
 
 ## The backend precondition
 
-The default build's simulated purchase drives the backend's mock Stripe rail,
-which creates a genuine authorized payment row so a real portrait is generated.
-This requires the backend's payment mode to be `mock`.
+The default build's simulated purchase presents a `demo.v1.` Google purchase
+token to the real `/api/google/purchase/verify.php`, which writes a genuine
+authorized payment row so a real portrait is generated. This requires the
+backend to run with `GOOGLE_PLAY_DEMO_GRANTS` on.
 
-The script checks this and warns loudly. If it warns, tell the user plainly that
-the APK is fine but the backend is not ready, and give them the fix:
+The script probes that endpoint with two tokens - a demo one and an unprefixed
+control - and reads the pair of status codes. If it warns, tell the user plainly
+that the APK is fine but the backend is not ready, and give them the fix:
 
-> Open `https://staging.portraitor.ai/admin.php`, set **Payment Mode** to
-> **Mock (testing)**, and save. Leave **Email Mode** on a real SMTP option
+> Add `SetEnv GOOGLE_PLAY_DEMO_GRANTS true` to the `.htaccess` profile staging
+> actually deploys, then redeploy. Leave **Email Mode** on a real SMTP option
 > (Gmail or Hostinger) so testers still receive their portrait by email.
 
+**Payment Mode** in `admin.php` is not the fix and never was. It governs the web
+Stripe rail; staging stays on `stripe_sandbox` deliberately and the app no
+longer touches Stripe. If the script reports readiness as *unknown* rather than
+off, say so as unknown - do not upgrade it to a confident answer.
+
 Do not silently ship a build whose preflight failed. The tester will hit
-"Demo purchases need the backend payment mode set to 'mock'" and be stuck.
+"Purchase could not be verified" at the pay screen and be stuck.
 
 ## Reporting back
 
