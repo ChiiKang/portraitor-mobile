@@ -2,7 +2,7 @@
 
 Paste this into a fresh session to start the work.
 Reviewed and corrected by Codex on 2026-08-13 against both repositories, then trimmed to fit
-the 4000-character `/goal` limit (3474 chars).
+the 4000-character `/goal` limit.
 Background and rationale live in [`mobile-store-billing-hardening-plan.md`](mobile-store-billing-hardening-plan.md).
 
 ```text
@@ -12,6 +12,9 @@ WORKTREES
 - Backend: ~/Desktop/Nation/Project54/portraitor_v3, branch portraitor_pass (dirty; D1 partly implemented)
 - Mobile: ~/Desktop/Nation/Project54/portraitor-mobile, branch v2/ui-prototype-port
 Preserve all unrelated uncommitted work.
+
+WHY, IF YOU NEED IT
+portraitor-mobile/docs/mobile-store-billing-hardening-plan.md has each defect, how it was found, and why every approach was chosen or rejected. Read it when something here seems wrong or underspecified. This prompt wins on any disagreement.
 
 FIXES
 
