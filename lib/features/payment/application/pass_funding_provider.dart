@@ -17,6 +17,7 @@ class PassFunding {
     this.sessionToken,
     this.grantsAccess = false,
     this.usesRemaining = 0,
+    this.usesTotal = 0,
   });
 
   static const none = PassFunding();
@@ -24,6 +25,13 @@ class PassFunding {
   final String? sessionToken;
   final bool grantsAccess;
   final int usesRemaining;
+
+  /// The monthly allowance, for display as "N of M left".
+  ///
+  /// Carried alongside the remaining count so the home chip can show the real
+  /// pool instead of a fixed number. Nothing decides funding from it - that is
+  /// [canCover]'s job.
+  final int usesTotal;
 
   bool get isUsable =>
       sessionToken != null && grantsAccess && usesRemaining > 0;
@@ -63,6 +71,7 @@ class PassFundingResolver {
         sessionToken: session,
         grantsAccess: entitlement.grantsAccess,
         usesRemaining: entitlement.usesRemaining,
+        usesTotal: entitlement.usesTotal,
       );
     } catch (_) {
       return PassFunding.none;

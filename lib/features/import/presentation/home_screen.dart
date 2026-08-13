@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:portraitor_mobile/core/theme/tokens.dart';
+import 'package:portraitor_mobile/features/payment/application/pass_funding_provider.dart';
 import 'package:portraitor_mobile/features/processing/application/pending_job_recovery_provider.dart';
 import 'package:portraitor_mobile/features/processing/application/processing_provider.dart';
 import 'package:portraitor_mobile/features/processing/presentation/pending_job_resume_card.dart';
@@ -51,6 +52,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // puts on screen, and a launch-blocking modal is the wrong weight for
     // what is usually just housekeeping.
     final recovery = ref.watch(pendingJobRecoveryProvider).nextToShow;
+    // Null while the entitlement resolves. The chip stays hidden until the
+    // server answers rather than flashing a placeholder allowance.
+    final passFunding = ref.watch(passFundingProvider).valueOrNull;
 
     return Scaffold(
       backgroundColor: PortraitorTokens.onboardingSurface,
@@ -65,8 +69,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             children: [
               _HomeHeader(onSettings: () => context.push('/settings')),
               const SizedBox(height: 14),
-              _PassChip(onManage: () => context.go('/profile')),
-              const SizedBox(height: 14),
+              // Only for someone who actually holds a Pass. It used to render
+              // unconditionally with a fixed "9 of 10", which advertised an
+              // allowance to people who had never bought one.
+              if (passFunding != null && passFunding.isUsable) ...[
+                _PassChip(
+                  usesRemaining: passFunding.usesRemaining,
+                  usesTotal: passFunding.usesTotal,
+                  onManage: () => context.go('/profile'),
+                ),
+                const SizedBox(height: 14),
+              ],
               // Above the hero: an unfinished portrait is more pressing than
               // starting a new one, and it must be reachable without scrolling.
               if (recovery != null) ...[
@@ -197,15 +210,23 @@ class _PortraitorBrand extends StatelessWidget {
 }
 
 class _PassChip extends StatelessWidget {
-  const _PassChip({required this.onManage});
+  const _PassChip({
+    required this.usesRemaining,
+    required this.usesTotal,
+    required this.onManage,
+  });
 
+  final int usesRemaining;
+  final int usesTotal;
   final VoidCallback onManage;
 
   @override
   Widget build(BuildContext context) {
+    final label = 'Pass · $usesRemaining of $usesTotal left';
+
     return Semantics(
       button: true,
-      label: 'Pass, 9 of 10 left. Manage pass.',
+      label: 'Pass, $usesRemaining of $usesTotal left. Manage pass.',
       child: InkWell(
         onTap: onManage,
         borderRadius: BorderRadius.circular(14),
@@ -224,16 +245,23 @@ class _PassChip extends StatelessWidget {
             children: [
               SvgPicture.string(_passSvg, width: 16, height: 16),
               const SizedBox(width: 8),
-              const Text(
-                'Pass · 9 of 10 left',
-                style: TextStyle(
-                  fontFamily: PortraitorTokens.fontFamily,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF8A6A1E),
+              // Expanded rather than a trailing Spacer: the label is now driven
+              // by real numbers, so its width varies, and a fixed Row overflowed
+              // once the counts were no longer a single hardcoded string.
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: PortraitorTokens.fontFamily,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF8A6A1E),
+                  ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               const Text(
                 'Manage →',
                 style: TextStyle(

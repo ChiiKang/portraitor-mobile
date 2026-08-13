@@ -40,9 +40,23 @@ void main() {
     },
   );
 
-  test('shows the approved pass balance', () {
-    expect(homeSource, contains('Pass · 9 of 10 left'));
-    expect(homeSource, isNot(contains('Pass · 7 of 10 left')));
+  // This used to assert the source contained the literal "Pass · 9 of 10 left",
+  // which pinned a placeholder as though it were an approved value and made the
+  // hardcoded balance a thing tests protected rather than caught.
+  //
+  // The design intent is the FORMAT, not the numbers. What it renders is
+  // covered behaviourally in home_pass_chip_test.dart, against real values.
+  test('the pass balance is built from data, not hardcoded', () {
+    expect(
+      homeSource,
+      contains(r"'Pass · $usesRemaining of $usesTotal left'"),
+      reason: 'the label interpolates the live entitlement',
+    );
+    expect(
+      homeSource,
+      isNot(contains('Pass · 9 of 10 left')),
+      reason: 'a fixed balance would be wrong for every real Pass holder',
+    );
   });
 
   test('has exactly the approved persistent three tabs', () {
