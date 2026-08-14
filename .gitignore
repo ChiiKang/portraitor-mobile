@@ -36,6 +36,14 @@ ios/Flutter/flutter_export_environment.sh
 ios/build/
 /coverage/
 
+# Generated native build output
+/rust/target/
+/rust_builder/.dart_tool/
+/rust_builder/cargokit/build_tool/.dart_tool/
+/rust_builder/android/.gradle/
+/rust_builder/android/build/
+/rust_builder/pubspec.lock
+
 # Symbolication related
 app.*.symbols
 
@@ -67,3 +75,9 @@ docs/superpowers/plans/2026-06-03-step-2-conversation-summary-view.md
 docs/superpowers/plans/2026-06-06-mobile-storage-parity.md
 docs/superpowers/plans/mobile-storage-parity-review-prompt.md
 docs/superpowers/specs/2026-06-03-whatsapp-import-flow-design.md
+
+# Lavish review artifacts (local review surfaces, not source)
+.lavish/
+
+# Local agent session artifacts (codex session ids, etc)
+.context/

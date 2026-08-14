@@ -1,0 +1,298 @@
+import 'package:dio/dio.dart';
+import 'package:portraitor_mobile/core/api/api_service.dart';
+import 'package:portraitor_mobile/features/payment/domain/iap_product.dart';
+import 'package:portraitor_mobile/features/payment/domain/store_provider.dart';
+
+/// Correlation UUID sent to StoreKit as `appAccountToken` or Google Play as an
+/// obfuscated account identifier.
+class PreparedPurchase {
+  const PreparedPurchase({required this.publicUuid, this.passId});
+  final String publicUuid;
+  final int? passId;
+}
+
+/// A server-verified purchase.
+class VerifiedPurchase {
+  const VerifiedPurchase({
+    required this.sessionToken,
+    required this.productKey,
+    required this.passCodeDelivered,
+    this.paymentReference,
+    this.passCode,
+  });
+
+  final String sessionToken;
+
+  /// Identifies the durable credit for a consumable; null for a subscription.
+  ///
+  /// Not an execution capability: the `subgrant_*` token that authorizes a
+  /// generation run is minted server-side and never reaches the client.
+  final String? paymentReference;
+
+  final String productKey;
+  final bool passCodeDelivered;
+  final String? passCode;
+}
+
+/// That Pass already has an active subscription funding source.
+///
+/// Only subscriptions conflict. A consumable may always attach to an existing
+/// Pass, including one that is already subscribed.
+class PassAlreadyFundedException implements Exception {
+  const PassAlreadyFundedException();
+  @override
+  String toString() => 'Pass already has an active subscription.';
+}
+
+/// The saved Pass session is no longer accepted by the backend.
+///
+/// This is recoverable. The app keeps the one-time Pass code, discards only
+/// the stale session token, and starts the purchase as an unauthenticated
+/// purchase. Store proof remains authoritative during verification.
+class PassSessionExpiredException implements Exception {
+  const PassSessionExpiredException();
+
+  @override
+  String toString() => 'Your saved Pass session expired.';
+}
+
+class PurchasePreparationException implements Exception {
+  const PurchasePreparationException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class PurchaseNotVerifiedException implements Exception {
+  const PurchaseNotVerifiedException(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
+abstract class BillingApi {
+  /// Only called when a Pass session exists. A first purchase generates its
+  /// UUID locally, because the value is a correlation hint and the server
+  /// derives every billing fact from verified store proof regardless.
+  Future<PreparedPurchase> preparePurchase({
+    required String? sessionToken,
+    bool isSubscription = false,
+    StoreProvider provider = StoreProvider.apple,
+  });
+
+  /// [clientConversationRef] is required by the server: the generation queue
+  /// refuses a payment whose stored reference does not match the run being
+  /// queued, so a purchase recorded without one is a credit that can never be
+  /// spent.
+  ///
+  /// [deliveryEmail] is the address the portrait is emailed to, and for a Pass
+  /// also receives the one-time code as a backup.
+  Future<VerifiedPurchase> verifyPurchase({
+    required String verificationData,
+    required String publicUuid,
+    required String productId,
+    required String clientConversationRef,
+    String? deliveryEmail,
+    String? sessionToken,
+    StoreProvider provider = StoreProvider.apple,
+  });
+}
+
+class HttpBillingApi implements BillingApi {
+  HttpBillingApi({Dio? dio}) : _dio = dio ?? ApiService.instance.dio;
+
+  final Dio _dio;
+
+  static Options _auth(String? sessionToken) => Options(
+    headers:
+        sessionToken == null ? null : {'Authorization': 'Bearer $sessionToken'},
+    validateStatus: (status) => status != null && status >= 200 && status < 300,
+  );
+
+  @override
+  Future<PreparedPurchase> preparePurchase({
+    required String? sessionToken,
+    bool isSubscription = false,
+    StoreProvider provider = StoreProvider.apple,
+  }) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/api/${provider.name}/purchase/prepare.php',
+        data: {'is_subscription': isSubscription},
+        options: _auth(sessionToken),
+      );
+      final data = response.data?['data'] as Map<String, dynamic>? ?? {};
+      return PreparedPurchase(
+        publicUuid: data['public_uuid'] as String? ?? '',
+        passId: data['pass_id'] as int?,
+      );
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 409) {
+        throw const PassAlreadyFundedException();
+      }
+      if (e.response?.statusCode == 401) {
+        throw const PassSessionExpiredException();
+      }
+      final status = e.response?.statusCode;
+      throw PurchasePreparationException(
+        status == 429
+            ? 'The store service is busy. Please wait a moment and try again.'
+            : 'We could not prepare this purchase. No charge was made. Please try again.',
+      );
+    }
+  }
+
+  @override
+  Future<VerifiedPurchase> verifyPurchase({
+    required String verificationData,
+    required String publicUuid,
+    required String productId,
+    required String clientConversationRef,
+    String? deliveryEmail,
+    String? sessionToken,
+    StoreProvider provider = StoreProvider.apple,
+  }) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/api/${provider.name}/purchase/verify.php',
+        data: {
+          if (provider == StoreProvider.apple) 'jws': verificationData,
+          if (provider == StoreProvider.google)
+            'purchase_token': verificationData,
+          'public_uuid': publicUuid,
+          'product_id': productId,
+          'client_conversation_ref': clientConversationRef,
+          if (deliveryEmail != null) 'delivery_email': deliveryEmail,
+        },
+        options: _auth(sessionToken),
+      );
+      final data = response.data?['data'] as Map<String, dynamic>? ?? {};
+      return VerifiedPurchase(
+        sessionToken: data['session_token'] as String? ?? '',
+        productKey: data['product_key'] as String? ?? '',
+        passCodeDelivered: data['pass_code_delivered'] as bool? ?? false,
+        paymentReference: data['payment_reference'] as String?,
+        passCode: data['pass_code'] as String?,
+      );
+    } on DioException catch (e) {
+      final body = e.response?.data;
+      final message =
+          body is Map<String, dynamic>
+              ? (body['message'] as String? ?? 'Purchase could not be verified')
+              : 'Purchase could not be verified';
+      throw PurchaseNotVerifiedException(message);
+    }
+  }
+}
+
+/// Test double implementing the same contract the backend fixes.
+class FakeBillingApi implements BillingApi {
+  int _prepareCount = 0;
+  final Set<String> _verified = {};
+
+  /// How many times prepare was called. A first purchase must not call it.
+  int get prepareCallCount => _prepareCount;
+
+  /// When set, a subscription preflight for this session is rejected.
+  String? fundedPassSession;
+
+  bool rejectVerification = false;
+
+  /// What the last verify call carried. The server requires both, so a client
+  /// that stops sending them must fail a test rather than a purchase.
+  String? lastConversationRef;
+  String? lastDeliveryEmail;
+
+  /// Mirrors the real endpoint: a consumable has no Pass, so no session is
+  /// minted and the caller's own token is echoed back (empty when it had none).
+  String? echoSessionToken;
+
+  @override
+  Future<PreparedPurchase> preparePurchase({
+    required String? sessionToken,
+    bool isSubscription = false,
+    StoreProvider provider = StoreProvider.apple,
+  }) async {
+    if (isSubscription &&
+        sessionToken != null &&
+        sessionToken == fundedPassSession) {
+      throw const PassAlreadyFundedException();
+    }
+    _prepareCount++;
+    return PreparedPurchase(publicUuid: 'uuid-$_prepareCount', passId: 1);
+  }
+
+  @override
+  Future<VerifiedPurchase> verifyPurchase({
+    required String verificationData,
+    required String publicUuid,
+    required String productId,
+    required String clientConversationRef,
+    String? deliveryEmail,
+    String? sessionToken,
+    StoreProvider provider = StoreProvider.apple,
+  }) async {
+    lastConversationRef = clientConversationRef;
+    lastDeliveryEmail = deliveryEmail;
+    if (rejectVerification) {
+      throw const PurchaseNotVerifiedException(
+        'Purchase could not be verified',
+      );
+    }
+    final first = _verified.add('${provider.name}:$verificationData');
+
+    // Mirrors the real contract: a one-off bundle buys portraits of one
+    // conversation and mints no Pass, so it returns a payment reference and no
+    // code. Only the subscription produces a Pass credential.
+    final isSubscription = productId == IapProductCatalog.passMonthly;
+
+    return VerifiedPurchase(
+      sessionToken:
+          isSubscription ? 'a' * 64 : (echoSessionToken ?? sessionToken ?? ''),
+      // Matches the server's canonical key. uq_provider_account_product includes
+      // provider, so store providers reuse the key Stripe already uses.
+      productKey: isSubscription ? 'pass_monthly' : 'portrait_you',
+      passCodeDelivered: isSubscription && first,
+      paymentReference: isSubscription ? null : 'credit-$publicUuid',
+      passCode: (isSubscription && first) ? 'PASS-CODE-1' : null,
+    );
+  }
+}
+
+/// Local demo billing. Its reference is deliberately namespaced so processing
+/// can require both the debug build flag and unmistakable demo proof before it
+/// takes the network-free sample path.
+class LocalDemoBillingApi extends FakeBillingApi {
+  @override
+  Future<VerifiedPurchase> verifyPurchase({
+    required String verificationData,
+    required String publicUuid,
+    required String productId,
+    required String clientConversationRef,
+    String? deliveryEmail,
+    String? sessionToken,
+    StoreProvider provider = StoreProvider.apple,
+  }) async {
+    final verified = await super.verifyPurchase(
+      verificationData: verificationData,
+      publicUuid: publicUuid,
+      productId: productId,
+      clientConversationRef: clientConversationRef,
+      deliveryEmail: deliveryEmail,
+      sessionToken: sessionToken,
+      provider: provider,
+    );
+    return VerifiedPurchase(
+      sessionToken: verified.sessionToken,
+      productKey: verified.productKey,
+      passCodeDelivered: verified.passCodeDelivered,
+      paymentReference:
+          verified.paymentReference == null
+              ? null
+              : 'demo-${verified.paymentReference}',
+      passCode: verified.passCode,
+    );
+  }
+}

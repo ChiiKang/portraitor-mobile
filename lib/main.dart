@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -6,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:portraitor_mobile/app/app.dart';
 import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/features/import/application/import_provider.dart';
+import 'package:portraitor_mobile/features/payment/application/purchase_recovery.dart';
+import 'package:portraitor_mobile/features/processing/application/pending_job_recovery_provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 /// Holds the initial shared files detected at cold start (before widget tree).
@@ -46,7 +49,32 @@ void main() async {
     }
   }
 
-  runApp(const ProviderScope(child: PortraitorApp()));
+  final container = ProviderContainer();
+
+  // Drain unfinished store transactions and reconcile entitlements.
+  // Deliberately not awaited: a slow or offline reconciliation must never
+  // delay the first frame.
+  if (Platform.isIOS || Platform.isAndroid) {
+    unawaited(
+      container
+          .read(purchaseRecoveryProvider)
+          .runAtLaunch()
+          .then(
+            (_) =>
+                container.read(pendingJobRecoveryProvider.notifier).refresh(),
+          )
+          .catchError((e) {
+            debugPrint('[IAP] launch recovery failed: $e');
+          }),
+    );
+  }
+
+  runApp(
+    UncontrolledProviderScope(
+      container: container,
+      child: const PortraitorApp(),
+    ),
+  );
 }
 
 class ShareIntentHandler extends ConsumerStatefulWidget {

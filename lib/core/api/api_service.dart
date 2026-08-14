@@ -34,6 +34,11 @@ class ApiService {
   /// Public base URL for constructing non-API URLs (e.g., /pay/ page)
   String get baseUrl => _dio.options.baseUrl;
 
+  /// The configured client, for callers that need per-request headers or their
+  /// own error semantics (billing sends a Bearer token and maps 409 and 4xx to
+  /// domain exceptions). Prefer the typed methods on this class otherwise.
+  Dio get dio => _dio;
+
   late final Dio _dio = Dio(
     BaseOptions(
       baseUrl: const String.fromEnvironment(
@@ -48,64 +53,6 @@ class ApiService {
       validateStatus: (_) => true,
     ),
   )..interceptors.add(_RetryInterceptor());
-
-  // ── Payment ─────────────────────────────────────────────────
-
-  /// POST /api/payment.php — create PaymentIntent (manual capture)
-  Future<Map<String, dynamic>> createPayment({
-    required String clientConversationRef,
-    required String customerEmail,
-    String? inputHash,
-  }) async {
-    final response = await _post('/api/payment.php', {
-      'customer_email': customerEmail,
-      'client_conversation_ref': clientConversationRef,
-      if (inputHash != null) 'input_hash': inputHash,
-      'source': 'production',
-    });
-    return response;
-  }
-
-  /// GET /api/payment.php?payment_intent_id=... — verify payment status
-  Future<Map<String, dynamic>> verifyPayment({
-    required String paymentIntentId,
-  }) async {
-    try {
-      final response = await _dio.get(
-        '/api/payment.php',
-        queryParameters: {'payment_intent_id': paymentIntentId},
-      );
-      return _handleResponse(response);
-    } on DioException catch (e) {
-      throw _dioToApiException(e);
-    }
-  }
-
-  /// DELETE /api/payment.php — cancel payment hold.
-  ///
-  /// Backend (payment.php:277) requires BOTH `payment_intent_id` and
-  /// `client_conversation_ref` to match an `authorized` row before Stripe
-  /// cancellation runs. Sending only the PI silently 404s and leaves the
-  /// authorization to either timeout-charge or get auto-released a week
-  /// later — exactly the bug the cancel flow is supposed to prevent.
-  Future<Map<String, dynamic>> cancelPayment({
-    required String paymentIntentId,
-    String? clientConversationRef,
-  }) async {
-    try {
-      final response = await _dio.delete(
-        '/api/payment.php',
-        data: jsonEncode({
-          'payment_intent_id': paymentIntentId,
-          if (clientConversationRef != null && clientConversationRef.isNotEmpty)
-            'client_conversation_ref': clientConversationRef,
-        }),
-      );
-      return _handleResponse(response);
-    } on DioException catch (e) {
-      throw _dioToApiException(e);
-    }
-  }
 
   // ── Queue ───────────────────────────────────────────────────
 
@@ -156,6 +103,37 @@ class ApiService {
     return response;
   }
 
+  // ── Store purchases ────────────────────────────────────────
+
+  /// POST /api/store/purchase/reassign.php — re-point a paid store purchase at
+  /// a fresh conversation.
+  ///
+  /// Apple and Google charge at confirmation, so an abandoned portrait cannot
+  /// be refunded from here. What the customer bought is a portrait, not one
+  /// attempt at one, and this is what keeps it spendable after they cancel.
+  ///
+  /// [publicUuid] must be the exact value the app handed the store as
+  /// `appAccountToken` for this purchase. A mismatch is answered with the same
+  /// 404 as an unknown reference, deliberately.
+  ///
+  /// A 200 is success even when the body reports `reassigned: false`: that
+  /// means the credit was already on this conversation, which is what a retry
+  /// looks like. Failures arrive as an [ApiException] carrying the server's
+  /// `code`, and [PendingJobRecoveryNotifier] decides from it whether the
+  /// portrait may be discarded.
+  Future<Map<String, dynamic>> reassignStorePurchase({
+    required String paymentReference,
+    required String clientConversationRef,
+    required String publicUuid,
+  }) async {
+    final response = await _post('/api/store/purchase/reassign.php', {
+      'payment_reference': paymentReference,
+      'client_conversation_ref': clientConversationRef,
+      'public_uuid': publicUuid,
+    });
+    return response;
+  }
+
   // ── SSE Streams ────────────────────────────────────────────
 
   /// POST /api/gemini-proxy-stream.php — SSE analysis stream
@@ -202,6 +180,7 @@ class ApiService {
     String? leaseToken,
     String? dateRange,
     bool forceFallback = false,
+    Map<String, dynamic> metadata = const {},
   }) async* {
     final body = {
       'text': text,
@@ -213,6 +192,7 @@ class ApiService {
         'include_thoughts': true,
         'conversation_ref': clientConversationRef,
         if (leaseToken != null) 'lease_token': leaseToken,
+        ...metadata,
       },
       if (forceFallback) 'force_fallback': true,
     };
@@ -316,7 +296,10 @@ class ApiService {
 
       final data = response.data;
       if (data == null || data.isEmpty) {
-        throw ApiException('Unable to create PDF', statusCode: response.statusCode);
+        throw ApiException(
+          'Unable to create PDF',
+          statusCode: response.statusCode,
+        );
       }
 
       return Uint8List.fromList(data);
@@ -459,7 +442,10 @@ class ApiService {
       data: jsonEncode(data),
       options: Options(
         responseType: ResponseType.stream,
-        headers: {'Accept': 'text/event-stream'},
+        // Advertise identity so the CDN/proxy can't gzip-buffer the SSE stream
+        // (browsers don't offer gzip for EventSource; dart:io defaults to gzip,
+        // which makes the CDN buffer the whole stream and deliver it at the end).
+        headers: {'Accept': 'text/event-stream', 'Accept-Encoding': 'identity'},
         receiveTimeout: const Duration(minutes: 5),
       ),
     );
@@ -522,7 +508,9 @@ class ApiService {
     try {
       final decoded = jsonDecode(utf8.decode(body));
       if (decoded is Map<String, dynamic>) {
-        return (decoded['message'] ?? decoded['error'] ?? 'Unable to create PDF')
+        return (decoded['message'] ??
+                decoded['error'] ??
+                'Unable to create PDF')
             .toString();
       }
     } catch (_) {}

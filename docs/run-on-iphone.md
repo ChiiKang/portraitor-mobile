@@ -104,18 +104,20 @@ This permission is mainly for Flutter debug tooling.
 
 ## 8. Backend API URL
 
-The app reads the backend URL from `API_URL`.
+The app reads the backend URL from `API_BASE`, which defaults to `https://staging.portraitor.ai`.
+
+It is an origin, not an API path. The app appends `/api/...` itself, so do not include a trailing `/api`.
 
 For staging:
 
 ```sh
-flutter run -d "<your-iphone-name>" --dart-define=API_URL=https://staging.portraitor.ai/api
+flutter run -d "<your-iphone-name>" --dart-define=API_BASE=https://staging.portraitor.ai
 ```
 
 For a backend running on your Mac, do not use `localhost` from a physical iPhone. Use your Mac's LAN IP:
 
 ```sh
-flutter run -d "<your-iphone-name>" --dart-define=API_URL=https://<your-mac-lan-ip>:8443/api
+flutter run -d "<your-iphone-name>" --dart-define=API_BASE=https://<your-mac-lan-ip>:8443
 ```
 
 ## Troubleshooting

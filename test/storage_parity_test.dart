@@ -42,38 +42,57 @@ void main() {
       await db.close();
     });
 
-    test('contains exactly the recovery-critical columns and nothing more',
-        () async {
-      final columns = await _columnsOf(db, 'pending_jobs');
+    test(
+      'contains exactly the recovery-critical columns and nothing more',
+      () async {
+        final columns = await _columnsOf(db, 'pending_jobs');
 
-      // Required for recovery. Adding to this set means adding a column that
-      // resume actually reads — be deliberate.
-      const expected = {
-        'id',
-        'device_id',
-        'client_conversation_ref',
-        'input_text',
-        'target_name',
-        'date_range',
-        'payment_session_id',
-        'status',
-        'chunks_completed',
-        'chunks_total',
-        'chunk_results',
-        'chunking_mode',
-        'token_limit',
-        'chunk_overlap_tokens',
-        'created_at',
-        'updated_at',
-      };
+        // Required for recovery. Adding to this set means adding a column that
+        // resume actually reads — be deliberate.
+        const expected = {
+          'id',
+          'device_id',
+          'client_conversation_ref',
+          'input_text',
+          'target_name',
+          'date_range',
+          'payment_session_id',
+          // Mobile-only. Web resolves the recipient from the Stripe customer
+          // on the payments row; an Apple/Google purchase has no such
+          // customer, so the address has to be stored and replayed on the
+          // generation request or the backend refuses the run.
+          'delivery_email',
+          // Mobile-only. Cancelling a store-funded portrait frees its purchase
+          // rather than destroying it, and that call has to name the buyer with
+          // the exact uuid the app gave the store. Nothing else on the device
+          // remembers it once the transaction is finished.
+          'public_uuid',
+          'status',
+          'chunks_completed',
+          'chunks_total',
+          'chunk_results',
+          'chunking_mode',
+          'token_limit',
+          'chunk_overlap_tokens',
+          'tier',
+          'people',
+          'portraits_completed',
+          'active_person_index',
+          'created_at',
+          'updated_at',
+        };
 
-      expect(columns, equals(expected),
+        expect(
+          columns,
+          equals(expected),
           reason:
               'pending_jobs column set drifted. If you added a column, '
               'update this test AND the docs at docs/mobile-storage-parity.md '
               'so the next person knows why it exists. If you removed one, '
-              'verify resume still works for in-flight rows.');
-    });
+              'verify resume still works for in-flight rows.',
+        );
+      },
+    );
 
     test('does not reintroduce columns that web does not have', () async {
       // These were intentionally dropped during plan review (2026-06-08) to
@@ -82,15 +101,19 @@ void main() {
       final columns = await _columnsOf(db, 'pending_jobs');
       const banned = {
         'lease_token', // lease lives in-memory; stale after kill anyway
-        'mode',        // redundant with chunking_mode + chunks_total
+        'mode', // redundant with chunking_mode + chunks_total
         'status_message', // UI state, recompute on resume
-        'error',          // error message is provider UI state, not persisted
+        'error', // error message is provider UI state, not persisted
         'config_version', // chunking_mode + token_limit + chunk_overlap captures math
       };
       for (final col in banned) {
-        expect(columns, isNot(contains(col)),
-            reason: 'Column "$col" was deliberately dropped to maintain web '
-                'parity. If reintroducing, justify it in the plan first.');
+        expect(
+          columns,
+          isNot(contains(col)),
+          reason:
+              'Column "$col" was deliberately dropped to maintain web '
+              'parity. If reintroducing, justify it in the plan first.',
+        );
       }
     });
   });
@@ -131,9 +154,13 @@ void main() {
       // Adding any of them would diverge from web parity.
       const sample = {'index': 0, 'content': 'first chunk'};
       expect(sample.keys, containsAll(['index', 'content']));
-      expect(sample.keys.length, 2,
-          reason: 'chunk record must be exactly {index, content} — match web '
-              'shape at storageManager.js:539.');
+      expect(
+        sample.keys.length,
+        2,
+        reason:
+            'chunk record must be exactly {index, content} — match web '
+            'shape at storageManager.js:539.',
+      );
     });
   });
 
@@ -142,18 +169,18 @@ void main() {
       // Mobile MUST keep these (used by mobile code):
       const copiedKeys = {
         'portraitor_device_id', // matches localStorage key on web
-        'onboarding_complete',  // mobile-only flag (no web equivalent needed)
+        'onboarding_complete', // mobile-only flag (no web equivalent needed)
       };
 
       // Mobile MUST NOT keep these (admin-only on web):
-      const adminKeys = {
-        'admin_session',
-        'admin_tab',
-      };
+      const adminKeys = {'admin_session', 'admin_tab'};
 
       for (final key in adminKeys) {
-        expect(copiedKeys, isNot(contains(key)),
-            reason: 'Admin key "$key" must never be cached on the mobile app.');
+        expect(
+          copiedKeys,
+          isNot(contains(key)),
+          reason: 'Admin key "$key" must never be cached on the mobile app.',
+        );
       }
       expect(copiedKeys, contains('portraitor_device_id'));
     });
@@ -194,8 +221,11 @@ void main() {
         'pdf_path',
       };
       for (final col in required) {
-        expect(columns, contains(col),
-            reason: 'conversations column "$col" is missing from the schema.');
+        expect(
+          columns,
+          contains(col),
+          reason: 'conversations column "$col" is missing from the schema.',
+        );
       }
     });
   });

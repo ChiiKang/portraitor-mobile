@@ -24,5 +24,7 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    // Apple's manage-subscriptions sheet is not exposed by in_app_purchase.
+    ManageSubscriptionsPlugin.register(with: engineBridge.pluginRegistry)
   }
 }

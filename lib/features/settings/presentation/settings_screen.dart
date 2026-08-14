@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:portraitor_mobile/core/navigation/back_navigation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:portraitor_mobile/features/onboarding/application/onboarding_provider.dart';
@@ -104,7 +105,7 @@ class SettingsScreen extends ConsumerWidget {
         children: [
           IconButton(
             icon: const Icon(Icons.arrow_back),
-            onPressed: () => context.pop(),
+            onPressed: () => popOrGoHome(context),
           ),
           const SizedBox(width: 8),
           const Text('Settings', style: PortraitorTokens.titleMd),

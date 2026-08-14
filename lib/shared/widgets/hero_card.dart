@@ -5,13 +5,30 @@ import 'gradient_text.dart';
 
 class HeroCard extends StatelessWidget {
   final String name;
+
+  /// Optional. The result screen leaves it empty on purpose: anything drawn
+  /// from the portrait's own opening lines just repeats what the document
+  /// prints directly below this card.
   final String oneliner;
   final List<String> traits;
+
+  /// What the document is, above whose it is.
+  ///
+  /// Restored after `3fb15a7` folded the result screen into one shared
+  /// renderer. That commit dropped the section pills for a good reason - they
+  /// were whatever headings the model happened to emit, so no two portraits
+  /// looked alike - but it took the document's own title with them, leaving a
+  /// name floating above a wall of text.
+  ///
+  /// This one is fixed copy, not model output, so it cannot vary between
+  /// portraits the way the pills did.
+  final String title;
 
   const HeroCard({
     super.key,
     required this.name,
-    required this.oneliner,
+    this.title = '',
+    this.oneliner = '',
     this.traits = const [],
   });
 
@@ -33,14 +50,30 @@ class HeroCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (title.isNotEmpty) ...[
+            Text(
+              title.toUpperCase(),
+              style: const TextStyle(
+                fontFamily: PortraitorTokens.fontBody,
+                fontSize: 11,
+                height: 1.3,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.32, // 0.12em
+                color: PortraitorTokens.onboardingMuted,
+              ),
+            ),
+            const SizedBox(height: PortraitorTokens.space8),
+          ],
           GradientText(name, style: PortraitorTokens.titleLg),
-          const SizedBox(height: PortraitorTokens.space8),
-          Text(
-            oneliner,
-            style: PortraitorTokens.bodyMd,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
+          if (oneliner.isNotEmpty) ...[
+            const SizedBox(height: PortraitorTokens.space8),
+            Text(
+              oneliner,
+              style: PortraitorTokens.bodyMd,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
           if (traits.isNotEmpty) ...[
             const SizedBox(height: PortraitorTokens.space16),
             Wrap(

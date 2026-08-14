@@ -2,20 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
+import 'package:portraitor_mobile/core/navigation/tab_transitions.dart';
 import 'package:portraitor_mobile/core/theme/theme.dart';
+import 'package:portraitor_mobile/features/funnel/presentation/add_conversation_screen.dart';
+import 'package:portraitor_mobile/features/funnel/presentation/confirm_pay_screen.dart';
+import 'package:portraitor_mobile/features/funnel/presentation/configure_screen.dart';
+import 'package:portraitor_mobile/features/funnel/presentation/plan_screen.dart';
 import 'package:portraitor_mobile/features/import/presentation/home_screen.dart';
 import 'package:portraitor_mobile/features/import/presentation/paste_chat_screen.dart';
 import 'package:portraitor_mobile/features/import/presentation/whatsapp_export_guide_screen.dart';
 import 'package:portraitor_mobile/features/library/presentation/library_screen.dart';
 import 'package:portraitor_mobile/features/onboarding/presentation/onboarding_flow.dart';
-import 'package:portraitor_mobile/features/payment/presentation/payment_screen.dart';
 import 'package:portraitor_mobile/features/processing/presentation/processing_screen.dart';
 import 'package:portraitor_mobile/features/results/presentation/result_screen.dart';
 import 'package:portraitor_mobile/features/settings/presentation/faq_screen.dart';
 import 'package:portraitor_mobile/features/settings/presentation/gdpr_screen.dart';
+import 'package:portraitor_mobile/features/settings/presentation/profile_screen.dart';
 import 'package:portraitor_mobile/features/settings/presentation/settings_screen.dart';
 import 'package:portraitor_mobile/features/setup/presentation/setup_screen.dart';
 import 'package:portraitor_mobile/main.dart';
+import 'package:portraitor_mobile/shared/widgets/main_tab_shell.dart';
 
 // ─── Router ──────────────────────────────────────────────────────────────────
 
@@ -39,10 +45,60 @@ final router = GoRouter(
       name: 'onboarding',
       builder: (context, state) => const OnboardingFlow(),
     ),
+    ShellRoute(
+      builder: (context, state, child) => MainTabShell(child: child),
+      routes: [
+        GoRoute(
+          path: '/home',
+          name: 'home',
+          pageBuilder:
+              (context, state) => TabTransitions.page(
+                state: state,
+                index: 0,
+                child: const HomeScreen(),
+              ),
+        ),
+        GoRoute(
+          path: '/library',
+          name: 'library',
+          pageBuilder:
+              (context, state) => TabTransitions.page(
+                state: state,
+                index: 1,
+                child: const LibraryScreen(),
+              ),
+        ),
+        GoRoute(
+          path: '/profile',
+          name: 'profile',
+          pageBuilder:
+              (context, state) => TabTransitions.page(
+                state: state,
+                index: 2,
+                child: const ProfileScreen(),
+              ),
+        ),
+      ],
+    ),
     GoRoute(
-      path: '/home',
-      name: 'home',
-      builder: (context, state) => const HomeScreen(),
+      path: '/funnel/add',
+      name: 'funnel-add',
+      builder: (context, state) => const AddConversationScreen(),
+    ),
+    GoRoute(
+      path: '/funnel/plan',
+      name: 'funnel-plan',
+      builder: (context, state) => const PlanScreen(),
+    ),
+    GoRoute(
+      path: '/funnel/configure',
+      name: 'funnel-configure',
+      builder: (context, state) => const ConfigureScreen(),
+    ),
+    GoRoute(
+      path: '/funnel/confirm',
+      name: 'funnel-confirm',
+      builder: (context, state) => const ConfirmPayScreen(),
     ),
     GoRoute(
       path: '/import/whatsapp-guide',
@@ -69,20 +125,6 @@ final router = GoRouter(
       },
     ),
     GoRoute(
-      path: '/payment',
-      name: 'payment',
-      builder: (context, state) {
-        final extra = state.extra as Map<String, dynamic>? ?? {};
-        return PaymentScreen(
-          normalizedText: extra['normalizedText'] as String? ?? '',
-          targetName: extra['targetName'] as String? ?? '',
-          tokenEstimate: extra['tokenEstimate'] as int? ?? 0,
-          conversationId: extra['conversationId'] as String?,
-          dateRange: extra['dateRange'] as String?,
-        );
-      },
-    ),
-    GoRoute(
       path: '/processing',
       name: 'processing',
       builder: (context, state) {
@@ -91,9 +133,16 @@ final router = GoRouter(
           normalizedText: extra['normalizedText'] as String? ?? '',
           targetName: extra['targetName'] as String? ?? '',
           conversationId: extra['conversationId'] as String? ?? '',
-          paymentIntentId: extra['paymentIntentId'] as String? ?? '',
+          paymentReference: extra['paymentReference'] as String? ?? '',
+          deliveryEmail: extra['deliveryEmail'] as String? ?? '',
           dateRange: extra['dateRange'] as String?,
           isResume: extra['resume'] as bool? ?? false,
+          people:
+              (extra['people'] as List?)?.whereType<String>().toList(
+                growable: false,
+              ) ??
+              const [],
+          tier: extra['tier'] as String? ?? 'you',
         );
       },
     ),
@@ -104,11 +153,6 @@ final router = GoRouter(
         final id = state.pathParameters['id']!;
         return ResultScreen(conversationId: id);
       },
-    ),
-    GoRoute(
-      path: '/library',
-      name: 'library',
-      builder: (context, state) => const LibraryScreen(),
     ),
     GoRoute(
       path: '/settings',

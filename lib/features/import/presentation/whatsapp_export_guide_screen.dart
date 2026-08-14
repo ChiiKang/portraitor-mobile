@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:portraitor_mobile/core/navigation/back_navigation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:portraitor_mobile/core/theme/tokens.dart';
@@ -48,7 +48,7 @@ class WhatsAppExportGuideScreen extends StatelessWidget {
               alignment: Alignment.topLeft,
               child: Padding(
                 padding: const EdgeInsets.all(PortraitorTokens.space20),
-                child: _BackButton(onPressed: () => context.pop()),
+                child: _BackButton(onPressed: () => popOrGoHome(context)),
               ),
             ),
           ),

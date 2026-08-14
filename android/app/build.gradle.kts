@@ -5,6 +5,29 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val releaseSigningValues = mapOf(
+    "storeFile" to providers.gradleProperty("PORTRAITOR_UPLOAD_STORE_FILE")
+        .orElse(providers.environmentVariable("PORTRAITOR_UPLOAD_STORE_FILE")).orNull,
+    "storePassword" to providers.gradleProperty("PORTRAITOR_UPLOAD_STORE_PASSWORD")
+        .orElse(providers.environmentVariable("PORTRAITOR_UPLOAD_STORE_PASSWORD")).orNull,
+    "keyAlias" to providers.gradleProperty("PORTRAITOR_UPLOAD_KEY_ALIAS")
+        .orElse(providers.environmentVariable("PORTRAITOR_UPLOAD_KEY_ALIAS")).orNull,
+    "keyPassword" to providers.gradleProperty("PORTRAITOR_UPLOAD_KEY_PASSWORD")
+        .orElse(providers.environmentVariable("PORTRAITOR_UPLOAD_KEY_PASSWORD")).orNull,
+)
+val releaseBuildRequested = gradle.startParameter.taskNames.any {
+    it.contains("release", ignoreCase = true)
+}
+val missingReleaseSigningValues = releaseSigningValues
+    .filterValues { it.isNullOrBlank() }
+    .keys
+
+if (releaseBuildRequested && missingReleaseSigningValues.isNotEmpty()) {
+    throw GradleException(
+        "Release signing requires: ${missingReleaseSigningValues.joinToString()}",
+    )
+}
+
 android {
     namespace = "ai.portraitor.portraitor_mobile"
     compileSdk = flutter.compileSdkVersion
@@ -30,11 +53,18 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            releaseSigningValues["storeFile"]?.let { storeFile = file(it) }
+            storePassword = releaseSigningValues["storePassword"]
+            keyAlias = releaseSigningValues["keyAlias"]
+            keyPassword = releaseSigningValues["keyPassword"]
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }

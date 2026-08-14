@@ -103,7 +103,7 @@ class ImportNotifier extends StateNotifier<ImportState> {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['txt', 'zip'],
+        allowedExtensions: ['txt', 'zip', 'html'],
         withData: true,
       );
 

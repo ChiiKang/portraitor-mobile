@@ -234,8 +234,9 @@ void main() {
         await tester.tap(genButton);
         await tester.pump(const Duration(seconds: 2));
 
-        // Should navigate to payment screen
-        expect(find.text('STEP 3 OF 3'), findsOneWidget);
+        // The legacy import/setup entry now joins the shared purchase funnel.
+        expect(find.text('Who is this portrait for?'), findsOneWidget);
+        expect(find.text('2/4'), findsOneWidget);
       }
     });
   });

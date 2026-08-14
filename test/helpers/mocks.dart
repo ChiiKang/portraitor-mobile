@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:mocktail/mocktail.dart';
 
 import 'package:portraitor_mobile/core/api/api_service.dart';
-import 'package:portraitor_mobile/features/payment/services/stripe_service.dart';
 
 // ── Mock classes ─────────────────────────────────────────────
 
@@ -14,21 +13,6 @@ class MockDio extends Mock {}
 /// we create a fake that implements the same interface via method overrides.
 class FakeApiService extends Fake implements ApiService {
   // Payment
-  Future<Map<String, dynamic>> Function({
-    required String clientConversationRef,
-    required String customerEmail,
-    String? inputHash,
-  })?
-  onCreatePayment;
-
-  Future<Map<String, dynamic>> Function({required String paymentIntentId})?
-  onVerifyPayment;
-
-  Future<Map<String, dynamic>> Function({
-    required String paymentIntentId,
-    String? clientConversationRef,
-  })?
-  onCancelPayment;
 
   // Queue
   Future<Map<String, dynamic>> Function({
@@ -73,6 +57,7 @@ class FakeApiService extends Fake implements ApiService {
     String? leaseToken,
     String? dateRange,
     bool forceFallback,
+    required Map<String, dynamic> metadata,
   })?
   onStreamValidation;
 
@@ -91,54 +76,17 @@ class FakeApiService extends Fake implements ApiService {
   // Job status
   Future<Map<String, dynamic>> Function(String)? onGetJobStatus;
 
-  @override
-  Future<Map<String, dynamic>> createPayment({
+  // Store purchases
+  Future<Map<String, dynamic>> Function({
+    required String paymentReference,
     required String clientConversationRef,
-    required String customerEmail,
-    String? inputHash,
-  }) {
-    if (onCreatePayment != null) {
-      return onCreatePayment!(
-        clientConversationRef: clientConversationRef,
-        customerEmail: customerEmail,
-        inputHash: inputHash,
-      );
-    }
-    return Future.value({
-      'status': 'ok',
-      'data': {
-        'client_secret': 'pi_test_secret_abc123',
-        'payment_intent_id': 'pi_test_123',
-        'publishable_key': 'pk_test_abc123456789012345',
-      },
-    });
-  }
+    required String publicUuid,
+  })?
+  onReassignStorePurchase;
 
-  @override
-  Future<Map<String, dynamic>> verifyPayment({
-    required String paymentIntentId,
-  }) {
-    if (onVerifyPayment != null) {
-      return onVerifyPayment!(paymentIntentId: paymentIntentId);
-    }
-    return Future.value({
-      'data': {'paid': true, 'status': 'requires_capture'},
-    });
-  }
-
-  @override
-  Future<Map<String, dynamic>> cancelPayment({
-    required String paymentIntentId,
-    String? clientConversationRef,
-  }) {
-    if (onCancelPayment != null) {
-      return onCancelPayment!(
-        paymentIntentId: paymentIntentId,
-        clientConversationRef: clientConversationRef,
-      );
-    }
-    return Future.value({'status': 'ok'});
-  }
+  /// What the last reassign carried. The server matches all three, so a client
+  /// that stops sending one has to fail a test rather than a customer's money.
+  Map<String, String>? lastReassign;
 
   @override
   Future<Map<String, dynamic>> enqueue({
@@ -234,6 +182,7 @@ class FakeApiService extends Fake implements ApiService {
     String? leaseToken,
     String? dateRange,
     bool forceFallback = false,
+    Map<String, dynamic> metadata = const {},
   }) {
     if (onStreamValidation != null) {
       return onStreamValidation!(
@@ -243,6 +192,7 @@ class FakeApiService extends Fake implements ApiService {
         leaseToken: leaseToken,
         dateRange: dateRange,
         forceFallback: forceFallback,
+        metadata: metadata,
       );
     }
     return Stream.fromIterable([
@@ -276,12 +226,13 @@ class FakeApiService extends Fake implements ApiService {
       'status': 'ok',
       'data': {
         'configVersion': 'mock-default',
-        'payment': {
-          'priceCents': 500,
-          'currency': 'usd',
-          'amountDisplay': r'$5.00',
-          'available': true,
+        'entitlements': {
+          'you': {'maxPortraits': 1},
+          'partner': {'maxPortraits': 2},
+          'family': {'maxPortraits': 5},
+          'pass': {'portraitsPerMonth': 10},
         },
+        'payment': {'available': true},
         'processing': {
           'chunkingMode': 'map-reduce',
           'tokenLimit': 250000,
@@ -303,9 +254,28 @@ class FakeApiService extends Fake implements ApiService {
   }
 
   @override
+  Future<Map<String, dynamic>> reassignStorePurchase({
+    required String paymentReference,
+    required String clientConversationRef,
+    required String publicUuid,
+  }) {
+    lastReassign = {
+      'payment_reference': paymentReference,
+      'client_conversation_ref': clientConversationRef,
+      'public_uuid': publicUuid,
+    };
+    if (onReassignStorePurchase != null) {
+      return onReassignStorePurchase!(
+        paymentReference: paymentReference,
+        clientConversationRef: clientConversationRef,
+        publicUuid: publicUuid,
+      );
+    }
+    return Future.value({'status': 'ok'});
+  }
+
+  @override
   Future<Map<String, dynamic>> gdpr({required String action, String? email}) {
     return Future.value({'status': 'ok'});
   }
 }
-
-class MockStripeService extends Mock implements StripeService {}

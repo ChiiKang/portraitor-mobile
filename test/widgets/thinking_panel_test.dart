@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/processing/presentation/processing_screen.dart';
 
 void main() {
@@ -132,7 +133,9 @@ void main() {
     final richText = tester.widget<RichText>(find.byType(RichText).last);
     expect(
       richText.text.toPlainText(),
-      'Our AI therapist is in session. Your psychological portrait will be delivered to your email within 5-15 minutes.',
+      kDemoIapPurchase
+          ? 'Demo mode: A sample portrait is being created locally. No payment is charged, no conversation is uploaded, and no email is sent.'
+          : 'Your portrait is being created. It will be delivered to your email within 5-15 minutes.',
     );
   });
 

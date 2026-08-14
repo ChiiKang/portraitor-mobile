@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:portraitor_mobile/core/storage/storage_service.dart';
+import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/processing/application/processing_provider.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/shared/widgets/markdown_text.dart';
 import 'package:portraitor_mobile/shared/widgets/gradient_background.dart';
+import 'package:portraitor_mobile/shared/widgets/gradient_button.dart';
 import 'package:portraitor_mobile/shared/widgets/gradient_progress_bar.dart';
 import 'package:portraitor_mobile/shared/widgets/portraitor_orb.dart';
 
@@ -16,7 +18,16 @@ class ProcessingScreen extends ConsumerStatefulWidget {
   final String normalizedText;
   final String targetName;
   final String conversationId;
-  final String paymentIntentId;
+
+  /// Opaque, Portraitor-generated. Authorizes generation. Never a provider's
+  /// own transaction id.
+  final String paymentReference;
+
+  /// The address the buyer typed in the funnel. Travels with the run because
+  /// a store purchase has no Stripe customer for the backend to resolve a
+  /// recipient from; generation is refused outright without it. Empty on the
+  /// resume path, where the saved job carries the address instead.
+  final String deliveryEmail;
   final String? dateRange;
 
   /// When true, the screen looks up the saved [PendingJob] by
@@ -24,15 +35,20 @@ class ProcessingScreen extends ConsumerStatefulWidget {
   /// chunks are not redone. Wired in by the recovery sheet at
   /// `pending_job_resume_sheet.dart` when the user taps Resume.
   final bool isResume;
+  final List<String> people;
+  final String tier;
 
   const ProcessingScreen({
     super.key,
     required this.normalizedText,
     required this.targetName,
     required this.conversationId,
-    required this.paymentIntentId,
+    required this.paymentReference,
+    this.deliveryEmail = '',
     this.dateRange,
     this.isResume = false,
+    this.people = const [],
+    this.tier = 'you',
   });
 
   @override
@@ -61,12 +77,17 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
         if (job == null) {
           // Race: row was deleted between sheet display and this navigation.
           // Fall through to a fresh start using the same payment session.
-          ref.read(processingProvider.notifier).startProcessing(
+          ref
+              .read(processingProvider.notifier)
+              .startProcessing(
                 conversationId: widget.conversationId,
-                paymentSessionId: widget.paymentIntentId,
+                paymentSessionId: widget.paymentReference,
                 normalizedText: widget.normalizedText,
                 targetName: widget.targetName,
+                deliveryEmail: widget.deliveryEmail,
                 dateRange: widget.dateRange,
+                people: widget.people,
+                tier: widget.tier,
               );
           return;
         }
@@ -77,10 +98,13 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
           .read(processingProvider.notifier)
           .startProcessing(
             conversationId: widget.conversationId,
-            paymentSessionId: widget.paymentIntentId,
+            paymentSessionId: widget.paymentReference,
             normalizedText: widget.normalizedText,
             targetName: widget.targetName,
+            deliveryEmail: widget.deliveryEmail,
             dateRange: widget.dateRange,
+            people: widget.people,
+            tier: widget.tier,
           );
     });
   }
@@ -104,6 +128,23 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
     return m > 0 ? '~${m}m ${s}s remaining' : '~${s}s remaining';
   }
 
+  /// Plain-language cause. Raw transport and server errors stay in diagnostics,
+  /// never in user-facing copy.
+  String _friendlyFailure(String? error) {
+    final raw = error ?? '';
+    if (raw.contains('Payment not found') ||
+        raw.contains('Payment must be authorized')) {
+      return 'We could not confirm your payment for this conversation. '
+          'Your store purchase remains recorded. Retry this unfinished portrait '
+          'or contact support if the problem continues.';
+    }
+    if (raw.contains('conversation reference')) {
+      return 'This purchase belongs to a different conversation.';
+    }
+    return 'Something interrupted portrait generation. Your store purchase '
+        'remains recorded, so you can safely retry from the unfinished portrait.';
+  }
+
   @override
   Widget build(BuildContext context) {
     final processing = ref.watch(processingProvider);
@@ -114,8 +155,13 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
       }
     });
 
+    final failed = processing.status == ProcessingStatus.error;
+
     return PopScope(
-      canPop: false,
+      // Locked while work is genuinely in flight so a stray back gesture cannot
+      // orphan a paid run. Released on failure: there is nothing left to
+      // protect, and trapping someone on a dead screen is its own bug.
+      canPop: failed,
       child: Scaffold(
         body: GradientBackground(
           child: SafeArea(
@@ -124,59 +170,75 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
               child: Column(
                 children: [
                   const Spacer(flex: 2),
-                  const _PulseRing(child: PortraitorOrb(size: 110)),
+                  // The pulse says "working". Leaving it running after a
+                  // failure is the screen telling the user something untrue.
+                  failed
+                      ? const PortraitorOrb(size: 110)
+                      : const _PulseRing(child: PortraitorOrb(size: 110)),
                   const SizedBox(height: PortraitorTokens.space32),
                   Text(
-                    processing.statusMessage.isNotEmpty
-                        ? processing.statusMessage
-                        : 'Generating portrait...',
+                    failed
+                        ? 'We could not finish this portrait'
+                        : (processing.statusMessage.isNotEmpty
+                            ? processing.statusMessage
+                            : 'Generating portrait...'),
                     style: PortraitorTokens.titleLg,
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: PortraitorTokens.space8),
-                  Text(
-                    _formatElapsed(_elapsedSeconds),
-                    style: PortraitorTokens.bodyMd.copyWith(
-                      color: PortraitorTokens.inkMuted,
-                    ),
-                  ),
-                  if (processing.estimatedSecondsRemaining > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        _formatEta(processing.estimatedSecondsRemaining),
-                        style: PortraitorTokens.bodySm.copyWith(
-                          color: PortraitorTokens.inkDim,
-                        ),
+                  if (!failed) ...[
+                    Text(
+                      _formatElapsed(_elapsedSeconds),
+                      style: PortraitorTokens.bodyMd.copyWith(
+                        color: PortraitorTokens.inkMuted,
                       ),
                     ),
-                  const SizedBox(height: PortraitorTokens.space32),
-                  _ProgressSection(
-                    chunksCompleted: processing.chunksCompleted,
-                    chunksTotal: processing.chunksTotal,
-                    percentage: processing.percentage,
-                  ),
-                  const SizedBox(height: PortraitorTokens.space24),
-                  Expanded(
-                    flex: 3,
-                    child: ThinkingPanel(
-                      text: processing.thinkingText,
-                      phaseLabel: processing.thinkingPhaseLabel,
-                    ),
-                  ),
-                  const SizedBox(height: PortraitorTokens.space16),
-                  const ProcessingEmailNotice(),
-                  if (processing.status == ProcessingStatus.error)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 16),
-                      child: Text(
-                        processing.error ?? 'An error occurred',
-                        style: PortraitorTokens.bodySm.copyWith(
-                          color: PortraitorTokens.error,
+                    if (processing.estimatedSecondsRemaining > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          _formatEta(processing.estimatedSecondsRemaining),
+                          style: PortraitorTokens.bodySm.copyWith(
+                            color: PortraitorTokens.inkDim,
+                          ),
                         ),
-                        textAlign: TextAlign.center,
+                      ),
+                    const SizedBox(height: PortraitorTokens.space32),
+                    _ProgressSection(
+                      chunksCompleted: processing.chunksCompleted,
+                      chunksTotal: processing.chunksTotal,
+                      percentage: processing.percentage,
+                    ),
+                    const SizedBox(height: PortraitorTokens.space24),
+                    Expanded(
+                      flex: 3,
+                      child: ThinkingPanel(
+                        text: processing.thinkingText,
+                        phaseLabel: processing.thinkingPhaseLabel,
                       ),
                     ),
+                    const SizedBox(height: PortraitorTokens.space16),
+                    // Only while the run is alive. Promising delivery for a run
+                    // that has already failed is the screen lying to the user,
+                    // and they would wait for an email that is never sent.
+                    const ProcessingEmailNotice(),
+                  ],
+                  if (failed) ...[
+                    const Spacer(),
+                    Text(
+                      _friendlyFailure(processing.error),
+                      style: PortraitorTokens.bodyMd.copyWith(
+                        color: PortraitorTokens.inkMuted,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: PortraitorTokens.space24),
+                    GradientButton(
+                      onPressed: () => context.go('/'),
+                      child: const Text('Back to start'),
+                    ),
+                    const Spacer(),
+                  ],
                   const SizedBox(height: PortraitorTokens.space24),
                 ],
               ),
@@ -321,14 +383,16 @@ class ProcessingEmailNotice extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Icon(
-            Icons.mail_outline,
+            kDemoIapPurchase ? Icons.science_outlined : Icons.mail_outline,
             size: 22,
             color: PortraitorTokens.brandPurple,
           ),
           const SizedBox(width: 12),
           Expanded(
             child: MarkdownText(
-              'Our AI therapist is in session. **Your psychological portrait will be delivered to your email within 5-15 minutes.**',
+              kDemoIapPurchase
+                  ? '**Demo mode:** A sample portrait is being created locally. No payment is charged, no conversation is uploaded, and no email is sent.'
+                  : 'Your portrait is being created. **It will be delivered to your email within 5-15 minutes.**',
               style: PortraitorTokens.bodyMd.copyWith(
                 color: PortraitorTokens.ink,
                 height: 1.45,

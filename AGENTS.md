@@ -1,3 +1,74 @@
+## no-mistakes policy
+
+Treat `no-mistakes` as a final quality and release gate, not as part of the
+normal development loop.
+
+Run `no-mistakes` only when the agent is confident that a major feature is
+complete. Before invoking it, the implementation must be stable, requirements
+must no longer be changing, direct tests and static analysis must pass, required
+builds must succeed, and no known failures may remain.
+
+Do not invoke `no-mistakes` during planning, active implementation, exploration,
+routine debugging, or ordinary targeted testing. Use direct tests, analysis, and
+build commands during those stages.
+
+Invocation also requires an explicit user request such as `/no-mistakes` or
+"run the final gate." Run one repository at a time. Ask the user before rerunning
+a failed gate. Small UI, copy, documentation, and low-risk refactoring changes do
+not require `no-mistakes` unless the user explicitly requests it.
+
+## Building a shareable APK
+
+When asked to compile, build, or produce an APK for a client, teammate, or
+tester, run the script. Never hand-assemble the `--dart-define` flags.
+
+```sh
+./tool/build_tester_apk.sh
+```
+
+It runs `flutter analyze` and the full test suite, verifies the backend
+precondition, builds, and copies a dated APK to `~/Desktop/Portraitor-Builds/`.
+Report the folder and filename back to the user, because their next action is
+attaching that file to a message.
+
+| Ask | Command |
+|---|---|
+| Default. Simulated purchase, real backend, real portrait, real email. | `./tool/build_tester_apk.sh` |
+| Screens only. No backend, local sample portrait. | `./tool/build_tester_apk.sh --demo` |
+| Target production instead of staging. | `./tool/build_tester_apk.sh --api-base https://portraitor.ai` |
+| Analyze and tests already green this session. | `./tool/build_tester_apk.sh --skip-checks` |
+
+Two rules that are easy to get wrong and expensive to get wrong:
+
+**Never build a tester APK with `--release`.** `FAKE_BILLING` and `DEMO_IAP` are
+defined in `lib/core/config/build_flags.dart` as
+`!kReleaseMode && bool.fromEnvironment(...)`, so a release build compiles them
+out, falls through to real Google Play Billing, and fails on every phone because
+the Play Console catalog does not exist yet. Profile mode is the correct choice
+and needs no keystore.
+
+**The default build needs `GOOGLE_PLAY_DEMO_GRANTS` on the backend.** The
+simulated purchase presents a `demo.v1.` Google purchase token to the real
+`/api/google/purchase/verify.php`, and that flag is what makes the backend
+accept it. The script probes that endpoint and warns. If it warns, say so
+plainly rather than shipping the build quietly: the tester will be stopped at
+the pay screen with "Purchase could not be verified". The fix is to set
+`SetEnv GOOGLE_PLAY_DEMO_GRANTS true` in the `.htaccess` profile that staging
+actually deploys, then redeploy.
+
+Do **not** reach for **Payment Mode** in `admin.php`. That governs the web
+Stripe rail, staging deliberately stays on `stripe_sandbox`, and the mobile app
+no longer touches Stripe at all. Leave **Email Mode** on a real SMTP option so
+portraits are still emailed.
+
+Do not work around a failing `flutter analyze` or `flutter test` with
+`--skip-checks`. A build sent to a client is the worst place to find a
+regression.
+
+There is a matching `build-apk` skill in `.claude/skills/`, and the full
+distribution plan, including iPhone and TestFlight, is in
+[`docs/client-testing-distribution-plan.md`](docs/client-testing-distribution-plan.md).
+
 <claude-mem-context>
 # Memory Context
 

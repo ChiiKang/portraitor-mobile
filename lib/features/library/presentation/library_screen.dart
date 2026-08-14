@@ -2,42 +2,124 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:portraitor_mobile/features/results/application/portraits_provider.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
-import 'package:portraitor_mobile/shared/widgets/gradient_avatar.dart';
-import 'package:portraitor_mobile/shared/widgets/gradient_background.dart';
+import 'package:portraitor_mobile/features/processing/application/pending_job_recovery_provider.dart';
+import 'package:portraitor_mobile/features/processing/presentation/pending_job_actions.dart';
+import 'package:portraitor_mobile/features/results/application/portraits_provider.dart';
+import 'package:portraitor_mobile/shared/models/portrait_session.dart';
+import 'package:portraitor_mobile/shared/widgets/main_tab_shell.dart';
+import 'package:portraitor_mobile/shared/widgets/session_card.dart';
 
-class LibraryScreen extends ConsumerWidget {
+/// One row of the Portraits tab: a finished portrait, or an unfinished job with
+/// the classification that decides which actions it may offer.
+class _LibraryEntry {
+  const _LibraryEntry({required this.session, this.pending});
+
+  final PortraitSession session;
+  final RecoveryClassification? pending;
+}
+
+/// Portraits tab — session preview cards matching the Open Design prototype.
+///
+/// Finished and unfinished portraits share one chronological list. An
+/// unfinished portrait that only appeared on Home was a portrait the customer
+/// had paid for and could not find.
+class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class _LibraryScreenState extends ConsumerState<LibraryScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Idempotent: launch and Home both refresh too, but this tab is reachable
+    // without passing through either.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(pendingJobRecoveryProvider.notifier).refresh();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final portraits = ref.watch(portraitsProvider);
+    final recovery = ref.watch(pendingJobRecoveryProvider);
+    final entries = _entriesFor(portraits.portraits, recovery.classifications);
+    final isDemo = entries.isEmpty;
+    final sessions =
+        isDemo
+            ? [
+              for (final session in PortraitSession.demoSessions())
+                _LibraryEntry(session: session),
+            ]
+            : entries;
+    final bottomPad = mainTabContentBottomInset(context);
 
     return Scaffold(
-      body: GradientBackground(
+      backgroundColor: PortraitorTokens.onboardingSurface,
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: PortraitorTokens.tabPageGradient,
+        ),
         child: SafeArea(
+          bottom: false,
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildAppBar(context),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 12, 20, 4),
+                child: Text(
+                  'Portraits',
+                  style: TextStyle(
+                    fontFamily: PortraitorTokens.fontFamily,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.56,
+                    color: PortraitorTokens.onboardingInk,
+                  ),
+                ),
+              ),
               Expanded(
                 child:
-                    portraits.portraits.isEmpty
-                        ? _EmptyState()
-                        : ListView.builder(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 8,
-                          ),
-                          itemCount: portraits.portraits.length,
+                    sessions.isEmpty
+                        ? const _EmptyState()
+                        : ListView.separated(
+                          padding: EdgeInsets.fromLTRB(20, 8, 20, bottomPad),
+                          itemCount: sessions.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 10),
                           itemBuilder: (context, index) {
-                            final portrait = portraits.portraits[index];
-                            return _PortraitCard(
-                              portrait: portrait,
+                            final entry = sessions[index];
+                            final pending = entry.pending;
+                            return SessionCard(
+                              session: entry.session,
                               onTap:
-                                  () => context.push('/result/${portrait.id}'),
+                                  () => _openSession(context, entry, isDemo),
                               onDelete:
-                                  () => _confirmDelete(context, ref, portrait),
+                                  isDemo || pending != null
+                                      ? null
+                                      : () => _confirmDelete(
+                                        context,
+                                        ref,
+                                        entry.session,
+                                      ),
+                              onCancel:
+                                  pending == null || !pending.canCancel
+                                      ? null
+                                      : () => cancelPendingJob(
+                                        context,
+                                        ref,
+                                        pending.job,
+                                      ),
+                              onContinue:
+                                  pending == null || !pending.canContinue
+                                      ? null
+                                      : () => continuePendingJob(
+                                        context,
+                                        ref,
+                                        pending.job,
+                                      ),
                             );
                           },
                         ),
@@ -49,30 +131,67 @@ class LibraryScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildAppBar(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 20, 0),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => context.pop(),
-          ),
-          const SizedBox(width: 8),
-          const Text('Library', style: PortraitorTokens.titleMd),
-        ],
-      ),
-    );
+  /// Finished and unfinished merged newest first.
+  ///
+  /// Empty means there is genuinely nothing, which is the only case that earns
+  /// the demo samples. An unfinished portrait is real work the customer paid
+  /// for, so it must never be padded out with, or replaced by, fictional cards.
+  List<_LibraryEntry> _entriesFor(
+    List<Portrait> portraits,
+    List<RecoveryClassification> classifications,
+  ) {
+    final pendingIds = {for (final c in classifications) c.job.id};
+    final entries = <_LibraryEntry>[
+      for (final classification in classifications)
+        _LibraryEntry(
+          session: PortraitSession.fromPendingJob(classification.job),
+          pending: classification,
+        ),
+      // A conversation row sharing an id with a pending job is a placeholder
+      // from the run that is still unfinished, not a second portrait.
+      for (final session in PortraitSession.fromPortraits(portraits))
+        if (!pendingIds.contains(session.id)) _LibraryEntry(session: session),
+    ];
+
+    entries.sort((a, b) {
+      final left = a.session.sortAt;
+      final right = b.session.sortAt;
+      if (left == null || right == null) return 0;
+      return right.compareTo(left);
+    });
+    return entries;
   }
 
-  void _confirmDelete(BuildContext context, WidgetRef ref, Portrait portrait) {
-    showDialog(
+  void _openSession(BuildContext context, _LibraryEntry entry, bool isDemo) {
+    if (entry.pending != null) {
+      showMainTabSnackBar(
+        context,
+        'This portrait is unfinished. Continue it or cancel it.',
+      );
+      return;
+    }
+    if (isDemo || entry.session.resultIds.isEmpty) {
+      showMainTabSnackBar(
+        context,
+        'Demo session - generate a portrait to open a real result',
+      );
+      return;
+    }
+    context.push('/result/${entry.session.resultIds.first}');
+  }
+
+  void _confirmDelete(
+    BuildContext context,
+    WidgetRef ref,
+    PortraitSession session,
+  ) {
+    showDialog<void>(
       context: context,
       builder:
           (ctx) => AlertDialog(
             title: const Text('Delete portrait?'),
             content: Text(
-              'Remove ${portrait.targetName}\'s portrait? This cannot be undone.',
+              'Remove ${session.namesLabel}? This cannot be undone.',
             ),
             actions: [
               TextButton(
@@ -82,9 +201,9 @@ class LibraryScreen extends ConsumerWidget {
               TextButton(
                 onPressed: () {
                   Navigator.pop(ctx);
-                  ref
-                      .read(portraitsProvider.notifier)
-                      .deletePortrait(portrait.id);
+                  for (final id in session.resultIds) {
+                    ref.read(portraitsProvider.notifier).deletePortrait(id);
+                  }
                 },
                 child: Text(
                   'Delete',
@@ -98,6 +217,8 @@ class LibraryScreen extends ConsumerWidget {
 }
 
 class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -129,83 +250,5 @@ class _EmptyState extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-class _PortraitCard extends StatelessWidget {
-  final Portrait portrait;
-  final VoidCallback onTap;
-  final VoidCallback onDelete;
-
-  const _PortraitCard({
-    required this.portrait,
-    required this.onTap,
-    required this.onDelete,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: PortraitorTokens.surface,
-        borderRadius: BorderRadius.circular(PortraitorTokens.radiusLg),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(PortraitorTokens.radiusLg),
-          child: Padding(
-            padding: const EdgeInsets.all(PortraitorTokens.space14),
-            child: Row(
-              children: [
-                GradientAvatar(name: portrait.targetName, size: 48),
-                const SizedBox(width: PortraitorTokens.space14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        portrait.targetName,
-                        style: PortraitorTokens.titleSm,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        portrait.createdAt.isNotEmpty
-                            ? _formatDate(portrait.createdAt)
-                            : '',
-                        style: PortraitorTokens.bodySm,
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.delete_outline,
-                    size: 20,
-                    color: PortraitorTokens.inkMuted,
-                  ),
-                  onPressed: onDelete,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _formatDate(String isoString) {
-    try {
-      final date = DateTime.parse(isoString);
-      final now = DateTime.now();
-      final diff = now.difference(date);
-      if (diff.inDays == 0) return 'Today';
-      if (diff.inDays == 1) return 'Yesterday';
-      if (diff.inDays < 7) return '${diff.inDays} days ago';
-      return '${date.day}/${date.month}/${date.year}';
-    } catch (_) {
-      return '';
-    }
   }
 }

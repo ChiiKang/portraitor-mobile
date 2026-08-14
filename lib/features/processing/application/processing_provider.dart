@@ -6,13 +6,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:portraitor_mobile/core/api/api_service.dart';
 import 'package:portraitor_mobile/core/errors/error_reporter.dart';
 import 'package:portraitor_mobile/features/processing/services/prompt_service.dart';
+import 'package:portraitor_mobile/features/processing/domain/portrait_pack_context.dart';
 import 'package:portraitor_mobile/core/api/sse_service.dart';
 import 'package:portraitor_mobile/core/storage/pending_job.dart';
 import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/features/import/services/token_calculator.dart';
+import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/results/application/portraits_provider.dart';
 import 'package:portraitor_mobile/features/results/services/portrait_pdf_service.dart';
 import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
+import 'package:portraitor_mobile/features/processing/services/demo_portrait_factory.dart';
 
 enum ProcessingStatus { idle, queued, processing, validating, done, error }
 
@@ -114,6 +117,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     String? dateRange,
     required String paymentSessionId,
     required String conversationId,
+    required String deliveryEmail,
   }) {
     return _processMapReduce(
       chunks: chunks,
@@ -121,6 +125,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       dateRange: dateRange,
       paymentSessionId: paymentSessionId,
       conversationId: conversationId,
+      deliveryEmail: deliveryEmail,
       updatePendingJob: false,
     );
   }
@@ -132,6 +137,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     String? dateRange,
     required String paymentSessionId,
     required String conversationId,
+    required String deliveryEmail,
   }) {
     return _processRolling(
       chunks: chunks,
@@ -139,17 +145,101 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       dateRange: dateRange,
       paymentSessionId: paymentSessionId,
       conversationId: conversationId,
+      deliveryEmail: deliveryEmail,
       updatePendingJob: false,
     );
   }
 
+  @visibleForTesting
+  Future<List<Map<String, dynamic>>> processPackForTesting({
+    required List<String> people,
+    required String tier,
+    required String text,
+    required String paymentSessionId,
+    required String conversationId,
+    required String deliveryEmail,
+  }) async {
+    final portraits = <Map<String, dynamic>>[];
+    for (var i = 0; i < people.length; i++) {
+      final index = i + 1;
+      final isLast = index == people.length;
+      final pack = PortraitPackContext(
+        tier: tier,
+        index: index,
+        total: people.length,
+        person: people[i],
+        partnerName: tier == 'partner' ? people[(i + 1) % people.length] : null,
+        familyMembers:
+            tier == 'family'
+                ? people
+                    .map((name) => '"${name.replaceAll('"', '')}"')
+                    .join(', ')
+                : null,
+        moreComing: !isLast,
+        priorPortraits: isLast ? List.of(portraits) : const [],
+      );
+      final analysis = await _processSingleShot(
+        text: text,
+        targetName: people[i],
+        paymentSessionId: paymentSessionId,
+        conversationId: conversationId,
+        deliveryEmail: deliveryEmail,
+        pack: pack,
+      );
+      final validated = await _runValidation(
+        text: analysis,
+        clientConversationRef: conversationId,
+        paymentSessionId: paymentSessionId,
+        deliveryEmail: deliveryEmail,
+        pack: pack,
+      );
+      portraits.add({'person': people[i], 'output': validated});
+    }
+    return portraits;
+  }
+
+  /// [deliveryEmail] is the address the buyer typed in the funnel. It has to
+  /// ride along on every generation request: a store purchase writes an
+  /// Apple/Google payments row with no Stripe customer, so the backend has
+  /// no recipient to resolve and refuses the run with "Payment email not
+  /// found" unless it finds `metadata.delivery_email` on the request itself.
   Future<void> startProcessing({
     required String conversationId,
     required String paymentSessionId,
     required String normalizedText,
     required String targetName,
+    required String deliveryEmail,
     String? dateRange,
+    List<String> people = const [],
+    String tier = 'you',
   }) async {
+    final packPeople = people.where((name) => name.trim().isNotEmpty).toList();
+    if (kDemoIapPurchase &&
+        (paymentSessionId.startsWith('demo_') ||
+            paymentSessionId.startsWith('demo-credit-'))) {
+      await _processDemoPortrait(
+        conversationId: conversationId,
+        paymentSessionId: paymentSessionId,
+        normalizedText: normalizedText,
+        targetName: targetName,
+        people: packPeople,
+        tier: tier,
+        dateRange: dateRange,
+      );
+      return;
+    }
+    if (packPeople.length > 1) {
+      await _processPortraitPack(
+        conversationId: conversationId,
+        paymentSessionId: paymentSessionId,
+        normalizedText: normalizedText,
+        deliveryEmail: deliveryEmail,
+        people: packPeople,
+        tier: tier,
+        dateRange: dateRange,
+      );
+      return;
+    }
     _stopwatch.reset();
     _stopwatch.start();
     _chunkDurations.clear();
@@ -195,6 +285,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
           targetName: targetName,
           dateRange: dateRange,
           paymentSessionId: paymentSessionId,
+          deliveryEmail: deliveryEmail,
           status: 'processing',
           chunksCompleted: 0,
           chunksTotal: chunks.length,
@@ -241,6 +332,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
             dateRange: dateRange,
             paymentSessionId: paymentSessionId,
             conversationId: conversationId,
+            deliveryEmail: deliveryEmail,
             forceFallback: forceFallback,
           ),
           phase: 'single-shot',
@@ -254,6 +346,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
           dateRange: dateRange,
           paymentSessionId: paymentSessionId,
           conversationId: conversationId,
+          deliveryEmail: deliveryEmail,
         );
       } else {
         analysisResult = await _processMapReduce(
@@ -262,6 +355,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
           dateRange: dateRange,
           paymentSessionId: paymentSessionId,
           conversationId: conversationId,
+          deliveryEmail: deliveryEmail,
         );
       }
 
@@ -279,6 +373,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
           text: analysisResult,
           clientConversationRef: conversationId,
           paymentSessionId: paymentSessionId,
+          deliveryEmail: deliveryEmail,
           dateRange: dateRange,
           forceFallback: forceFallback,
         ),
@@ -364,6 +459,112 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     }
   }
 
+  Future<void> _processDemoPortrait({
+    required String conversationId,
+    required String paymentSessionId,
+    required String normalizedText,
+    required String targetName,
+    required List<String> people,
+    required String tier,
+    String? dateRange,
+  }) async {
+    final demoPeople = people.isEmpty ? <String>[targetName] : people;
+    final safePeople =
+        demoPeople
+            .map((name) => name.trim())
+            .where((name) => name.isNotEmpty)
+            .toList();
+    if (safePeople.isEmpty) safePeople.add('Someone');
+
+    state = state.copyWith(
+      status: ProcessingStatus.queued,
+      conversationId: conversationId,
+      error: null,
+      thinkingText: '',
+      resultMarkdown: '',
+      percentage: 0.1,
+      chunksCompleted: 0,
+      chunksTotal: safePeople.length,
+      emailSent: false,
+      paymentCaptured: false,
+      statusMessage: 'Preparing local demo...',
+      thinkingPhaseLabel: 'Demo mode',
+      estimatedSecondsRemaining: 2,
+    );
+
+    try {
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      state = state.copyWith(
+        status: ProcessingStatus.processing,
+        percentage: 0.5,
+        statusMessage:
+            safePeople.length == 1
+                ? 'Creating sample portrait...'
+                : 'Creating ${safePeople.length} sample portraits...',
+        thinkingPhaseLabel: 'Local preview',
+        estimatedSecondsRemaining: 1,
+      );
+
+      final portraits = <Map<String, dynamic>>[
+        for (final person in safePeople)
+          {
+            'person': person,
+            'output': DemoPortraitFactory.build(targetName: person),
+          },
+      ];
+
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      state = state.copyWith(
+        status: ProcessingStatus.validating,
+        percentage: 0.85,
+        chunksCompleted: safePeople.length,
+        statusMessage: 'Finishing demo preview...',
+        estimatedSecondsRemaining: 0,
+      );
+
+      await StorageService.instance.createConversation(
+        id: conversationId,
+        targetName: safePeople.first,
+        inputText: normalizedText,
+        clientConversationRef: conversationId,
+        dateRange: dateRange,
+        paymentSessionId: paymentSessionId,
+        outputSummary: portraits.first['output']!,
+        chunks: const [],
+        mode: safePeople.length > 1 ? 'pack' : 'demo',
+        tokenEstimate: TokenCalculator.estimateTokens(normalizedText),
+        tokenLimit: 250000,
+        tier: tier,
+        people: safePeople,
+        portraits: safePeople.length > 1 ? portraits : const [],
+      );
+      await StorageService.instance.deletePendingJob(conversationId);
+      _ref.read(portraitsProvider.notifier).loadPortraits();
+
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      state = state.copyWith(
+        status: ProcessingStatus.done,
+        percentage: 1,
+        resultMarkdown: portraits.first['output']!,
+        statusMessage:
+            safePeople.length == 1
+                ? 'Demo portrait complete!'
+                : 'All ${safePeople.length} demo portraits complete!',
+        thinkingPhaseLabel: 'Done',
+        estimatedSecondsRemaining: 0,
+      );
+    } catch (_) {
+      await StorageService.instance.markPendingJobStatus(
+        conversationId,
+        'failed',
+      );
+      state = state.copyWith(
+        status: ProcessingStatus.error,
+        error: 'The demo preview could not be saved. Please go back and retry.',
+      );
+    }
+  }
+
   /// Resume an unfinished portrait from a saved [PendingJob]. Mirrors web
   /// `resumeJob` at `portraitor/public/assets/app.js:2814` but uses the
   /// existing mobile pipeline ([_processMapReduce], [_processRolling],
@@ -371,6 +572,19 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
   /// session is reused; the queue lease is reacquired because the prior
   /// in-memory lease died with the app.
   Future<void> resumeProcessing(PendingJob job) async {
+    if (job.people.length > 1) {
+      await _processPortraitPack(
+        conversationId: job.id,
+        paymentSessionId: job.paymentSessionId,
+        normalizedText: job.inputText,
+        deliveryEmail: job.deliveryEmail,
+        people: job.people,
+        tier: job.tier,
+        dateRange: job.dateRange,
+        recoveredJob: job,
+      );
+      return;
+    }
     // Init sequence matches startProcessing(:152-:189). All notifier-local
     // state that startProcessing initialises must be reset here too, or the
     // chunk loop reads stale durations and a stale lease.
@@ -401,6 +615,18 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       state = state.copyWith(
         status: ProcessingStatus.error,
         error: 'Pending portrait is missing required fields',
+      );
+      return;
+    }
+
+    // Rows written before the v7 delivery_email column have no recipient, and
+    // a store payment carries no Stripe customer to fall back on. Generating
+    // anyway would burn the queue slot and finish with the portrait emailed to
+    // nobody, so stop here instead.
+    if (job.deliveryEmail.trim().isEmpty) {
+      state = state.copyWith(
+        status: ProcessingStatus.error,
+        error: 'Pending portrait is missing its delivery email',
       );
       return;
     }
@@ -440,9 +666,10 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
         status: ProcessingStatus.processing,
         chunksTotal: chunks.length,
         chunksCompleted: completedByIndex.length,
-        statusMessage: chunks.length == 1
-            ? 'Resuming analysis...'
-            : 'Resuming: ${completedByIndex.length}/${chunks.length} chunks done',
+        statusMessage:
+            chunks.length == 1
+                ? 'Resuming analysis...'
+                : 'Resuming: ${completedByIndex.length}/${chunks.length} chunks done',
         thinkingPhaseLabel: 'AI is reasoning',
       );
 
@@ -460,6 +687,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
             dateRange: job.dateRange,
             paymentSessionId: job.paymentSessionId,
             conversationId: job.id,
+            deliveryEmail: job.deliveryEmail,
             forceFallback: forceFallback,
           ),
           phase: 'single-shot-resume',
@@ -469,9 +697,8 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       } else if (chunkingMode == 'rolling') {
         // Rolling resume: web's analyzeRolling treats sorted.length as the
         // start index and the last stored portrait as the initial state.
-        final sorted = [...job.chunkResults]..sort(
-          (a, b) => (a['index'] as int).compareTo(b['index'] as int),
-        );
+        final sorted = [...job.chunkResults]
+          ..sort((a, b) => (a['index'] as int).compareTo(b['index'] as int));
         final startIndex = sorted.length;
         final initialPortrait =
             sorted.isEmpty ? null : sorted.last['content'] as String?;
@@ -481,6 +708,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
           dateRange: job.dateRange,
           paymentSessionId: job.paymentSessionId,
           conversationId: job.id,
+          deliveryEmail: job.deliveryEmail,
           initialChunkIndex: startIndex,
           initialPortrait: initialPortrait,
         );
@@ -491,6 +719,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
           dateRange: job.dateRange,
           paymentSessionId: job.paymentSessionId,
           conversationId: job.id,
+          deliveryEmail: job.deliveryEmail,
           initialChunkResults: completedByIndex,
         );
       }
@@ -508,6 +737,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
           text: analysisResult,
           clientConversationRef: job.id,
           paymentSessionId: job.paymentSessionId,
+          deliveryEmail: job.deliveryEmail,
           dateRange: job.dateRange,
           forceFallback: forceFallback,
         ),
@@ -549,7 +779,9 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
         pdfPath: pdfPath,
         chunks: chunks,
         mode:
-            chunks.length > 1 ? (chunkingMode == 'rolling' ? 'rolling' : 'map-reduce') : 'single',
+            chunks.length > 1
+                ? (chunkingMode == 'rolling' ? 'rolling' : 'map-reduce')
+                : 'single',
         tokenEstimate: TokenCalculator.estimateTokens(job.inputText),
         tokenLimit: tokenLimit,
       );
@@ -570,6 +802,246 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       _stopHeartbeat();
       await StorageService.instance.markPendingJobStatus(job.id, 'failed');
       _tryReleaseQueue(job.id, job.paymentSessionId);
+      state = state.copyWith(
+        status: ProcessingStatus.error,
+        error: e.toString(),
+      );
+    }
+  }
+
+  Future<void> _processPortraitPack({
+    required String conversationId,
+    required String paymentSessionId,
+    required String normalizedText,
+    required String deliveryEmail,
+    required List<String> people,
+    required String tier,
+    String? dateRange,
+    PendingJob? recoveredJob,
+  }) async {
+    _stopwatch
+      ..reset()
+      ..start();
+    _chunkDurations.clear();
+    _lastChunkStartMs = 0;
+    _leaseToken = null;
+    state = state.copyWith(
+      status: ProcessingStatus.queued,
+      conversationId: conversationId,
+      error: null,
+      thinkingText: '',
+      resultMarkdown: '',
+      percentage: 0,
+      chunksCompleted: 0,
+      chunksTotal: 1,
+      emailSent: false,
+      paymentCaptured: false,
+      statusMessage:
+          recoveredJob == null
+              ? 'Preparing ${people.length} portraits...'
+              : 'Resuming ${people.length} portraits...',
+      thinkingPhaseLabel: '',
+      estimatedSecondsRemaining: -1,
+    );
+
+    try {
+      final config = await readLatestRuntimeConfig(_ref);
+      final now = DateTime.now().toUtc();
+      final completed = <int, Map<String, dynamic>>{
+        for (final item in recoveredJob?.portraitsCompleted ?? const [])
+          if (item['index'] is int) item['index'] as int: item,
+      };
+      final portraits = <Map<String, dynamic>>[];
+      for (var index = 1; index <= people.length; index++) {
+        final prior = completed[index];
+        if (prior != null && index < people.length) {
+          portraits.add({
+            'person': prior['person'] as String? ?? people[index - 1],
+            'output': prior['output'] as String? ?? '',
+          });
+        }
+      }
+
+      if (recoveredJob == null) {
+        final firstChunks = TokenCalculator.splitForProcessing(
+          normalizedText,
+          tokenLimit: config.tokenLimit,
+          chunkOverlapTokens: config.chunkOverlapTokens,
+          chunkingMode: config.chunkingMode,
+        );
+        await StorageService.instance.savePendingJobRecord(
+          PendingJob(
+            id: conversationId,
+            deviceId: StorageService.instance.deviceId,
+            clientConversationRef: conversationId,
+            inputText: normalizedText,
+            targetName: people.first,
+            dateRange: dateRange,
+            paymentSessionId: paymentSessionId,
+            deliveryEmail: deliveryEmail,
+            status: 'processing',
+            chunksCompleted: 0,
+            chunksTotal: firstChunks.length,
+            chunkResults: const [],
+            chunkingMode: config.chunkingMode,
+            tokenLimit: config.tokenLimit,
+            chunkOverlapTokens: config.chunkOverlapTokens,
+            tier: tier,
+            people: people,
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+      } else {
+        await StorageService.instance.markPendingJobStatus(
+          conversationId,
+          'processing',
+        );
+      }
+
+      _leaseToken = await _acquireQueueLease(
+        paymentSessionId: paymentSessionId,
+        clientConversationRef: conversationId,
+      );
+      _startHeartbeat(conversationId, paymentSessionId);
+
+      for (var i = 0; i < people.length; i++) {
+        final index = i + 1;
+        final isLast = index == people.length;
+        if (completed.containsKey(index) && !isLast) continue;
+        final target = people[i];
+        final chunks = TokenCalculator.splitForProcessing(
+          normalizedText,
+          tokenLimit: recoveredJob?.tokenLimit ?? config.tokenLimit,
+          chunkOverlapTokens:
+              recoveredJob?.chunkOverlapTokens ?? config.chunkOverlapTokens,
+          chunkingMode: recoveredJob?.chunkingMode ?? config.chunkingMode,
+        );
+        final familyMembers = people
+            .map((name) => '"${name.replaceAll('"', '')}"')
+            .join(', ');
+        final pack = PortraitPackContext(
+          tier: tier,
+          index: index,
+          total: people.length,
+          person: target,
+          partnerName:
+              tier == 'partner' ? people[(i + 1) % people.length] : null,
+          familyMembers: tier == 'family' ? familyMembers : null,
+          moreComing: !isLast,
+          priorPortraits: isLast ? List.of(portraits) : const [],
+        );
+        state = state.copyWith(
+          status: ProcessingStatus.processing,
+          statusMessage:
+              'Generating portrait $index of ${people.length} · $target',
+          chunksTotal: chunks.length,
+          chunksCompleted: 0,
+          percentage: (i / people.length).clamp(0, 0.9),
+        );
+
+        String analysis;
+        if (chunks.length == 1) {
+          analysis = await _callWithRetry(
+            (fallback) => _processSingleShot(
+              text: chunks.first,
+              targetName: target,
+              dateRange: dateRange,
+              paymentSessionId: paymentSessionId,
+              conversationId: conversationId,
+              deliveryEmail: deliveryEmail,
+              forceFallback: fallback,
+              pack: pack,
+            ),
+            phase: 'portrait $index single-shot',
+            paymentSessionId: paymentSessionId,
+            conversationRef: conversationId,
+          );
+        } else if ((recoveredJob?.chunkingMode ?? config.chunkingMode) ==
+            'rolling') {
+          analysis = await _processRolling(
+            chunks: chunks,
+            targetName: target,
+            dateRange: dateRange,
+            paymentSessionId: paymentSessionId,
+            conversationId: conversationId,
+            deliveryEmail: deliveryEmail,
+            pack: pack,
+          );
+        } else {
+          analysis = await _processMapReduce(
+            chunks: chunks,
+            targetName: target,
+            dateRange: dateRange,
+            paymentSessionId: paymentSessionId,
+            conversationId: conversationId,
+            deliveryEmail: deliveryEmail,
+            pack: pack,
+          );
+        }
+
+        state = state.copyWith(
+          status: ProcessingStatus.validating,
+          statusMessage: 'Validating portrait $index of ${people.length}...',
+        );
+        final validated = await _callWithRetry(
+          (fallback) => _runValidation(
+            text: analysis,
+            clientConversationRef: conversationId,
+            paymentSessionId: paymentSessionId,
+            deliveryEmail: deliveryEmail,
+            dateRange: dateRange,
+            forceFallback: fallback,
+            pack: pack,
+          ),
+          phase: 'portrait $index validation',
+          paymentSessionId: paymentSessionId,
+          conversationRef: conversationId,
+        );
+        portraits.add({'person': target, 'output': validated});
+        if (!isLast) {
+          await StorageService.instance.appendPendingJobPortrait(
+            conversationId,
+            {'index': index, 'person': target, 'output': validated},
+          );
+        }
+      }
+
+      _stopHeartbeat();
+      await StorageService.instance.createConversation(
+        id: conversationId,
+        targetName: people.first,
+        inputText: normalizedText,
+        clientConversationRef: conversationId,
+        dateRange: dateRange,
+        paymentSessionId: paymentSessionId,
+        outputSummary: portraits.first['output'] as String,
+        chunks: const [],
+        mode: 'pack',
+        tokenEstimate: TokenCalculator.estimateTokens(normalizedText),
+        tokenLimit: recoveredJob?.tokenLimit ?? config.tokenLimit,
+        tier: tier,
+        people: people,
+        portraits: portraits,
+      );
+      await StorageService.instance.deletePendingJob(conversationId);
+      _ref.read(portraitsProvider.notifier).loadPortraits();
+      _stopwatch.stop();
+      state = state.copyWith(
+        status: ProcessingStatus.done,
+        percentage: 1,
+        resultMarkdown: portraits.first['output'] as String,
+        statusMessage: 'All ${people.length} portraits complete!',
+        thinkingPhaseLabel: 'Done',
+        estimatedSecondsRemaining: 0,
+      );
+    } catch (e) {
+      _stopHeartbeat();
+      await StorageService.instance.markPendingJobStatus(
+        conversationId,
+        'failed',
+      );
+      _tryReleaseQueue(conversationId, paymentSessionId);
       state = state.copyWith(
         status: ProcessingStatus.error,
         error: e.toString(),
@@ -617,9 +1089,10 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       // statusMessage is the field the processing screen renders. thinkingText
       // is reserved for the streaming Gemini "thoughts" panel.
       state = state.copyWith(
-        statusMessage: position > 0
-            ? 'Waiting in queue — position $position'
-            : 'Waiting in queue...',
+        statusMessage:
+            position > 0
+                ? 'Waiting in queue — position $position'
+                : 'Waiting in queue...',
       );
     }
 
@@ -633,7 +1106,9 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     String? dateRange,
     required String paymentSessionId,
     required String conversationId,
+    required String deliveryEmail,
     bool forceFallback = false,
+    PortraitPackContext? pack,
   }) async {
     final prompt = PromptService.buildSingleShotEnvelope(
       targetName: targetName,
@@ -644,7 +1119,8 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
 
     final stream = _api.streamAnalysis(
       promptTemplate: prompt.promptTemplate,
-      templateVars: prompt.templateVars,
+      templateVars:
+          pack?.applyTemplateVars(prompt.templateVars) ?? prompt.templateVars,
       previousPortrait: prompt.previousPortrait,
       payload: text,
       paymentSessionId: paymentSessionId,
@@ -652,13 +1128,23 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       dateRange: dateRange,
       leaseToken: _leaseToken,
       forceFallback: forceFallback,
-      metadata: {
-        'phase': 'single',
-        'chunk': {'index': 1, 'total': 1},
-        'include_thoughts': true,
-        'conversation_ref': conversationId,
-        if (_leaseToken != null) 'lease_token': _leaseToken,
-      },
+      metadata:
+          pack?.applyMetadata({
+            'phase': 'single',
+            'chunk': {'index': 1, 'total': 1},
+            'include_thoughts': true,
+            'conversation_ref': conversationId,
+            'delivery_email': deliveryEmail,
+            if (_leaseToken != null) 'lease_token': _leaseToken,
+          }) ??
+          {
+            'phase': 'single',
+            'chunk': {'index': 1, 'total': 1},
+            'include_thoughts': true,
+            'conversation_ref': conversationId,
+            'delivery_email': deliveryEmail,
+            if (_leaseToken != null) 'lease_token': _leaseToken,
+          },
     );
 
     await _consumeStream(stream, resultBuffer, 0, 1);
@@ -685,9 +1171,11 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     String? dateRange,
     required String paymentSessionId,
     required String conversationId,
+    required String deliveryEmail,
     bool forceFallback = false,
     bool updatePendingJob = true,
     Map<int, String>? initialChunkResults,
+    PortraitPackContext? pack,
   }) async {
     final chunkResultsByIndex = <int, String>{...?initialChunkResults};
     var anyChunkUsedFallback = forceFallback;
@@ -731,6 +1219,10 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
               'chunk': {'index': i + 1, 'total': chunks.length},
               'include_thoughts': i == 0,
               'conversation_ref': conversationId,
+              // Every chunk is its own authorized request, so every chunk
+              // needs the address too. Omitting it here fails the run on
+              // chunk 1 even when the single-shot path is correct.
+              'delivery_email': deliveryEmail,
               if (_leaseToken != null) 'lease_token': _leaseToken,
             },
           );
@@ -768,10 +1260,10 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
         // Web parity: chunk record is {index, content} per
         // storageManager.js:539. Mobile keeps the chunks_completed counter
         // for UI plus the chunk_results JSON array for resume.
-        await StorageService.instance.appendPendingJobChunk(
-          conversationId,
-          {'index': i, 'content': chunkText},
-        );
+        await StorageService.instance.appendPendingJobChunk(conversationId, {
+          'index': i,
+          'content': chunkText,
+        });
       }
     }
 
@@ -800,7 +1292,9 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
         final mergeBuffer = StringBuffer();
         final mergeStream = _api.streamAnalysis(
           promptTemplate: mergePrompt.promptTemplate,
-          templateVars: mergePrompt.templateVars,
+          templateVars:
+              pack?.applyTemplateVars(mergePrompt.templateVars) ??
+              mergePrompt.templateVars,
           previousPortrait: mergePrompt.previousPortrait,
           payload: mergePayload,
           paymentSessionId: paymentSessionId,
@@ -809,14 +1303,31 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
           leaseToken: _leaseToken,
           forceFallback:
               forceFallback || anyChunkUsedFallback || retryForceFallback,
-          metadata: {
-            'phase': 'merge',
-            'is_merge': true,
-            'chunk': {'index': chunks.length + 1, 'total': chunks.length + 1},
-            'include_thoughts': true,
-            'conversation_ref': conversationId,
-            if (_leaseToken != null) 'lease_token': _leaseToken,
-          },
+          metadata:
+              pack?.applyMetadata({
+                'phase': 'merge',
+                'is_merge': true,
+                'chunk': {
+                  'index': chunks.length + 1,
+                  'total': chunks.length + 1,
+                },
+                'include_thoughts': true,
+                'conversation_ref': conversationId,
+                'delivery_email': deliveryEmail,
+                if (_leaseToken != null) 'lease_token': _leaseToken,
+              }) ??
+              {
+                'phase': 'merge',
+                'is_merge': true,
+                'chunk': {
+                  'index': chunks.length + 1,
+                  'total': chunks.length + 1,
+                },
+                'include_thoughts': true,
+                'conversation_ref': conversationId,
+                'delivery_email': deliveryEmail,
+                if (_leaseToken != null) 'lease_token': _leaseToken,
+              },
         );
 
         await _consumeStream(
@@ -849,10 +1360,12 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     String? dateRange,
     required String paymentSessionId,
     required String conversationId,
+    required String deliveryEmail,
     bool forceFallback = false,
     bool updatePendingJob = true,
     int initialChunkIndex = 0,
     String? initialPortrait,
+    PortraitPackContext? pack,
   }) async {
     String? rollingPortrait = initialPortrait;
     var rollingFallback = forceFallback;
@@ -901,7 +1414,10 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
           final sectionBuffer = StringBuffer();
           final stream = _api.streamAnalysis(
             promptTemplate: prompt.promptTemplate,
-            templateVars: prompt.templateVars,
+            templateVars:
+                isLast && pack != null
+                    ? pack.applyTemplateVars(prompt.templateVars)
+                    : prompt.templateVars,
             previousPortrait: prompt.previousPortrait,
             payload: chunks[i],
             paymentSessionId: paymentSessionId,
@@ -909,15 +1425,28 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
             dateRange: isLast ? dateRange : null,
             leaseToken: _leaseToken,
             forceFallback: rollingFallback || retryForceFallback,
-            metadata: {
-              'phase': 'rolling',
-              'chunking_mode': 'rolling',
-              'chunk': {'index': i + 1, 'total': chunks.length},
-              'include_thoughts': true,
-              'conversation_ref': conversationId,
-              if (isLast) 'is_final': true,
-              if (_leaseToken != null) 'lease_token': _leaseToken,
-            },
+            metadata:
+                isLast && pack != null
+                    ? pack.applyMetadata({
+                      'phase': 'rolling',
+                      'chunking_mode': 'rolling',
+                      'chunk': {'index': i + 1, 'total': chunks.length},
+                      'include_thoughts': true,
+                      'conversation_ref': conversationId,
+                      'delivery_email': deliveryEmail,
+                      'is_final': true,
+                      if (_leaseToken != null) 'lease_token': _leaseToken,
+                    })
+                    : {
+                      'phase': 'rolling',
+                      'chunking_mode': 'rolling',
+                      'chunk': {'index': i + 1, 'total': chunks.length},
+                      'include_thoughts': true,
+                      'conversation_ref': conversationId,
+                      'delivery_email': deliveryEmail,
+                      if (isLast) 'is_final': true,
+                      if (_leaseToken != null) 'lease_token': _leaseToken,
+                    },
           );
 
           await _consumeStream(stream, sectionBuffer, i, chunks.length);
@@ -940,10 +1469,10 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       if (updatePendingJob) {
         // Web parity: rolling stores the latest portrait as the chunk content
         // so resume can pick up the in-progress draft.
-        await StorageService.instance.appendPendingJobChunk(
-          conversationId,
-          {'index': i, 'content': rollingPortrait},
-        );
+        await StorageService.instance.appendPendingJobChunk(conversationId, {
+          'index': i,
+          'content': rollingPortrait,
+        });
       }
     }
 
@@ -956,11 +1485,18 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     required String text,
     required String clientConversationRef,
     required String paymentSessionId,
+    required String deliveryEmail,
     String? dateRange,
     bool forceFallback = false,
+    PortraitPackContext? pack,
   }) async {
     final resultBuffer = StringBuffer();
     final parser = SseParser();
+
+    // This is the request that actually sends the portrait and captures the
+    // payment, so the recipient matters most here. A store payments row has
+    // no Stripe customer behind it for the server to look one up from.
+    final metadata = {'delivery_email': deliveryEmail};
 
     final stream = _api.streamValidation(
       text: text,
@@ -969,6 +1505,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       leaseToken: _leaseToken,
       dateRange: dateRange,
       forceFallback: forceFallback,
+      metadata: pack?.applyMetadata(metadata) ?? metadata,
     );
 
     await for (final rawData in stream) {

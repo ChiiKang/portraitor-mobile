@@ -13,6 +13,7 @@
 		58DF9270D3614367DAC8C052 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2E7435EFA2C803101B946B48 /* Pods_Runner.framework */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
+		8105FF473B308F3CD47A9707 /* ManageSubscriptionsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC03FC23C356494FE6C5ECC /* ManageSubscriptionsPlugin.swift */; };
 		8A1100012DDF000100000001 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1100062DDF000100000001 /* ShareViewController.swift */; };
 		8A1100022DDF000100000001 /* MainInterface.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 8A1100092DDF000100000001 /* MainInterface.storyboard */; };
 		8A1100032DDF000100000001 /* Share Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8A11000B2DDF000100000001 /* Share Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -93,6 +94,7 @@
 		98BBE997FA01D33BA911DF6C /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		BA959A3902340F7E5C6DEB91 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		E0684A875AFC81FE5627517F /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
+		EFC03FC23C356494FE6C5ECC /* ManageSubscriptionsPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ManageSubscriptionsPlugin.swift; sourceTree = "<group>"; };
 		FB8D10A7757B05AD799F27C5 /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -211,6 +213,7 @@
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				8A11000C2DDF000100000001 /* Runner.entitlements */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
+				EFC03FC23C356494FE6C5ECC /* ManageSubscriptionsPlugin.swift */,
 			);
 			path = Runner;
 			sourceTree = "<group>";
@@ -485,6 +488,7 @@
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
+				8105FF473B308F3CD47A9707 /* ManageSubscriptionsPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

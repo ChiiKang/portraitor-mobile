@@ -34,9 +34,9 @@ class FAQScreen extends StatelessWidget {
           'Portraits are AI-generated personality analyses. They provide insights based on communication patterns but should be taken as one perspective, not absolute truth.',
     ),
     _FAQ(
-      question: 'Why does it cost \$5?',
+      question: 'How is pricing determined?',
       answer:
-          'Each portrait requires significant AI compute. The fee covers processing costs and helps us maintain the service without ads or data mining.',
+          'Prices vary by bundle and storefront. The app shows the current localized App Store or Google Play price before purchase.',
     ),
   ];
 

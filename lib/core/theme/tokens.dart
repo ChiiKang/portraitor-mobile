@@ -25,7 +25,61 @@ class PortraitorTokens {
   static const Color brandSoft = Color(0x1FA855F7);
   static const Color brandGlow = Color(0x33A855F7);
 
+  // ── ONBOARDING HANDOVER PALETTE ────────────────────────────
+  // Kept separate from the legacy app palette so screens outside onboarding
+  // retain their existing appearance.
+  static const Color onboardingBlue = Color(0xFF5B8CFF);
+  static const Color onboardingPrimary = Color(0xFF7C5CFF);
+  static const Color onboardingPrimaryDeep = Color(0xFF6B4AF0);
+  static const Color onboardingInk = Color(0xFF211A37);
+  static const Color onboardingInkSoft = Color(0xFF4C4666);
+  static const Color onboardingMuted = Color(0xFF8C86A0);
+  static const Color onboardingMutedLight = Color(0xFFB4AEC4);
+  static const Color onboardingSurface = Color(0xFFFBFAFF);
+  static const Color sageCheck = Color(0xFF5E7A6C);
+  static const Color sageCheckBackground = Color(0x387FB89E);
+
+  static const Gradient onboardingBrandGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [onboardingBlue, brandPurple, brandPink],
+  );
+
+  static const Gradient iconGradientViolet = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
+  );
+
+  static const Gradient iconGradientVioletPeach = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFC084FC), Color(0xFFF0A48A)],
+  );
+
+  static const Gradient iconGradientPeachCoral = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFF0A48A), Color(0xFFE8837A)],
+  );
+
   static const Color pageBackground = Color(0xFFF8F6FF);
+
+  /// Home / Portraits / Profile — stronger wash (~15%) matching prototype `--grad-page-tabs`.
+  static const Gradient tabPageGradient = RadialGradient(
+    center: Alignment.topCenter,
+    radius: 1.25,
+    colors: [Color(0xFFDDD2FF), Color(0xFFF0EAFF), Color(0xFFFADCEC)],
+    stops: [0.0, 0.42, 1.0],
+  );
+
+  /// Funnel / secondary pages — softer wash matching `--grad-page`.
+  static const Gradient funnelPageGradient = RadialGradient(
+    center: Alignment.topCenter,
+    radius: 1.25,
+    colors: [Color(0xFFEDE7FF), Color(0xFFFBFAFF), Color(0xFFFCEFF5)],
+    stops: [0.0, 0.42, 1.0],
+  );
 
   // ── INK (text colors) ────────────────────────────────────────
   static const Color inkStrong = Color(0xFF1E1B2E);
@@ -51,6 +105,26 @@ class PortraitorTokens {
 
   // ── TYPOGRAPHY ──────────────────────────────────────────────
   static const String fontFamily = 'Space Grotesk';
+  static const String fontBody = 'Inter';
+
+  /// Funnel H1 — matches prototype `.flow-h1` (28px Space Grotesk).
+  static const TextStyle flowH1 = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 28,
+    fontWeight: FontWeight.w700,
+    letterSpacing: -0.56,
+    height: 1.15,
+    color: onboardingInk,
+  );
+
+  /// Funnel lead — matches prototype `.flow-lead` (15px Inter).
+  static const TextStyle flowLead = TextStyle(
+    fontFamily: fontBody,
+    fontSize: 15,
+    fontWeight: FontWeight.w400,
+    height: 1.45,
+    color: onboardingMuted,
+  );
 
   static const TextStyle displayLg = TextStyle(
     fontFamily: fontFamily,
@@ -101,21 +175,21 @@ class PortraitorTokens {
     color: inkStrong,
   );
   static const TextStyle bodyLg = TextStyle(
-    fontFamily: fontFamily,
+    fontFamily: fontBody,
     fontSize: 16,
     fontWeight: FontWeight.w400,
     height: 1.5,
     color: ink,
   );
   static const TextStyle bodyMd = TextStyle(
-    fontFamily: fontFamily,
+    fontFamily: fontBody,
     fontSize: 14,
     fontWeight: FontWeight.w400,
     height: 1.5,
     color: inkSoft,
   );
   static const TextStyle bodySm = TextStyle(
-    fontFamily: fontFamily,
+    fontFamily: fontBody,
     fontSize: 13,
     fontWeight: FontWeight.w400,
     height: 1.4,

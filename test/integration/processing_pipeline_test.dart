@@ -71,6 +71,85 @@ void main() {
     });
   });
 
+  group('Multi-person pack orchestration', () {
+    test(
+      'one paid Partner job generates both people and finalizes once',
+      () async {
+        final fakeApi = FakeApiService();
+        final analysisMetadata = <Map<String, dynamic>>[];
+        final validationMetadata = <Map<String, dynamic>>[];
+        fakeApi.onStreamAnalysis = ({
+          required promptTemplate,
+          required templateVars,
+          previousPortrait,
+          required payload,
+          required paymentSessionId,
+          required clientConversationRef,
+          dateRange,
+          required metadata,
+          leaseToken,
+          forceFallback = false,
+        }) {
+          analysisMetadata.add(Map<String, dynamic>.from(metadata));
+          return Stream.value(
+            'done\x00{"text":"analysis ${analysisMetadata.length}"}',
+          );
+        };
+        fakeApi.onStreamValidation = ({
+          required text,
+          required clientConversationRef,
+          required paymentSessionId,
+          leaseToken,
+          dateRange,
+          forceFallback = false,
+          required metadata,
+        }) {
+          validationMetadata.add(Map<String, dynamic>.from(metadata));
+          return Stream.value(
+            'done\x00{"text":"portrait ${validationMetadata.length}"}',
+          );
+        };
+        final container = ProviderContainer(
+          overrides: [processingApiProvider.overrideWithValue(fakeApi)],
+        );
+        addTearDown(container.dispose);
+
+        final portraits = await container
+            .read(processingProvider.notifier)
+            .processPackForTesting(
+              people: const ['Alice', 'Bob'],
+              tier: 'partner',
+              text: 'conversation',
+              paymentSessionId: 'payment-one',
+              conversationId: 'conversation-one',
+              deliveryEmail: 'buyer@example.com',
+            );
+
+        expect(portraits.map((item) => item['person']), ['Alice', 'Bob']);
+        expect(analysisMetadata, hasLength(2));
+        expect(validationMetadata, hasLength(2));
+        // Every person in the pack is a separate authorized request. One
+        // missing address refuses that person's generation outright.
+        expect(
+          analysisMetadata.map((m) => m['delivery_email']),
+          everyElement('buyer@example.com'),
+        );
+        expect(
+          validationMetadata.map((m) => m['delivery_email']),
+          everyElement('buyer@example.com'),
+        );
+        expect(validationMetadata.first['pack_more_coming'], isTrue);
+        expect(
+          validationMetadata.last.containsKey('pack_more_coming'),
+          isFalse,
+        );
+        expect(validationMetadata.last['pack_portraits'], [
+          {'person': 'Alice', 'output': 'portrait 1'},
+        ]);
+      },
+    );
+  });
+
   group('ProcessingState transitions', () {
     test('retry delays follow exponential backoff pattern', () {
       const delays = [
@@ -190,6 +269,7 @@ void main() {
             targetName: 'Natalia',
             paymentSessionId: 'pi_test',
             conversationId: 'conversation-test',
+            deliveryEmail: 'buyer@example.com',
           );
 
       expect(result, 'merged result');
@@ -250,6 +330,7 @@ void main() {
             dateRange: 'May 2024',
             paymentSessionId: 'pi_test',
             conversationId: 'conversation-test',
+            deliveryEmail: 'buyer@example.com',
           );
 
       expect(calls.map((c) => c['promptTemplate']), [
@@ -269,22 +350,14 @@ void main() {
       });
       expect(calls.every((c) => c.containsKey('prompt')), isFalse);
     });
-  });
 
-  group('Rolling chunk orchestration', () {
-    test('startProcessing branches to rolling when runtime config says rolling', () {
-      final source =
-          File(
-            'lib/features/processing/application/processing_provider.dart',
-          ).readAsStringSync();
-
-      expect(source, contains("config.chunkingMode == 'rolling'"));
-      expect(source, contains('_processRolling'));
-    });
-
-    test('rolling sends first, refine, and final envelopes sequentially', () async {
+    test('every map-reduce request carries the delivery address', () async {
+      // gemini-proxy-stream.php reads metadata.delivery_email and refuses the
+      // run without it, because a store purchase leaves no Stripe customer to
+      // resolve a recipient from. Chunk 1 fails just as hard as single-shot,
+      // so the assertion covers the chunk requests AND the merge request.
       final fakeApi = FakeApiService();
-      final calls = <Map<String, dynamic>>[];
+      final metadataByPhase = <String, Map<String, dynamic>>{};
 
       fakeApi.onStreamAnalysis = ({
         required promptTemplate,
@@ -298,20 +371,11 @@ void main() {
         leaseToken,
         forceFallback = false,
       }) {
-        calls.add({
-          'promptTemplate': promptTemplate,
-          'templateVars': templateVars,
-          'previousPortrait': previousPortrait,
-          'payload': payload,
-          'dateRange': dateRange,
-          'metadata': metadata,
-          'forceFallback': forceFallback,
-        });
-        final text = 'portrait after ${calls.length}';
-        return Stream.fromIterable([
-          '{"type":"response","text":"$text"}',
-          '{"type":"done","text":"$text"}',
-        ]);
+        final phase = metadata['phase'] as String;
+        final chunk = metadata['chunk'] as Map<String, dynamic>?;
+        final key = phase == 'chunk' ? 'chunk-${chunk?['index']}' : phase;
+        metadataByPhase[key] = Map<String, dynamic>.from(metadata);
+        return Stream.value('done\x00{"text":"$key result"}');
       };
 
       final container = ProviderContainer(
@@ -319,60 +383,145 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final result = await container
+      await container
           .read(processingProvider.notifier)
-          .processRollingForTesting(
-            chunks: const ['chunk one', 'chunk two', 'chunk three'],
+          .processMapReduceForTesting(
+            chunks: const ['chunk one', 'chunk two'],
             targetName: 'Natalia',
-            dateRange: 'May 2024',
             paymentSessionId: 'pi_test',
             conversationId: 'conversation-test',
+            deliveryEmail: 'buyer@example.com',
           );
 
-      expect(result, 'portrait after 3');
-      expect(calls.map((c) => c['promptTemplate']), [
-        'rolling-first',
-        'rolling-refine',
-        'rolling-final',
-      ]);
-      expect(calls.map((c) => c['previousPortrait']), [
-        null,
-        'portrait after 1',
-        'portrait after 2',
-      ]);
-      expect(calls.map((c) => c['payload']), [
-        'chunk one',
-        'chunk two',
-        'chunk three',
-      ]);
-      expect(calls.first['templateVars'], {
-        'target_name': 'Natalia',
-        'chunk_total': 3,
-      });
-      expect(calls[1]['templateVars'], {
-        'target_name': 'Natalia',
-        'chunk_index': 2,
-        'chunk_total': 3,
-      });
-      expect(calls.last['templateVars'], {
-        'target_name': 'Natalia',
-        'date_range': 'May 2024',
-        'chunk_index': 3,
-        'chunk_total': 3,
-      });
-      expect(calls.first['dateRange'], isNull);
-      expect(calls[1]['dateRange'], isNull);
-      expect(calls.last['dateRange'], 'May 2024');
-      expect((calls.last['metadata'] as Map<String, dynamic>)['is_final'], isTrue);
-      expect(
-        calls.every(
-          (c) =>
-              (c['metadata'] as Map<String, dynamic>)['chunking_mode'] ==
-              'rolling',
-        ),
-        isTrue,
-      );
+      expect(metadataByPhase.keys, containsAll(['chunk-1', 'chunk-2', 'merge']));
+      for (final entry in metadataByPhase.entries) {
+        expect(
+          entry.value['delivery_email'],
+          'buyer@example.com',
+          reason: '${entry.key} request had no delivery_email',
+        );
+      }
     });
+  });
+
+  group('Rolling chunk orchestration', () {
+    test(
+      'startProcessing branches to rolling when runtime config says rolling',
+      () {
+        final source =
+            File(
+              'lib/features/processing/application/processing_provider.dart',
+            ).readAsStringSync();
+
+        expect(source, contains("config.chunkingMode == 'rolling'"));
+        expect(source, contains('_processRolling'));
+      },
+    );
+
+    test(
+      'rolling sends first, refine, and final envelopes sequentially',
+      () async {
+        final fakeApi = FakeApiService();
+        final calls = <Map<String, dynamic>>[];
+
+        fakeApi.onStreamAnalysis = ({
+          required promptTemplate,
+          required templateVars,
+          previousPortrait,
+          required payload,
+          required paymentSessionId,
+          required clientConversationRef,
+          dateRange,
+          required metadata,
+          leaseToken,
+          forceFallback = false,
+        }) {
+          calls.add({
+            'promptTemplate': promptTemplate,
+            'templateVars': templateVars,
+            'previousPortrait': previousPortrait,
+            'payload': payload,
+            'dateRange': dateRange,
+            'metadata': metadata,
+            'forceFallback': forceFallback,
+          });
+          final text = 'portrait after ${calls.length}';
+          return Stream.fromIterable([
+            '{"type":"response","text":"$text"}',
+            '{"type":"done","text":"$text"}',
+          ]);
+        };
+
+        final container = ProviderContainer(
+          overrides: [processingApiProvider.overrideWithValue(fakeApi)],
+        );
+        addTearDown(container.dispose);
+
+        final result = await container
+            .read(processingProvider.notifier)
+            .processRollingForTesting(
+              chunks: const ['chunk one', 'chunk two', 'chunk three'],
+              targetName: 'Natalia',
+              dateRange: 'May 2024',
+              paymentSessionId: 'pi_test',
+              conversationId: 'conversation-test',
+              deliveryEmail: 'buyer@example.com',
+            );
+
+        expect(result, 'portrait after 3');
+        expect(calls.map((c) => c['promptTemplate']), [
+          'rolling-first',
+          'rolling-refine',
+          'rolling-final',
+        ]);
+        expect(calls.map((c) => c['previousPortrait']), [
+          null,
+          'portrait after 1',
+          'portrait after 2',
+        ]);
+        expect(calls.map((c) => c['payload']), [
+          'chunk one',
+          'chunk two',
+          'chunk three',
+        ]);
+        expect(calls.first['templateVars'], {
+          'target_name': 'Natalia',
+          'chunk_total': 3,
+        });
+        expect(calls[1]['templateVars'], {
+          'target_name': 'Natalia',
+          'chunk_index': 2,
+          'chunk_total': 3,
+        });
+        expect(calls.last['templateVars'], {
+          'target_name': 'Natalia',
+          'date_range': 'May 2024',
+          'chunk_index': 3,
+          'chunk_total': 3,
+        });
+        expect(calls.first['dateRange'], isNull);
+        expect(calls[1]['dateRange'], isNull);
+        expect(calls.last['dateRange'], 'May 2024');
+        expect(
+          (calls.last['metadata'] as Map<String, dynamic>)['is_final'],
+          isTrue,
+        );
+        expect(
+          calls.every(
+            (c) =>
+                (c['metadata'] as Map<String, dynamic>)['chunking_mode'] ==
+                'rolling',
+          ),
+          isTrue,
+        );
+        expect(
+          calls.map(
+            (c) => (c['metadata'] as Map<String, dynamic>)['delivery_email'],
+          ),
+          everyElement('buyer@example.com'),
+        );
+      },
+    );
   });
 
   group('Queue heartbeat', () {
