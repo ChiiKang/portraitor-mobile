@@ -164,6 +164,135 @@
       ]
     },
     {
+      "text": "24/02/2025, 11:41 - Mac Chai: hi @CK and @⁦Zoe⁩ here\n24/02/2025, 11:42 - CK: thanks Mac Chai",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Mac Chai",
+          "start": 20,
+          "end": 28,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "CK",
+          "start": 34,
+          "end": 36,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Zoe",
+          "start": 43,
+          "end": 46,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "CK",
+          "start": 73,
+          "end": 75,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "‎[24/02/2025, 11:41:30 PM] ‎Bidi Speaker: marked line\n[24/02/2025, 11:42:00 PM] ~ Push Name: with a push-name prefix",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Bidi Speaker",
+          "start": 28,
+          "end": 40,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Push Name",
+          "start": 82,
+          "end": 91,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] Dana: mail dave@oakwoodlettings.co.uk or call 020 7946 0321\n[01/02/2025, 10:01:00 AM] Dana: repairs at https://oakwoodlettings.co.uk/repairs",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Dana",
+          "start": 26,
+          "end": 30,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "oakwoodlettings.co.uk",
+          "start": 42,
+          "end": 63,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Dana",
+          "start": 112,
+          "end": 116,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] Sam: your OTP is 483920 and password: hunter2x\n[01/02/2025, 10:01:00 AM] Sam: card 4242 4242 4242 4242 on file",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Sam",
+          "start": 26,
+          "end": 29,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Sam",
+          "start": 99,
+          "end": 102,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] Ravi: IBAN GB29NWBK60161331926819 sort code 40-47-84\n[01/02/2025, 10:01:00 AM] Ravi: ssn 123-45-6789 and passport no A1234567",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Ravi",
+          "start": 26,
+          "end": 30,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Ravi",
+          "start": 105,
+          "end": 109,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
       "text": "mail me bob@example.com or visit https://x.io/a and www.y.co/b",
       "spans": [
         {

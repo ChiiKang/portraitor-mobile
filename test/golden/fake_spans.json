@@ -111,6 +111,63 @@
           "score": 0.9
         }
       ]
+    },
+    {
+      "name": "dash_format_and_mentions",
+      "text": "24/02/2025, 11:41 - Mac Chai: hi @CK and @⁦Zoe⁩ here\n24/02/2025, 11:42 - CK: thanks Mac Chai",
+      "spans": [
+        {
+          "spanText": "Mac Chai",
+          "start": 20,
+          "end": 28,
+          "label": "person name",
+          "score": 0.9
+        }
+      ]
+    },
+    {
+      "name": "bidi_and_push_name",
+      "text": "‎[24/02/2025, 11:41:30 PM] ‎Bidi Speaker: marked line\n[24/02/2025, 11:42:00 PM] ~ Push Name: with a push-name prefix",
+      "spans": []
+    },
+    {
+      "name": "contacts_email_url_phone",
+      "text": "[01/02/2025, 10:00:00 AM] Dana: mail dave@oakwoodlettings.co.uk or call 020 7946 0321\n[01/02/2025, 10:01:00 AM] Dana: repairs at https://oakwoodlettings.co.uk/repairs",
+      "spans": [
+        {
+          "spanText": "Dana",
+          "start": 26,
+          "end": 30,
+          "label": "person name",
+          "score": 0.9
+        }
+      ]
+    },
+    {
+      "name": "credentials_otp_password_card",
+      "text": "[01/02/2025, 10:00:00 AM] Sam: your OTP is 483920 and password: hunter2x\n[01/02/2025, 10:01:00 AM] Sam: card 4242 4242 4242 4242 on file",
+      "spans": [
+        {
+          "spanText": "Sam",
+          "start": 26,
+          "end": 29,
+          "label": "person name",
+          "score": 0.9
+        }
+      ]
+    },
+    {
+      "name": "account_and_national_ids",
+      "text": "[01/02/2025, 10:00:00 AM] Ravi: IBAN GB29NWBK60161331926819 sort code 40-47-84\n[01/02/2025, 10:01:00 AM] Ravi: ssn 123-45-6789 and passport no A1234567",
+      "spans": [
+        {
+          "spanText": "Ravi",
+          "start": 26,
+          "end": 30,
+          "label": "person name",
+          "score": 0.9
+        }
+      ]
     }
   ]
 }

@@ -124,6 +124,261 @@
       "spans": []
     },
     {
+      "text": "24/02/2025, 11:41 - Mac Chai: hi @CK and @⁦Zoe⁩ here\n24/02/2025, 11:42 - CK: thanks Mac Chai",
+      "raw": [],
+      "spans": []
+    },
+    {
+      "text": "‎[24/02/2025, 11:41:30 PM] ‎Bidi Speaker: marked line\n[24/02/2025, 11:42:00 PM] ~ Push Name: with a push-name prefix",
+      "raw": [],
+      "spans": []
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] Dana: mail dave@oakwoodlettings.co.uk or call 020 7946 0321\n[01/02/2025, 10:01:00 AM] Dana: repairs at https://oakwoodlettings.co.uk/repairs",
+      "raw": [
+        {
+          "start": 37,
+          "end": 63,
+          "text": "dave@oakwoodlettings.co.uk",
+          "label": "private_email"
+        },
+        {
+          "start": 129,
+          "end": 166,
+          "text": "https://oakwoodlettings.co.uk/repairs",
+          "label": "private_url"
+        },
+        {
+          "start": 72,
+          "end": 85,
+          "text": "020 7946 0321",
+          "label": "private_phone"
+        }
+      ],
+      "spans": [
+        {
+          "label": "private_email",
+          "text": "dave@oakwoodlettings.co.uk",
+          "start": 37,
+          "end": 63,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_url",
+          "text": "https://oakwoodlettings.co.uk/repairs",
+          "start": 129,
+          "end": 166,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_phone",
+          "text": "020 7946 0321",
+          "start": 72,
+          "end": 85,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] Sam: your OTP is 483920 and password: hunter2x\n[01/02/2025, 10:01:00 AM] Sam: card 4242 4242 4242 4242 on file",
+      "raw": [
+        {
+          "start": 109,
+          "end": 123,
+          "text": "4242 4242 4242",
+          "label": "private_phone"
+        },
+        {
+          "start": 109,
+          "end": 128,
+          "text": "4242 4242 4242 4242",
+          "label": "account_number"
+        },
+        {
+          "start": 43,
+          "end": 49,
+          "text": "483920",
+          "label": "secret"
+        },
+        {
+          "start": 64,
+          "end": 72,
+          "text": "hunter2x",
+          "label": "secret"
+        }
+      ],
+      "spans": [
+        {
+          "label": "private_phone",
+          "text": "4242 4242 4242",
+          "start": 109,
+          "end": 123,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "4242 4242 4242 4242",
+          "start": 109,
+          "end": 128,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "secret",
+          "text": "483920",
+          "start": 43,
+          "end": 49,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "secret",
+          "text": "hunter2x",
+          "start": 64,
+          "end": 72,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] Ravi: IBAN GB29NWBK60161331926819 sort code 40-47-84\n[01/02/2025, 10:01:00 AM] Ravi: ssn 123-45-6789 and passport no A1234567",
+      "raw": [
+        {
+          "start": 45,
+          "end": 59,
+          "text": "60161331926819",
+          "label": "private_phone"
+        },
+        {
+          "start": 144,
+          "end": 151,
+          "text": "1234567",
+          "label": "private_phone"
+        },
+        {
+          "start": 37,
+          "end": 59,
+          "text": "GB29NWBK60161331926819",
+          "label": "account_number"
+        },
+        {
+          "start": 115,
+          "end": 126,
+          "text": "123-45-6789",
+          "label": "account_number"
+        },
+        {
+          "start": 135,
+          "end": 139,
+          "text": "port",
+          "label": "secret"
+        },
+        {
+          "start": 37,
+          "end": 59,
+          "text": "GB29NWBK60161331926819",
+          "label": "account_number"
+        },
+        {
+          "start": 70,
+          "end": 78,
+          "text": "40-47-84",
+          "label": "account_number"
+        },
+        {
+          "start": 115,
+          "end": 126,
+          "text": "123-45-6789",
+          "label": "account_number"
+        },
+        {
+          "start": 143,
+          "end": 151,
+          "text": "A1234567",
+          "label": "account_number"
+        }
+      ],
+      "spans": [
+        {
+          "label": "private_phone",
+          "text": "60161331926819",
+          "start": 45,
+          "end": 59,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_phone",
+          "text": "1234567",
+          "start": 144,
+          "end": 151,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "GB29NWBK60161331926819",
+          "start": 37,
+          "end": 59,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "123-45-6789",
+          "start": 115,
+          "end": 126,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "secret",
+          "text": "port",
+          "start": 135,
+          "end": 139,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "GB29NWBK60161331926819",
+          "start": 37,
+          "end": 59,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "40-47-84",
+          "start": 70,
+          "end": 78,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "123-45-6789",
+          "start": 115,
+          "end": 126,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "A1234567",
+          "start": 143,
+          "end": 151,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
       "text": "mail me bob@example.com or visit https://x.io/a and www.y.co/b",
       "raw": [
         {

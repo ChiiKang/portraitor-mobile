@@ -285,6 +285,280 @@
         "private_person:bjorn": "[PERSON2]"
       },
       "applied": "[01/02/2025, 10:00:00 AM] [PERSON1]: hi\n[01/02/2025, 10:01:00 AM] [PERSON2]: different person"
+    },
+    {
+      "name": "dash_format_and_mentions",
+      "text": "24/02/2025, 11:41 - Mac Chai: hi @CK and @⁦Zoe⁩ here\n24/02/2025, 11:42 - CK: thanks Mac Chai",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Mac Chai",
+          "start": 20,
+          "end": 28,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "CK",
+          "start": 34,
+          "end": 36,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Zoe",
+          "start": 43,
+          "end": 46,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "CK",
+          "start": 73,
+          "end": 75,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Mac Chai",
+          "start": 84,
+          "end": 92,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        }
+      ],
+      "map": {
+        "private_person:mac chai": "[PERSON1]",
+        "private_person:ck": "[PERSON2]",
+        "private_person:zoe": "[PERSON3]"
+      },
+      "applied": "24/02/2025, 11:41 - [PERSON1]: hi @[PERSON2] and @⁦[PERSON3]⁩ here\n24/02/2025, 11:42 - [PERSON2]: thanks [PERSON1]"
+    },
+    {
+      "name": "bidi_and_push_name",
+      "text": "‎[24/02/2025, 11:41:30 PM] ‎Bidi Speaker: marked line\n[24/02/2025, 11:42:00 PM] ~ Push Name: with a push-name prefix",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Bidi Speaker",
+          "start": 28,
+          "end": 40,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Push Name",
+          "start": 82,
+          "end": 91,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "push",
+          "start": 100,
+          "end": 104,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "name",
+          "start": 105,
+          "end": 109,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        }
+      ],
+      "map": {
+        "private_person:bidi speaker": "[PERSON1]",
+        "private_person:push name": "[PERSON2]",
+        "private_person:push": "[PERSON3]",
+        "private_person:name": "[PERSON4]"
+      },
+      "applied": "‎[24/02/2025, 11:41:30 PM] ‎[PERSON1]: marked line\n[24/02/2025, 11:42:00 PM] ~ [PERSON2]: with a [PERSON3]-[PERSON4] prefix"
+    },
+    {
+      "name": "contacts_email_url_phone",
+      "text": "[01/02/2025, 10:00:00 AM] Dana: mail dave@oakwoodlettings.co.uk or call 020 7946 0321\n[01/02/2025, 10:01:00 AM] Dana: repairs at https://oakwoodlettings.co.uk/repairs",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Dana",
+          "start": 26,
+          "end": 30,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_email",
+          "text": "dave@oakwoodlettings.co.uk",
+          "start": 37,
+          "end": 63,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_phone",
+          "text": "020 7946 0321",
+          "start": 72,
+          "end": 85,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Dana",
+          "start": 112,
+          "end": 116,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_url",
+          "text": "https://oakwoodlettings.co.uk/repairs",
+          "start": 129,
+          "end": 166,
+          "source": "rule",
+          "score": 1
+        }
+      ],
+      "map": {
+        "private_person:dana": "[PERSON1]",
+        "private_email:dave@oakwoodlettings.co.uk": "[EMAIL1]",
+        "private_phone:020 7946 0321": "[PHONE1]",
+        "private_url:https://oakwoodlettings.co.uk/repairs": "[URL1]"
+      },
+      "applied": "[01/02/2025, 10:00:00 AM] [PERSON1]: mail [EMAIL1] or call [PHONE1]\n[01/02/2025, 10:01:00 AM] [PERSON1]: repairs at [URL1]"
+    },
+    {
+      "name": "credentials_otp_password_card",
+      "text": "[01/02/2025, 10:00:00 AM] Sam: your OTP is 483920 and password: hunter2x\n[01/02/2025, 10:01:00 AM] Sam: card 4242 4242 4242 4242 on file",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Sam",
+          "start": 26,
+          "end": 29,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "secret",
+          "text": "483920",
+          "start": 43,
+          "end": 49,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "secret",
+          "text": "hunter2x",
+          "start": 64,
+          "end": 72,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Sam",
+          "start": 99,
+          "end": 102,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "4242 4242 4242 4242",
+          "start": 109,
+          "end": 128,
+          "source": "rule",
+          "score": 1
+        }
+      ],
+      "map": {
+        "private_person:sam": "[PERSON1]",
+        "secret:483920": "[SECRET1]",
+        "secret:hunter2x": "[SECRET2]",
+        "account_number:4242 4242 4242 4242": "[ACCOUNT1]"
+      },
+      "applied": "[01/02/2025, 10:00:00 AM] [PERSON1]: your OTP is [SECRET1] and password: [SECRET2]\n[01/02/2025, 10:01:00 AM] [PERSON1]: card [ACCOUNT1] on file"
+    },
+    {
+      "name": "account_and_national_ids",
+      "text": "[01/02/2025, 10:00:00 AM] Ravi: IBAN GB29NWBK60161331926819 sort code 40-47-84\n[01/02/2025, 10:01:00 AM] Ravi: ssn 123-45-6789 and passport no A1234567",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Ravi",
+          "start": 26,
+          "end": 30,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "GB29NWBK60161331926819",
+          "start": 37,
+          "end": 59,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "40-47-84",
+          "start": 70,
+          "end": 78,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Ravi",
+          "start": 105,
+          "end": 109,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "123-45-6789",
+          "start": 115,
+          "end": 126,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "secret",
+          "text": "port",
+          "start": 135,
+          "end": 139,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "A1234567",
+          "start": 143,
+          "end": 151,
+          "source": "rule",
+          "score": 1
+        }
+      ],
+      "map": {
+        "private_person:ravi": "[PERSON1]",
+        "account_number:gb29nwbk60161331926819": "[ACCOUNT1]",
+        "account_number:40-47-84": "[ACCOUNT2]",
+        "account_number:123-45-6789": "[ACCOUNT3]",
+        "secret:port": "[SECRET1]",
+        "account_number:a1234567": "[ACCOUNT4]"
+      },
+      "applied": "[01/02/2025, 10:00:00 AM] [PERSON1]: IBAN [ACCOUNT1] sort code [ACCOUNT2]\n[01/02/2025, 10:01:00 AM] [PERSON1]: ssn [ACCOUNT3] and pass[SECRET1] no [ACCOUNT4]"
     }
   ]
 }

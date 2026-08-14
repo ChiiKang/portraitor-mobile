@@ -167,6 +167,198 @@
       ],
       "csv": "token,value,type,occurrences\nPERSON1,\"Björn\",person,1\nPERSON2,\"Bjorn\",person,1",
       "leaks": []
+    },
+    {
+      "name": "dash_format_and_mentions",
+      "text": "24/02/2025, 11:41 - Mac Chai: hi @CK and @⁦Zoe⁩ here\n24/02/2025, 11:42 - CK: thanks Mac Chai",
+      "maskedText": "24/02/2025, 11:41 - [PERSON1]: hi @[PERSON2] and @⁦[PERSON3]⁩ here\n24/02/2025, 11:42 - [PERSON2]: thanks [PERSON1]",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Mac Chai",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "CK",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "csv": "token,value,type,occurrences\nPERSON1,\"Mac Chai\",person,2\nPERSON2,\"CK\",person,2\nPERSON3,\"Zoe\",person,1",
+      "leaks": []
+    },
+    {
+      "name": "bidi_and_push_name",
+      "text": "‎[24/02/2025, 11:41:30 PM] ‎Bidi Speaker: marked line\n[24/02/2025, 11:42:00 PM] ~ Push Name: with a push-name prefix",
+      "maskedText": "‎[24/02/2025, 11:41:30 PM] ‎[PERSON1]: marked line\n[24/02/2025, 11:42:00 PM] ~ [PERSON2]: with a [PERSON3]-[PERSON4] prefix",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bidi Speaker",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Push Name",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "push",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON4]",
+          "type": "person",
+          "value": "name",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "csv": "token,value,type,occurrences\nPERSON1,\"Bidi Speaker\",person,1\nPERSON2,\"Push Name\",person,1\nPERSON3,\"push\",person,1\nPERSON4,\"name\",person,1",
+      "leaks": []
+    },
+    {
+      "name": "contacts_email_url_phone",
+      "text": "[01/02/2025, 10:00:00 AM] Dana: mail dave@oakwoodlettings.co.uk or call 020 7946 0321\n[01/02/2025, 10:01:00 AM] Dana: repairs at https://oakwoodlettings.co.uk/repairs",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: mail [EMAIL1] or call [PHONE1]\n[01/02/2025, 10:01:00 AM] [PERSON1]: repairs at [URL1]",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Dana",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "dave@oakwoodlettings.co.uk",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PHONE1]",
+          "type": "phone",
+          "value": "020 7946 0321",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://oakwoodlettings.co.uk/repairs",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "csv": "token,value,type,occurrences\nPERSON1,\"Dana\",person,2\nEMAIL1,\"dave@oakwoodlettings.co.uk\",email,1\nPHONE1,\"020 7946 0321\",phone,1\nURL1,\"https://oakwoodlettings.co.uk/repairs\",url,1",
+      "leaks": []
+    },
+    {
+      "name": "credentials_otp_password_card",
+      "text": "[01/02/2025, 10:00:00 AM] Sam: your OTP is 483920 and password: hunter2x\n[01/02/2025, 10:01:00 AM] Sam: card 4242 4242 4242 4242 on file",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: your OTP is [SECRET1] and password: [SECRET2]\n[01/02/2025, 10:01:00 AM] [PERSON1]: card [ACCOUNT1] on file",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Sam",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "483920",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET2]",
+          "type": "secret",
+          "value": "hunter2x",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "4242 4242 4242 4242",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "csv": "token,value,type,occurrences\nPERSON1,\"Sam\",person,2\nSECRET1,\"483920\",secret,1\nSECRET2,\"hunter2x\",secret,1\nACCOUNT1,\"4242 4242 4242 4242\",account,1",
+      "leaks": []
+    },
+    {
+      "name": "account_and_national_ids",
+      "text": "[01/02/2025, 10:00:00 AM] Ravi: IBAN GB29NWBK60161331926819 sort code 40-47-84\n[01/02/2025, 10:01:00 AM] Ravi: ssn 123-45-6789 and passport no A1234567",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: IBAN [ACCOUNT1] sort code [ACCOUNT2]\n[01/02/2025, 10:01:00 AM] [PERSON1]: ssn [ACCOUNT3] and pass[SECRET1] no [ACCOUNT4]",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ravi",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT2]",
+          "type": "account",
+          "value": "40-47-84",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT3]",
+          "type": "account",
+          "value": "123-45-6789",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "port",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT4]",
+          "type": "account",
+          "value": "A1234567",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "csv": "token,value,type,occurrences\nPERSON1,\"Ravi\",person,2\nACCOUNT1,\"GB29NWBK60161331926819\",account,1\nACCOUNT2,\"40-47-84\",account,1\nACCOUNT3,\"123-45-6789\",account,1\nSECRET1,\"port\",secret,1\nACCOUNT4,\"A1234567\",account,1",
+      "leaks": []
     }
   ]
 }

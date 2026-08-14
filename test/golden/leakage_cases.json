@@ -108,6 +108,103 @@
       "spans": []
     },
     {
+      "name": "dash_format_and_mentions",
+      "maskedText": "24/02/2025, 11:41 - [PERSON1]: hi @[PERSON2] and @⁦[PERSON3]⁩ here\n24/02/2025, 11:42 - [PERSON2]: thanks [PERSON1]",
+      "existingMap": {
+        "private_person:mac chai": "[PERSON1]",
+        "private_person:ck": "[PERSON2]",
+        "private_person:zoe": "[PERSON3]"
+      },
+      "text": "24/02/2025, 11:41 - [PERSON1]: hi @[PERSON2] and @⁦[PERSON3]⁩ here\n24/02/2025, 11:42 - [PERSON2]: thanks [PERSON1]",
+      "leaks": [],
+      "map": {
+        "private_person:mac chai": "[PERSON1]",
+        "private_person:ck": "[PERSON2]",
+        "private_person:zoe": "[PERSON3]"
+      },
+      "spans": []
+    },
+    {
+      "name": "bidi_and_push_name",
+      "maskedText": "‎[24/02/2025, 11:41:30 PM] ‎[PERSON1]: marked line\n[24/02/2025, 11:42:00 PM] ~ [PERSON2]: with a [PERSON3]-[PERSON4] prefix",
+      "existingMap": {
+        "private_person:bidi speaker": "[PERSON1]",
+        "private_person:push name": "[PERSON2]",
+        "private_person:push": "[PERSON3]",
+        "private_person:name": "[PERSON4]"
+      },
+      "text": "‎[24/02/2025, 11:41:30 PM] ‎[PERSON1]: marked line\n[24/02/2025, 11:42:00 PM] ~ [PERSON2]: with a [PERSON3]-[PERSON4] prefix",
+      "leaks": [],
+      "map": {
+        "private_person:bidi speaker": "[PERSON1]",
+        "private_person:push name": "[PERSON2]",
+        "private_person:push": "[PERSON3]",
+        "private_person:name": "[PERSON4]"
+      },
+      "spans": []
+    },
+    {
+      "name": "contacts_email_url_phone",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: mail [EMAIL1] or call [PHONE1]\n[01/02/2025, 10:01:00 AM] [PERSON1]: repairs at [URL1]",
+      "existingMap": {
+        "private_person:dana": "[PERSON1]",
+        "private_email:dave@oakwoodlettings.co.uk": "[EMAIL1]",
+        "private_phone:020 7946 0321": "[PHONE1]",
+        "private_url:https://oakwoodlettings.co.uk/repairs": "[URL1]"
+      },
+      "text": "[01/02/2025, 10:00:00 AM] [PERSON1]: mail [EMAIL1] or call [PHONE1]\n[01/02/2025, 10:01:00 AM] [PERSON1]: repairs at [URL1]",
+      "leaks": [],
+      "map": {
+        "private_person:dana": "[PERSON1]",
+        "private_email:dave@oakwoodlettings.co.uk": "[EMAIL1]",
+        "private_phone:020 7946 0321": "[PHONE1]",
+        "private_url:https://oakwoodlettings.co.uk/repairs": "[URL1]"
+      },
+      "spans": []
+    },
+    {
+      "name": "credentials_otp_password_card",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: your OTP is [SECRET1] and password: [SECRET2]\n[01/02/2025, 10:01:00 AM] [PERSON1]: card [ACCOUNT1] on file",
+      "existingMap": {
+        "private_person:sam": "[PERSON1]",
+        "secret:483920": "[SECRET1]",
+        "secret:hunter2x": "[SECRET2]",
+        "account_number:4242 4242 4242 4242": "[ACCOUNT1]"
+      },
+      "text": "[01/02/2025, 10:00:00 AM] [PERSON1]: your OTP is [SECRET1] and password: [SECRET2]\n[01/02/2025, 10:01:00 AM] [PERSON1]: card [ACCOUNT1] on file",
+      "leaks": [],
+      "map": {
+        "private_person:sam": "[PERSON1]",
+        "secret:483920": "[SECRET1]",
+        "secret:hunter2x": "[SECRET2]",
+        "account_number:4242 4242 4242 4242": "[ACCOUNT1]"
+      },
+      "spans": []
+    },
+    {
+      "name": "account_and_national_ids",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: IBAN [ACCOUNT1] sort code [ACCOUNT2]\n[01/02/2025, 10:01:00 AM] [PERSON1]: ssn [ACCOUNT3] and pass[SECRET1] no [ACCOUNT4]",
+      "existingMap": {
+        "private_person:ravi": "[PERSON1]",
+        "account_number:gb29nwbk60161331926819": "[ACCOUNT1]",
+        "account_number:40-47-84": "[ACCOUNT2]",
+        "account_number:123-45-6789": "[ACCOUNT3]",
+        "secret:port": "[SECRET1]",
+        "account_number:a1234567": "[ACCOUNT4]"
+      },
+      "text": "[01/02/2025, 10:00:00 AM] [PERSON1]: IBAN [ACCOUNT1] sort code [ACCOUNT2]\n[01/02/2025, 10:01:00 AM] [PERSON1]: ssn [ACCOUNT3] and pass[SECRET1] no [ACCOUNT4]",
+      "leaks": [],
+      "map": {
+        "private_person:ravi": "[PERSON1]",
+        "account_number:gb29nwbk60161331926819": "[ACCOUNT1]",
+        "account_number:40-47-84": "[ACCOUNT2]",
+        "account_number:123-45-6789": "[ACCOUNT3]",
+        "secret:port": "[SECRET1]",
+        "account_number:a1234567": "[ACCOUNT4]"
+      },
+      "spans": []
+    },
+    {
       "name": "guard_leak_inside_token",
       "maskedText": "[EMAIL1] and [ACCOUNT12] stay put",
       "existingMap": {},
