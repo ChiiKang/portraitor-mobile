@@ -1,0 +1,116 @@
+{
+  "cases": [
+    {
+      "name": "smoke",
+      "text": "[27/11/2025, 9:20:00 AM] Natalia: hi Michael, my link is https://x.io/a\n[27/11/2025, 9:21:00 AM] Michael: thanks Natalia! email me at a@b.com",
+      "spans": [
+        {
+          "spanText": "Natalia",
+          "start": 25,
+          "end": 32,
+          "label": "person name",
+          "score": 0.9
+        },
+        {
+          "spanText": "Michael",
+          "start": 37,
+          "end": 44,
+          "label": "person name",
+          "score": 0.9
+        }
+      ]
+    },
+    {
+      "name": "propagation_repeat",
+      "text": "[01/02/2025, 10:00:00 AM] Emma: morning\n[01/02/2025, 10:01:00 AM] James: hi Emma\n[01/02/2025, 10:02:00 AM] Emma: Emma again, and Emma once more",
+      "spans": [
+        {
+          "spanText": "Emma",
+          "start": 26,
+          "end": 30,
+          "label": "person name",
+          "score": 0.9
+        },
+        {
+          "spanText": "James",
+          "start": 66,
+          "end": 71,
+          "label": "person name",
+          "score": 0.9
+        }
+      ]
+    },
+    {
+      "name": "literal_token_in_source",
+      "text": "[01/02/2025, 10:00:00 AM] Ana: the placeholder [PERSON1] is literally in this chat\n[01/02/2025, 10:01:00 AM] Ana: ok",
+      "spans": [
+        {
+          "spanText": "Ana",
+          "start": 26,
+          "end": 29,
+          "label": "person name",
+          "score": 0.9
+        }
+      ]
+    },
+    {
+      "name": "leak_adjacent_to_token",
+      "text": "[01/02/2025, 10:00:00 AM] Bob: mail me bob@example.com now\n[01/02/2025, 10:01:00 AM] Bob: IBAN GB29NWBK60161331926819 ok",
+      "spans": [
+        {
+          "spanText": "Bob",
+          "start": 26,
+          "end": 29,
+          "label": "person name",
+          "score": 0.9
+        }
+      ]
+    },
+    {
+      "name": "cjk_and_cyrillic",
+      "text": "[01/02/2025, 10:00:00 AM] 绍陞: hello\n[01/02/2025, 10:01:00 AM] Наталия: hi 绍陞",
+      "spans": [
+        {
+          "spanText": "绍陞",
+          "start": 26,
+          "end": 28,
+          "label": "person name",
+          "score": 0.9
+        },
+        {
+          "spanText": "Наталия",
+          "start": 62,
+          "end": 69,
+          "label": "person name",
+          "score": 0.9
+        }
+      ]
+    },
+    {
+      "name": "emoji_offsets",
+      "text": "[01/02/2025, 10:00:00 AM] Zoe: 🎉🎉 party with Zoe\n[01/02/2025, 10:01:00 AM] Zoe: 👍 ok",
+      "spans": [
+        {
+          "spanText": "Zoe",
+          "start": 26,
+          "end": 29,
+          "label": "person name",
+          "score": 0.9
+        }
+      ]
+    },
+    {
+      "name": "accented_name",
+      "text": "[01/02/2025, 10:00:00 AM] Björn: hi\n[01/02/2025, 10:01:00 AM] Bjorn: different person",
+      "spans": [
+        {
+          "spanText": "Björn",
+          "start": 26,
+          "end": 31,
+          "label": "person name",
+          "score": 0.9
+        }
+      ]
+    }
+  ]
+}

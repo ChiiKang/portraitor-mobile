@@ -1,0 +1,156 @@
+{
+  "cases": [
+    {
+      "input": "person name",
+      "expected": "private_person"
+    },
+    {
+      "input": "person",
+      "expected": "private_person"
+    },
+    {
+      "input": "name",
+      "expected": "private_person"
+    },
+    {
+      "input": "private_person",
+      "expected": "private_person"
+    },
+    {
+      "input": "email address",
+      "expected": "private_email"
+    },
+    {
+      "input": "email",
+      "expected": "private_email"
+    },
+    {
+      "input": "private_email",
+      "expected": "private_email"
+    },
+    {
+      "input": "phone number",
+      "expected": "private_phone"
+    },
+    {
+      "input": "phone",
+      "expected": "private_phone"
+    },
+    {
+      "input": "private_phone",
+      "expected": "private_phone"
+    },
+    {
+      "input": "url",
+      "expected": "private_url"
+    },
+    {
+      "input": "private_url",
+      "expected": "private_url"
+    },
+    {
+      "input": "date of birth",
+      "expected": "private_date"
+    },
+    {
+      "input": "date",
+      "expected": "private_date"
+    },
+    {
+      "input": "timestamp",
+      "expected": "private_date"
+    },
+    {
+      "input": "private_date",
+      "expected": "private_date"
+    },
+    {
+      "input": "street address",
+      "expected": "private_address"
+    },
+    {
+      "input": "address",
+      "expected": "private_address"
+    },
+    {
+      "input": "private_address",
+      "expected": "private_address"
+    },
+    {
+      "input": "account number",
+      "expected": "account_number"
+    },
+    {
+      "input": "account_number",
+      "expected": "account_number"
+    },
+    {
+      "input": "api key",
+      "expected": "secret"
+    },
+    {
+      "input": "secret",
+      "expected": "secret"
+    },
+    {
+      "input": "username",
+      "expected": "username"
+    },
+    {
+      "input": "unknown",
+      "expected": "unknown"
+    },
+    {
+      "input": "PERSON NAME",
+      "expected": "private_person"
+    },
+    {
+      "input": "Person Name",
+      "expected": "private_person"
+    },
+    {
+      "input": "  person name  ",
+      "expected": "private_person"
+    },
+    {
+      "input": "\tEMAIL\n",
+      "expected": "private_email"
+    },
+    {
+      "input": "",
+      "expected": "unknown"
+    },
+    {
+      "input": "   ",
+      "expected": "unknown"
+    },
+    {
+      "input": "not a label",
+      "expected": "unknown"
+    },
+    {
+      "input": "person_name",
+      "expected": "unknown"
+    },
+    {
+      "input": "e-mail",
+      "expected": "unknown"
+    },
+    {
+      "input": "URL",
+      "expected": "private_url"
+    },
+    {
+      "input": "Account Number",
+      "expected": "account_number"
+    },
+    {
+      "input": "API KEY",
+      "expected": "secret"
+    },
+    {
+      "input": "ACCOUNT_NUMBER",
+      "expected": "account_number"
+    }
+  ]
+}
