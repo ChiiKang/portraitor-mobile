@@ -529,8 +529,43 @@ void main() {
           await StorageService.instance.getPendingJobById(job.id),
           isNotNull,
         );
+        expect(
+          outcome.isPermanent,
+          isTrue,
+          reason:
+              'no later attempt can supply a uuid that was never recorded, so '
+              'the card would otherwise never leave the home screen',
+        );
       },
     );
+
+    test('a permanently stuck job can be removed on request', () async {
+      final job = _uuidlessStoreJob();
+      await StorageService.instance.savePendingJobRecord(job);
+      await notifier.cancelJob(job);
+
+      await notifier.removeJobAnyway(job);
+
+      expect(
+        await StorageService.instance.getPendingJobById(job.id),
+        isNull,
+        reason: 'the customer asked for it gone, and it is their home screen',
+      );
+      expect(
+        fakeApi.lastReassign,
+        isNull,
+        reason:
+            'removal is local; claiming the purchase moved would be the lie '
+            'the refusal exists to avoid',
+      );
+      expect(
+        await StorageService.instance.getSpendablePortraitCredits(),
+        isEmpty,
+        reason:
+            'the server never freed this purchase, so inventing a credit '
+            'would strand the customer again at the next generation',
+      );
+    });
 
     test('a busy purchase is described as retryable, and kept', () async {
       final job = _storeFundedJob();

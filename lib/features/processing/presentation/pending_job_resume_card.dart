@@ -56,8 +56,8 @@ class PendingJobResumeCardState extends ConsumerState<PendingJobResumeCard> {
       context,
       ref,
       _job,
-      onConfirmed: () {
-        if (mounted) setState(() => _working = true);
+      onWorking: (working) {
+        if (mounted) setState(() => _working = working);
       },
     );
     if (mounted) {

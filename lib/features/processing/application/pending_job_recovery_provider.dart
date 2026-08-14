@@ -80,11 +80,15 @@ class CancelOutcome {
     required this.funding,
     this.purchaseKept = false,
     this.note,
-  }) : error = null;
+  }) : error = null,
+       isPermanent = false;
 
-  const CancelOutcome.failed({required this.funding, required this.error})
-    : purchaseKept = false,
-      note = null;
+  const CancelOutcome.failed({
+    required this.funding,
+    required this.error,
+    this.isPermanent = false,
+  }) : purchaseKept = false,
+       note = null;
 
   final PendingJobFunding funding;
 
@@ -97,6 +101,12 @@ class CancelOutcome {
   /// Replaces the default confirmation when the discard needs explaining, as
   /// when the server reports the portrait was already delivered.
   final String? note;
+
+  /// Retrying will never succeed, so the card would otherwise sit on the home
+  /// screen forever. The UI offers a manual removal only for these; a
+  /// transient failure must not tempt anyone into throwing the job away when
+  /// waiting would have freed the purchase properly.
+  final bool isPermanent;
 
   bool get succeeded => error == null;
 }
@@ -300,6 +310,7 @@ class PendingJobRecoveryNotifier
       if (job.publicUuid.trim().isEmpty) {
         return const CancelOutcome.failed(
           funding: PendingJobFunding.storePurchase,
+          isPermanent: true,
           error:
               'This purchase was made before the app could move it, so the '
               'portrait was kept. Nothing was lost - contact support and we '
@@ -345,6 +356,23 @@ class PendingJobRecoveryNotifier
     );
   }
 
+  /// Remove a job the app could not free, because the customer asked it to.
+  ///
+  /// Only ever reached after a cancel failed permanently and the user was told
+  /// so in as many words. Protecting the purchase is why cancelJob refuses;
+  /// leaving a card no action can clear is not protection, it is a dead end,
+  /// and the customer is entitled to decide their own home screen. Nothing is
+  /// sent: the purchase lives on the server, and deleting the local row does
+  /// not touch it.
+  Future<void> removeJobAnyway(PendingJob job) async {
+    debugPrint(
+      '[Recovery] user removed unfreeable job ${job.id} '
+      '(payment ${job.paymentSessionId})',
+    );
+    await _discard(job);
+    dropClassification(job.id);
+  }
+
   /// Whether a refused reassign may still discard the portrait.
   ///
   /// Only two refusals mean the money is not at stake: the server saying no
@@ -384,6 +412,7 @@ class PendingJobRecoveryNotifier
       case 'conversation_already_funded':
         return const CancelOutcome.failed(
           funding: PendingJobFunding.storePurchase,
+          isPermanent: true,
           error:
               'We could not move this purchase, so the portrait was kept. '
               'Nothing was lost - contact support and we will move it for you.',

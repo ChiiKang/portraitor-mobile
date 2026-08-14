@@ -40,17 +40,28 @@ class _RecordingNotifier extends PendingJobRecoveryNotifier {
   _RecordingNotifier() : super(api: _NoOpApi());
 
   int cancelCount = 0;
+  int removeAnywayCount = 0;
   final List<String> dropped = [];
   Completer<void>? blockCancel;
+
+  /// What cancelJob answers, so a test can put the card in front of a refusal
+  /// rather than assume how one reads.
+  CancelOutcome outcome = const CancelOutcome.discarded(
+    funding: PendingJobFunding.storePurchase,
+    purchaseKept: true,
+  );
 
   @override
   Future<CancelOutcome> cancelJob(PendingJob job) async {
     cancelCount++;
     if (blockCancel != null) await blockCancel!.future;
-    return const CancelOutcome.discarded(
-      funding: PendingJobFunding.storePurchase,
-      purchaseKept: true,
-    );
+    return outcome;
+  }
+
+  @override
+  Future<void> removeJobAnyway(PendingJob job) async {
+    removeAnywayCount++;
+    dropped.add(job.id);
   }
 
   @override
@@ -313,6 +324,110 @@ void main() {
 
       notifier.blockCancel!.complete();
       await tester.pumpAndSettle();
+    });
+  });
+
+  /// A cancel that cannot free the purchase used to end at a snackbar, which
+  /// left the card on the home screen with no action that could ever clear it.
+  /// Protecting the money is right; making the card immortal was not.
+  group('a cancel the app cannot complete', () {
+    Future<_RecordingNotifier> tapCancel(
+      WidgetTester tester,
+      CancelOutcome outcome,
+    ) async {
+      final notifier = _RecordingNotifier()..outcome = outcome;
+      await tester.pumpWidget(
+        _harness(status: RecoveryStatus.resumable, notifier: notifier),
+      );
+      await tester.tap(find.byKey(const Key('pending_job_cancel_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pending_job_cancel_confirm')));
+      await tester.pumpAndSettle();
+      return notifier;
+    }
+
+    testWidgets('offers a way out when retrying can never work', (tester) async {
+      final notifier = await tapCancel(
+        tester,
+        const CancelOutcome.failed(
+          funding: PendingJobFunding.storePurchase,
+          isPermanent: true,
+          error: 'This purchase was made before the app could move it.',
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('pending_job_remove_anyway_dialog')),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('does not refund or delete your purchase'),
+        findsOneWidget,
+        reason:
+            'the charge stands, and a customer who reads this as a refund '
+            'will not go to support for the money',
+      );
+      expect(
+        notifier.removeAnywayCount,
+        0,
+        reason: 'the second refusal is still the user\'s to make',
+      );
+
+      await tester.tap(
+        find.byKey(const Key('pending_job_remove_anyway_confirm')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(notifier.removeAnywayCount, 1);
+      expect(notifier.dropped, ['conv_resumable']);
+      expect(find.textContaining('Removed from this phone'), findsOneWidget);
+    });
+
+    testWidgets('keeping it removes nothing and still explains why', (
+      tester,
+    ) async {
+      final notifier = await tapCancel(
+        tester,
+        const CancelOutcome.failed(
+          funding: PendingJobFunding.storePurchase,
+          isPermanent: true,
+          error: 'We could not move this purchase.',
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const Key('pending_job_remove_anyway_dismiss')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(notifier.removeAnywayCount, 0);
+      expect(notifier.dropped, isEmpty);
+      expect(
+        find.textContaining('could not move this purchase'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a transient failure is never offered as removable', (
+      tester,
+    ) async {
+      final notifier = await tapCancel(
+        tester,
+        const CancelOutcome.failed(
+          funding: PendingJobFunding.storePurchase,
+          error: 'This purchase is busy finishing a portrait.',
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('pending_job_remove_anyway_dialog')),
+        findsNothing,
+        reason:
+            'waiting frees the purchase properly, so inviting a throwaway '
+            'here would cost the customer a portrait for no reason',
+      );
+      expect(notifier.removeAnywayCount, 0);
+      expect(find.textContaining('busy finishing'), findsOneWidget);
     });
   });
 
