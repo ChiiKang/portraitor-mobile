@@ -332,8 +332,9 @@ Build an adversarial corpus covering multilingual names, usernames, spaced and o
 
 Three, all in the existing design system from `lib/core/theme/tokens.dart`.
 
-1. **Processing screen** - masking as its own visible phase with progress and a cancel path, plus the green confirmation card once it completes.
-2. **Result screen** - the same card, tappable with a chevron, between the hero and the first section.
+1. **Processing screen** - masking as its own visible phase with progress and a cancel path, then the green confirmation card once it completes, tappable.
+2. **Result screen** - the same card, also tappable, between the hero and the first section.
+   Both cards carry a chevron and open the same detail screen. Masking has already finished by the time the processing card appears, so the entities exist and the user is waiting anyway.
 3. **Privacy detail screen** - two tabs. "Transcript" shows the literal masked payload. "What each tag hides" shows the legend, grouped by the seven categories in `CATEGORY_ORDER`, with secrets and account numbers behind an explicit tap to reveal.
 
 No new buttons in the funnel.

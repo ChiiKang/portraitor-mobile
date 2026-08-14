@@ -50,7 +50,7 @@ Step 2, solo. rules.dart, leakage.dart, maskText. Then GlinerOnnxDetector = toke
 
 Step 3, solo. Wire it. Mask before startProcessing. Write the masking job row BEFORE inference and persist the entity map BEFORE the first generation request, or a kill strands paid work. Send the masked target name. Route every outgoing chat through one fail-closed seam that throws rather than send raw text. Un-mask the stream by buffering, since a token can split across SSE chunks. Store the finished portrait UNMASKED.
 
-Step 4, solo. UI, styled from lib/core/theme/tokens.dart: masking as a visible phase with progress, the green confirmation card on the processing screen, the same card tappable on the result screen, and a privacy detail screen with Transcript and "What each tag hides" tabs, seven categories, secrets and accounts tap-to-reveal.
+Step 4, solo. UI, styled from lib/core/theme/tokens.dart: masking as a visible phase with progress, then the green confirmation card on BOTH the processing and result screens, each with a chevron opening the same privacy detail screen: Transcript and "What each tag hides" tabs, seven categories, secrets and accounts tap-to-reveal.
 
 INVARIANTS
 Dates are NOT masked, timestamps stay visible on purpose. account comes from the rules layer, not the model. Precedence rule > chat_structure > model. The leakage backstop never re-masks inside an existing [TOKEN]. Model unavailable means fail closed; call it a credit, never a refund.
