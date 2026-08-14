@@ -9,21 +9,20 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 // ignore: implementation_imports
-import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:portraitor_mobile/src/rust/api/tokenizer.dart';
-import 'package:portraitor_mobile/src/rust/frb_generated.dart';
+import 'package:portraitor_mobile/features/privacy/detector/gliner_onnx_detector.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   test('native tokenizer == browser (byte-identical IDs)', () async {
-    // iOS links the Rust static lib into the executable (-force_load), so load
-    // symbols from the process rather than a separate framework.
-    await RustLib.init(
-      externalLibrary: ExternalLibrary.process(iKnowHowToUseIt: true),
-    );
+    // Loading differs per platform, so go through the same helper production
+    // uses rather than hardcoding one platform's answer here. Hardcoding
+    // process() is exactly what hid the Android failure until this test was
+    // first run on an emulator.
+    await initRustForPlatform();
 
     // Stage the bundled tokenizer.json to a real file path the native side reads.
     final bytes = await rootBundle.load('assets/tokenizer/tokenizer.json');

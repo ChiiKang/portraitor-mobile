@@ -9,7 +9,11 @@
 /// the one that calls [detect] and [dispose]. See `masking_worker.dart`.
 library;
 
+import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_io.dart'
+    show ExternalLibrary;
 
 import '../../../src/rust/api/tokenizer.dart';
 import '../../../src/rust/frb_generated.dart';
@@ -86,7 +90,7 @@ class GlinerOnnxDetector implements SpanDetector {
   @override
   Future<void> load() async {
     if (_loaded) return;
-    await RustLib.init();
+    await initRustForPlatform();
     _tokenizer = GlinerTokenizer.load(tokenizerJsonPath: tokenizerPath);
     await _runner.load(modelPath);
     _loaded = true;
@@ -170,4 +174,33 @@ class GlinerOnnxDetector implements SpanDetector {
     _tokenizer = null;
     await _runner.close();
   }
+}
+
+/// Loads the Rust tokenizer library.
+///
+/// The generated loader config carries `ioDirectory: 'rust/target/release/'`,
+/// which is a DESKTOP build path. iOS gets away with it because the Rust
+/// framework is linked dynamically into the app binary, so the process-wide
+/// symbol lookup finds `frb_*` anyway. Android does not: the library ships as
+/// `lib/<abi>/librust_lib_portraitor_mobile.so` inside the APK, is not loaded
+/// into the process by default, and the lookup fails with
+/// `undefined symbol: frb_get_rust_content_hash`.
+///
+/// Found by running the tokenizer parity test on an emulator, which is the
+/// first time this path had ever executed on Android.
+///
+/// This is the one place a platform branch is justified: it is how the OS
+/// resolves a dynamic library, not application logic.
+Future<void> initRustForPlatform() async {
+  if (RustLib.instance.initialized) return;
+  await RustLib.init(
+    externalLibrary: Platform.isAndroid
+        // Android ships the library as lib/<abi>/librust_lib_portraitor_mobile.so
+        // inside the APK. It is not in the process by default, so it has to be
+        // opened by name.
+        ? ExternalLibrary.open('librust_lib_portraitor_mobile.so')
+        // iOS force-loads the Rust static lib into the executable, so the
+        // symbols are already process-wide. Proven by the tokenizer parity test.
+        : ExternalLibrary.process(iKnowHowToUseIt: true),
+  );
 }
