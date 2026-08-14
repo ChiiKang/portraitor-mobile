@@ -17,7 +17,18 @@ import 'package:portraitor_mobile/features/results/services/portrait_pdf_service
 import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
 import 'package:portraitor_mobile/features/processing/services/demo_portrait_factory.dart';
 
-enum ProcessingStatus { idle, queued, processing, validating, done, error }
+/// [masking] runs entirely on device, before the backend is involved at all.
+/// It is its own status because it can take minutes and nothing is generating
+/// yet, so any copy promising "we'll email it if you leave" is false here.
+enum ProcessingStatus {
+  idle,
+  masking,
+  queued,
+  processing,
+  validating,
+  done,
+  error,
+}
 
 String validationThinkingTextForEvent(SseEvent event) => event.text ?? '';
 
@@ -36,6 +47,14 @@ class ProcessingState {
   final String thinkingPhaseLabel;
   final int estimatedSecondsRemaining;
 
+  /// Inference blocks masked so far, and how many there are in total.
+  final int maskingBlocksDone;
+  final int maskingBlocksTotal;
+
+  /// Occurrences masked, which is what the green card reports. Null until
+  /// masking finishes, so the card can stay hidden rather than showing zero.
+  final int? maskedCount;
+
   const ProcessingState({
     this.status = ProcessingStatus.idle,
     this.chunksCompleted = 0,
@@ -50,6 +69,9 @@ class ProcessingState {
     this.statusMessage = '',
     this.thinkingPhaseLabel = '',
     this.estimatedSecondsRemaining = -1,
+    this.maskingBlocksDone = 0,
+    this.maskingBlocksTotal = 0,
+    this.maskedCount,
   });
 
   ProcessingState copyWith({
@@ -65,6 +87,9 @@ class ProcessingState {
     bool? paymentCaptured,
     String? statusMessage,
     String? thinkingPhaseLabel,
+    int? maskingBlocksDone,
+    int? maskingBlocksTotal,
+    int? maskedCount,
     int? estimatedSecondsRemaining,
   }) {
     return ProcessingState(
@@ -80,6 +105,9 @@ class ProcessingState {
       paymentCaptured: paymentCaptured ?? this.paymentCaptured,
       statusMessage: statusMessage ?? this.statusMessage,
       thinkingPhaseLabel: thinkingPhaseLabel ?? this.thinkingPhaseLabel,
+      maskingBlocksDone: maskingBlocksDone ?? this.maskingBlocksDone,
+      maskingBlocksTotal: maskingBlocksTotal ?? this.maskingBlocksTotal,
+      maskedCount: maskedCount ?? this.maskedCount,
       estimatedSecondsRemaining:
           estimatedSecondsRemaining ?? this.estimatedSecondsRemaining,
     );
