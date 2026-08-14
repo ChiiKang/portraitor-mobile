@@ -46,6 +46,19 @@ int passUseCostFor(FunnelTier tier, int personCount) {
   }
 }
 
+/// When the allowance comes back, or null when the server gave us nothing
+/// readable.
+///
+/// Null rather than a placeholder deliberately: "Refills —" reads as a broken
+/// screen, and a Pass holder who cannot see a date is better served by seeing
+/// no claim at all than by seeing one we cannot stand behind.
+String? passRefillLabel(String? accessUntil) {
+  final parsed =
+      accessUntil == null ? null : DateTime.tryParse(accessUntil)?.toLocal();
+  if (parsed == null) return null;
+  return 'Refills ${DateFormat.yMMMd().format(parsed)}';
+}
+
 /// Step 4/4 — Confirm & pay.
 /// Real builds use the platform-selected native store for every product.
 /// Verified consumables continue to `/processing`; a verified Pass first shows
@@ -169,21 +182,27 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
     return FunnelChrome(
       step: 4,
       title: 'Confirm & pay',
-      lead: 'Review what you’re about to generate.',
+      // A Pass-funded run has no total and no payment step, so the ordinary
+      // "review before you pay" framing describes a screen the holder is not
+      // on.
+      lead:
+          passFunded
+              ? 'This one comes out of your Pass - nothing to pay.'
+              : 'Review what you’re about to generate.',
       ctaLabel:
           showPass
               ? (FunnelTier.pass.canPurchase
                   ? 'Subscribe ${_priceFor(FunnelTier.pass)}'
                   : 'Subscribe — coming soon')
               : freedCredit != null
-                  ? 'Use your paid portrait'
-                  : passFunded
-                      ? 'Use my Pass'
-                      : passChecking
-                          ? 'Checking your Pass…'
-                          : (!kDemoIapPurchase && !privacyReady)
-                              ? 'Preparing privacy filter…'
-                              : 'Pay ${_priceFor(draft.selectedTier)}',
+              ? 'Use your paid portrait'
+              : passFunded
+              ? 'Use my Pass'
+              : passChecking
+              ? 'Checking your Pass…'
+              : (!kDemoIapPurchase && !privacyReady)
+              ? 'Preparing privacy filter…'
+              : 'Pay ${_priceFor(draft.selectedTier)}',
       // The email gates the purchase. The server re-validates it, but letting
       // Opening the store without one would take money we cannot deliver against.
       ctaEnabled:
@@ -213,6 +232,7 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
             showError: _emailTouched && !_emailValid,
             isSubscription: showPass,
             isDemo: kDemoIapPurchase,
+            isPassFunded: passFunded,
             onChanged: (_) => setState(() => _emailTouched = true),
           ),
           if (!kDemoIapPurchase &&
@@ -243,79 +263,95 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
             _PurchaseErrorCard(message: purchaseError),
           ],
           const SizedBox(height: 14),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 280),
-            curve: Curves.easeInOutCubic,
-            child:
-                showPass
-                    ? const SizedBox.shrink()
-                    : Column(
-                      children: [
-                        _SummaryCard(
-                          children: [
-                            _SummaryRow(
-                              label: 'Bundle',
-                              value: draft.selectedTier.label,
-                            ),
-                            _SummaryRow(label: 'Portrait for', value: name),
-                            _SummaryRow(label: 'Messages', value: '$messages'),
-                            if (draft.rangeStart != null &&
-                                draft.rangeEnd != null)
-                              _SummaryRow(
-                                label: 'Range',
-                                value:
-                                    '${_fmt(draft.rangeStart!)} – ${_fmt(draft.rangeEnd!)}',
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.88),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: PortraitorTokens.borderSoft,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // A Pass-funded run shows what the Pass is spending, not what the
+          // customer owes. The bundle summary and the TOTAL card below both
+          // quote money nobody is paying, and the upsell offers a Pass this
+          // person already holds.
+          if (passFunded)
+            _PassFundedSummary(
+              funding: passFundingAsync.value!,
+              portraits: passUseCost,
+              name: name,
+              messages: messages,
+            )
+          else ...[
+            AnimatedSize(
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeInOutCubic,
+              child:
+                  showPass
+                      ? const SizedBox.shrink()
+                      : Column(
+                        children: [
+                          _SummaryCard(
                             children: [
-                              Text(
-                                'TOTAL',
-                                style: PortraitorTokens.labelMd.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.06,
-                                  color: PortraitorTokens.onboardingMuted,
-                                ),
+                              _SummaryRow(
+                                label: 'Bundle',
+                                value: draft.selectedTier.label,
                               ),
-                              Text(
-                                _priceFor(draft.selectedTier),
-                                style: PortraitorTokens.displaySm.copyWith(
-                                  fontSize: 28,
-                                ),
+                              _SummaryRow(label: 'Portrait for', value: name),
+                              _SummaryRow(
+                                label: 'Messages',
+                                value: '$messages',
                               ),
+                              if (draft.rangeStart != null &&
+                                  draft.rangeEnd != null)
+                                _SummaryRow(
+                                  label: 'Range',
+                                  value:
+                                      '${_fmt(draft.rangeStart!)} – ${_fmt(draft.rangeEnd!)}',
+                                ),
                             ],
                           ),
-                        ),
-                        const SizedBox(height: 14),
-                      ],
-                    ),
-          ),
-          _PassInsteadCard(
-            priceCaption:
-                kDemoIapPurchase
-                    ? '\$50/month · Coming soon'
-                    : '${_priceFor(FunnelTier.pass)}/month',
-            detailsCaption:
-                kDemoIapPurchase
-                    ? 'Monthly · \$50/mo · $passPortraitLabel'
-                    : 'Monthly · ${_priceFor(FunnelTier.pass)}/month · '
-                        '$passPortraitLabel',
-            open: showPass,
-            onToggle: () => setState(() => _passOpen = !_passOpen),
-            onShowOneOff: () => setState(() => _passOpen = false),
-          ),
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.88),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: PortraitorTokens.borderSoft,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'TOTAL',
+                                  style: PortraitorTokens.labelMd.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.06,
+                                    color: PortraitorTokens.onboardingMuted,
+                                  ),
+                                ),
+                                Text(
+                                  _priceFor(draft.selectedTier),
+                                  style: PortraitorTokens.displaySm.copyWith(
+                                    fontSize: 28,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                        ],
+                      ),
+            ),
+            _PassInsteadCard(
+              priceCaption:
+                  kDemoIapPurchase
+                      ? '\$50/month · Coming soon'
+                      : '${_priceFor(FunnelTier.pass)}/month',
+              detailsCaption:
+                  kDemoIapPurchase
+                      ? 'Monthly · \$50/mo · $passPortraitLabel'
+                      : 'Monthly · ${_priceFor(FunnelTier.pass)}/month · '
+                          '$passPortraitLabel',
+              open: showPass,
+              onToggle: () => setState(() => _passOpen = !_passOpen),
+              onShowOneOff: () => setState(() => _passOpen = false),
+            ),
+          ],
         ],
       ),
     );
@@ -749,6 +785,198 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
   String _fmt(DateTime d) => DateFormat('MMM yyyy').format(d);
 }
 
+/// What a Pass-funded run costs the customer: nothing.
+///
+/// Replaces the bundle summary and the TOTAL card, both of which quote a price
+/// this run does not charge. What a holder needs instead is the state of the
+/// allowance they are about to spend from.
+class _PassFundedSummary extends StatelessWidget {
+  const _PassFundedSummary({
+    required this.funding,
+    required this.portraits,
+    required this.name,
+    required this.messages,
+  });
+
+  final PassFunding funding;
+
+  /// Portraits this run generates, which is also the uses it costs.
+  final int portraits;
+  final String name;
+  final int messages;
+
+  /// Segment fill for a use already spent. Matches the profile screen's bar -
+  /// the same allowance drawn two ways would read as two different numbers.
+  static const _segmentUsed = Color(0xFFD7D6E4);
+
+  /// Light purple wash behind the "included" pill.
+  static const _passTint = Color(0xFFEDE7FF);
+
+  @override
+  Widget build(BuildContext context) {
+    // A pool the server reports as smaller than what is left is not a pool we
+    // can draw, so the remaining count wins rather than rendering a bar with
+    // more filled segments than it has.
+    final total =
+        funding.usesTotal > funding.usesRemaining
+            ? funding.usesTotal
+            : funding.usesRemaining;
+    final remaining = funding.usesRemaining;
+    final used = (total - remaining).clamp(0, total);
+    final refill = passRefillLabel(funding.accessUntil);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Sized to its content, so it reads as a badge rather than a banner.
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Container(
+            key: const ValueKey('confirm-pass-chip'),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: _passTint,
+              borderRadius: BorderRadius.circular(PortraitorTokens.radiusPill),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.check_rounded,
+                  size: 16,
+                  color: PortraitorTokens.onboardingPrimary,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'INCLUDED IN YOUR PASS',
+                    overflow: TextOverflow.ellipsis,
+                    style: PortraitorTokens.labelSm.copyWith(
+                      fontSize: 12,
+                      letterSpacing: 0.6,
+                      color: PortraitorTokens.onboardingPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          key: const ValueKey('confirm-pass-allowance'),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.88),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: PortraitorTokens.borderSoft),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: '$remaining',
+                            style: PortraitorTokens.displaySm.copyWith(
+                              color: PortraitorTokens.onboardingInk,
+                            ),
+                          ),
+                          TextSpan(text: ' of $total portraits left'),
+                        ],
+                      ),
+                      key: const ValueKey('confirm-pass-remaining'),
+                      style: PortraitorTokens.bodyMd.copyWith(
+                        color: PortraitorTokens.onboardingInk,
+                      ),
+                    ),
+                  ),
+                  if (refill != null) ...[
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        refill,
+                        key: const ValueKey('confirm-pass-refill'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                        style: PortraitorTokens.bodySm.copyWith(
+                          color: PortraitorTokens.onboardingMuted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: List.generate(total, (index) {
+                  return Expanded(
+                    child: Container(
+                      key: ValueKey('confirm-pass-segment-$index'),
+                      height: 10,
+                      margin: EdgeInsets.only(
+                        right: index == total - 1 ? 0 : 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            index < remaining
+                                ? PortraitorTokens.onboardingPrimary
+                                : _segmentUsed,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '$used used this cycle · shared pool',
+                key: const ValueKey('confirm-pass-cycle'),
+                style: PortraitorTokens.bodySm.copyWith(
+                  color: PortraitorTokens.onboardingMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          key: const ValueKey('confirm-pass-generating'),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: PortraitorTokens.surfaceMuted,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          // One wrapping Text rather than a Row: the subject's name is
+          // arbitrary length and a Row would clip it.
+          child: Text.rich(
+            TextSpan(
+              children: [
+                const TextSpan(text: 'Generating '),
+                TextSpan(
+                  text:
+                      '$portraits ${portraits == 1 ? 'portrait' : 'portraits'}',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                TextSpan(text: ' - $name · $messages messages'),
+              ],
+            ),
+            style: PortraitorTokens.bodySm.copyWith(
+              color: PortraitorTokens.onboardingInkSoft,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _PassInsteadCard extends StatelessWidget {
   const _PassInsteadCard({
     required this.open,
@@ -986,12 +1214,18 @@ class _DeliveryEmailField extends StatelessWidget {
     required this.isSubscription,
     required this.isDemo,
     required this.onChanged,
+    this.isPassFunded = false,
   });
 
   final TextEditingController controller;
   final bool showError;
   final bool isSubscription;
   final bool isDemo;
+
+  /// A held Pass is paying, so the address delivers this one portrait and is
+  /// attached to nothing. Saying so answers the question a holder actually has
+  /// - why they are being asked for an email again at all.
+  final bool isPassFunded;
   final ValueChanged<String> onChanged;
 
   @override
@@ -999,9 +1233,11 @@ class _DeliveryEmailField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
-          'Where should we send it?',
-          style: TextStyle(
+        Text(
+          isPassFunded
+              ? 'Delivery email · for this portrait only'
+              : 'Where should we send it?',
+          style: const TextStyle(
             fontFamily: PortraitorTokens.fontFamily,
             fontSize: 15,
             fontWeight: FontWeight.w600,
@@ -1024,7 +1260,9 @@ class _DeliveryEmailField extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          isDemo
+          isPassFunded
+              ? 'Used to deliver this portrait. Never saved to your Pass.'
+              : isDemo
               ? 'Demo mode does not charge or send email. This address only '
                   'lets you preview the complete checkout flow.'
               : isSubscription
