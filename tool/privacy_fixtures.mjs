@@ -249,6 +249,51 @@ for (const { name, text, spans } of fake.cases) {
   });
 }
 
+// The leakage backstop runs on ALREADY-MASKED text, so it is fed the real
+// first-pass output rather than raw chat, plus texts that deliberately place a
+// leak next to a token to exercise the token guard.
+const { applyLeakageBackstop } = await load(
+  "pipeline/leakage.ts",
+  ".fixtures.leakage.mjs",
+);
+
+const leakageCases = pseudoCases.map((c) => {
+  const result = applyLeakageBackstop(c.applied, c.map);
+  return {
+    name: c.name,
+    maskedText: c.applied,
+    existingMap: c.map,
+    text: result.text,
+    leaks: jsonOf(result.leaks),
+    map: jsonOf(result.map),
+    spans: jsonOf(result.spans),
+  };
+});
+
+for (const [name, maskedText, existingMap] of [
+  ["guard_leak_inside_token", "[EMAIL1] and [ACCOUNT12] stay put", {}],
+  ["guard_leak_beside_token", "[PERSON1] mail a@b.com now", {}],
+  ["guard_no_leak", "[PERSON1] said hello to [PERSON2]", {}],
+  ["numbering_continues", "reach me at x@y.co", { "private_email:old@z.co": "[EMAIL7]" }],
+  ["token_adjacent_no_space", "[PERSON1]a@b.com", {}],
+]) {
+  const result = applyLeakageBackstop(maskedText, existingMap);
+  leakageCases.push({
+    name,
+    maskedText,
+    existingMap,
+    text: result.text,
+    leaks: jsonOf(result.leaks),
+    map: jsonOf(result.map),
+    spans: jsonOf(result.spans),
+  });
+}
+
+writeFileSync(
+  resolve(repoRoot, "test/golden/leakage_cases.json"),
+  JSON.stringify({ cases: leakageCases }, null, 2) + "\n",
+);
+
 writeFileSync(
   resolve(repoRoot, "test/golden/names_cases.json"),
   JSON.stringify({ cases: namesCases }, null, 2) + "\n",
@@ -267,6 +312,7 @@ console.log(`mask_cases.json           ${maskCases.length} cases`);
 console.log(`highrisk_cases.json       ${structuralTexts.length} cases`);
 console.log(`chatstructure_cases.json  ${structuralTexts.length} cases`);
 console.log(`names_cases.json          ${namesCases.length} cases`);
+console.log(`leakage_cases.json        ${leakageCases.length} cases`);
 console.log(`spans_cases.json          ${spansCases.length} cases`);
 console.log(`pseudonymize_cases.json   ${pseudoCases.length} cases`);
 for (const c of maskCases) {

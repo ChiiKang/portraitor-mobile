@@ -1,0 +1,207 @@
+{
+  "cases": [
+    {
+      "name": "smoke",
+      "maskedText": "[27/11/2025, 9:20:00 AM] [PERSON1]: hi [PERSON2], my link is [URL1]\n[27/11/2025, 9:21:00 AM] [PERSON2]: thanks [PERSON1]! email me at [EMAIL1]",
+      "existingMap": {
+        "private_person:natalia": "[PERSON1]",
+        "private_person:michael": "[PERSON2]",
+        "private_url:https://x.io/a": "[URL1]",
+        "private_email:a@b.com": "[EMAIL1]"
+      },
+      "text": "[27/11/2025, 9:20:00 AM] [PERSON1]: hi [PERSON2], my link is [URL1]\n[27/11/2025, 9:21:00 AM] [PERSON2]: thanks [PERSON1]! email me at [EMAIL1]",
+      "leaks": [],
+      "map": {
+        "private_person:natalia": "[PERSON1]",
+        "private_person:michael": "[PERSON2]",
+        "private_url:https://x.io/a": "[URL1]",
+        "private_email:a@b.com": "[EMAIL1]"
+      },
+      "spans": []
+    },
+    {
+      "name": "propagation_repeat",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: morning\n[01/02/2025, 10:01:00 AM] [PERSON2]: hi [PERSON1]\n[01/02/2025, 10:02:00 AM] [PERSON1]: [PERSON1] again, and [PERSON1] once more",
+      "existingMap": {
+        "private_person:emma": "[PERSON1]",
+        "private_person:james": "[PERSON2]"
+      },
+      "text": "[01/02/2025, 10:00:00 AM] [PERSON1]: morning\n[01/02/2025, 10:01:00 AM] [PERSON2]: hi [PERSON1]\n[01/02/2025, 10:02:00 AM] [PERSON1]: [PERSON1] again, and [PERSON1] once more",
+      "leaks": [],
+      "map": {
+        "private_person:emma": "[PERSON1]",
+        "private_person:james": "[PERSON2]"
+      },
+      "spans": []
+    },
+    {
+      "name": "literal_token_in_source",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: the placeholder [PERSON1] is literally in this chat\n[01/02/2025, 10:01:00 AM] [PERSON1]: ok",
+      "existingMap": {
+        "private_person:ana": "[PERSON1]"
+      },
+      "text": "[01/02/2025, 10:00:00 AM] [PERSON1]: the placeholder [PERSON1] is literally in this chat\n[01/02/2025, 10:01:00 AM] [PERSON1]: ok",
+      "leaks": [],
+      "map": {
+        "private_person:ana": "[PERSON1]"
+      },
+      "spans": []
+    },
+    {
+      "name": "leak_adjacent_to_token",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: mail me [EMAIL1] now\n[01/02/2025, 10:01:00 AM] [PERSON1]: IBAN [ACCOUNT1] ok",
+      "existingMap": {
+        "private_person:bob": "[PERSON1]",
+        "private_email:bob@example.com": "[EMAIL1]",
+        "account_number:gb29nwbk60161331926819": "[ACCOUNT1]"
+      },
+      "text": "[01/02/2025, 10:00:00 AM] [PERSON1]: mail me [EMAIL1] now\n[01/02/2025, 10:01:00 AM] [PERSON1]: IBAN [ACCOUNT1] ok",
+      "leaks": [],
+      "map": {
+        "private_person:bob": "[PERSON1]",
+        "private_email:bob@example.com": "[EMAIL1]",
+        "account_number:gb29nwbk60161331926819": "[ACCOUNT1]"
+      },
+      "spans": []
+    },
+    {
+      "name": "cjk_and_cyrillic",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: hello\n[01/02/2025, 10:01:00 AM] [PERSON2]: hi [PERSON1]",
+      "existingMap": {
+        "private_person:绍陞": "[PERSON1]",
+        "private_person:наталия": "[PERSON2]"
+      },
+      "text": "[01/02/2025, 10:00:00 AM] [PERSON1]: hello\n[01/02/2025, 10:01:00 AM] [PERSON2]: hi [PERSON1]",
+      "leaks": [],
+      "map": {
+        "private_person:绍陞": "[PERSON1]",
+        "private_person:наталия": "[PERSON2]"
+      },
+      "spans": []
+    },
+    {
+      "name": "emoji_offsets",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: 🎉🎉 party with [PERSON1]\n[01/02/2025, 10:01:00 AM] [PERSON1]: 👍 ok",
+      "existingMap": {
+        "private_person:zoe": "[PERSON1]"
+      },
+      "text": "[01/02/2025, 10:00:00 AM] [PERSON1]: 🎉🎉 party with [PERSON1]\n[01/02/2025, 10:01:00 AM] [PERSON1]: 👍 ok",
+      "leaks": [],
+      "map": {
+        "private_person:zoe": "[PERSON1]"
+      },
+      "spans": []
+    },
+    {
+      "name": "accented_name",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: hi\n[01/02/2025, 10:01:00 AM] [PERSON2]: different person",
+      "existingMap": {
+        "private_person:björn": "[PERSON1]",
+        "private_person:bjorn": "[PERSON2]"
+      },
+      "text": "[01/02/2025, 10:00:00 AM] [PERSON1]: hi\n[01/02/2025, 10:01:00 AM] [PERSON2]: different person",
+      "leaks": [],
+      "map": {
+        "private_person:björn": "[PERSON1]",
+        "private_person:bjorn": "[PERSON2]"
+      },
+      "spans": []
+    },
+    {
+      "name": "guard_leak_inside_token",
+      "maskedText": "[EMAIL1] and [ACCOUNT12] stay put",
+      "existingMap": {},
+      "text": "[EMAIL1] and [ACCOUNT12] stay put",
+      "leaks": [],
+      "map": {},
+      "spans": []
+    },
+    {
+      "name": "guard_leak_beside_token",
+      "maskedText": "[PERSON1] mail a@b.com now",
+      "existingMap": {},
+      "text": "[PERSON1] mail [EMAIL1] now",
+      "leaks": [
+        {
+          "label": "private_email",
+          "value": "a@b.com"
+        }
+      ],
+      "map": {
+        "private_email:a@b.com": "[EMAIL1]"
+      },
+      "spans": [
+        {
+          "label": "private_email",
+          "text": "a@b.com",
+          "start": 15,
+          "end": 22,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "name": "guard_no_leak",
+      "maskedText": "[PERSON1] said hello to [PERSON2]",
+      "existingMap": {},
+      "text": "[PERSON1] said hello to [PERSON2]",
+      "leaks": [],
+      "map": {},
+      "spans": []
+    },
+    {
+      "name": "numbering_continues",
+      "maskedText": "reach me at x@y.co",
+      "existingMap": {
+        "private_email:old@z.co": "[EMAIL7]"
+      },
+      "text": "reach me at [EMAIL8]",
+      "leaks": [
+        {
+          "label": "private_email",
+          "value": "x@y.co"
+        }
+      ],
+      "map": {
+        "private_email:old@z.co": "[EMAIL7]",
+        "private_email:x@y.co": "[EMAIL8]"
+      },
+      "spans": [
+        {
+          "label": "private_email",
+          "text": "x@y.co",
+          "start": 12,
+          "end": 18,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "name": "token_adjacent_no_space",
+      "maskedText": "[PERSON1]a@b.com",
+      "existingMap": {},
+      "text": "[PERSON1][EMAIL1]",
+      "leaks": [
+        {
+          "label": "private_email",
+          "value": "a@b.com"
+        }
+      ],
+      "map": {
+        "private_email:a@b.com": "[EMAIL1]"
+      },
+      "spans": [
+        {
+          "label": "private_email",
+          "text": "a@b.com",
+          "start": 9,
+          "end": 16,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    }
+  ]
+}
