@@ -41,13 +41,29 @@ Divergence means a mobile portrait reads differently from a web portrait of the 
 | Token format | `[PERSON1]`, `[EMAIL1]`, numbered per category in first-appearance order | `pseudonymize.ts` |
 | UI categories (7) | `person`, `email`, `phone`, `address`, `url`, `secret`, `account` | `CATEGORY_ORDER` |
 | Entity shape | `{ token, type, value, count, you }`, where `you` drives the YOU badge | `MaskEntity` |
-| Span precedence | `rule (3) > chat_structure (2) > model (1)`, ties by length then score | `spans.ts` |
+| Span precedence | `rule (3) > chat_structure (2) > model (1)`, but see the score-clause note below | `spans.ts` |
 | Error stages | `download`, `init`, `inference`, `empty` | `StageError` |
 | Admin kill-switch | `privacy_filtering_enabled`, `NULL` means enabled | migration `045` |
 | Mobile config | `ui.privacyFilteringEnabled`, already projected to mobile, default true | `MobileConfigProjector.php:66` |
 | Target name | Sent as the **token**, not the real name, via `maskTargetName()` | `app.js:1438` |
 | Send seam | `getOutgoingText()`, throws rather than sending raw text | `app.js:6913` |
 | Stored output | **Un-masked**, once generation completes | `app.js:1466` |
+
+### The score clause escapes the precedence order
+
+Confirmed by reading `spans.ts` during the port, and it contradicts how the precedence is usually described.
+
+`shouldReplace` is a three-way OR, and its third disjunct carries **no priority check**:
+
+```ts
+((span.score ?? 0) > (existing.score ?? 0) && spanLength >= existingLength)
+```
+
+So a `model` span with score 0.8 displaces an equal-length `rule` span with score 0.2, even though the file's own comment says rule beats structure beats model.
+Rule spans are emitted with score 1 in the leakage backstop but often with no score at all in the first pass, where `?? 0` then makes them lose to any scored model span of the same length.
+
+This is shipped behaviour on web and the Dart port reproduces it exactly.
+Do not "fix" it in the port; if it should change, it has to change on both platforms together, with the goldens re-captured.
 
 Note that `account` is **not** a GLiNER label.
 It comes from the authoritative rules layer in `highRisk.ts`, which detects IBANs, sort codes, routing numbers, national IDs and Luhn-checked card numbers.
