@@ -441,6 +441,24 @@ Options when the mechanism is revisited:
 2. **Send the un-masked portrait back for emailing.** Best email, but puts real names on the server and undercuts the feature. Not recommended.
 3. **Deliver from the device.** Attach the un-masked PDF the app already renders locally. Preserves the guarantee, more work, less reliable delivery.
 
+## Outstanding
+
+Everything in phases 1 to 6 is built, committed and verified. What follows is deliberately not done, with the reason. Nothing here blocks masking from working.
+
+**Backup exclusion.** `ModelRepository.excludeFromBackup` is a no-op seam. Completing it needs a native call this layer cannot make: `NSURLIsExcludedFromBackupKey` over a MethodChannel on iOS, or an `android:dataExtractionRules` entry on Android. Until then a device backup can carry 175 MB. A hygiene problem, not a correctness one, since version and integrity checks still gate use.
+
+**Entities are not stored alongside the conversation.** The privacy card and detail screen are offered only while the mask session is live, so a portrait reopened in a later run shows no card rather than a broken one. Fixing it means persisting the entity map against the conversation, which is the retention decision this plan deliberately leaves open: that map holds the exact secrets the feature exists to protect, so keeping it needs encryption at rest and a backup policy.
+
+**The emailed portrait still contains tokens.** Deferred by CK on 2026-08-14. See the section above. The copy fix is the part that should not wait.
+
+**Latency and peak RSS are unmeasured on real hardware.** The numbers in the Performance section come from the spike on an iPhone 13 Pro under ORT 1.24.2. This build resolves ORT 1.23.0, so those figures are not pre-validated. The end-to-end test proves correctness, not speed, and it uses a two-line chat.
+
+**Leak testing is still circular.** The backstop and the test that validates it share the same regex family, so it cannot find what both the rules and the model miss. This needs the independent adversarial corpus described in phase 7.
+
+**Non-Latin names get one layer of protection instead of two.** `isMaskableName` covers Latin, CJK, kana and Hangul only; `NAME_LIKE` stops at U+0150; and GLiNER's own word splitter shatters non-ASCII into single code units because `\w` is ASCII-only. All three are shipped web behaviour and are reproduced deliberately. Changing any of them means changing `portraitor_v3` first and re-capturing every golden, or the platforms diverge.
+
+**Android has not run on a real device.** The emulator is arm64-v8a, the same slice a phone uses, and masking works there. What is untested is memory headroom on a 3-4 GB device and thermal behaviour over a long chat.
+
 ## Known risks
 
 Android has never been run.
