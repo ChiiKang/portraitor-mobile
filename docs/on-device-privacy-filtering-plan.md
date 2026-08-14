@@ -138,7 +138,7 @@ The hard part, running a transformer on a phone, is solved and proven on device.
 | GLiNER decode, logits to spans | `gliner_decode.dart`, 3 golden tests | Reuse, re-verify against the fine-tune |
 | GLiNER span tensors | `gliner_encode.dart`, 4 golden tests | Reuse |
 | Chunking and inference planning | `planInferenceUnits`, 800-char units | Keep the bound, regroup into blocks |
-| Masking pipeline | `mask_pipeline.dart`, propagate/fold/maskDocument | Superseded by v3's seven modules |
+| Masking pipeline | `mask_pipeline.dart`, propagate/fold/maskDocument | Superseded by v3's eight modules |
 | Golden parity corpus | Captured against stock `gliner_small-v2` | Re-capture against the fine-tune |
 
 The spike ported `maskPipeline.js`, a propagate/fold/absorb design with placeholder tags.
@@ -243,7 +243,8 @@ The pure-Dart tier is the majority of the effort, needs no hardware, and is the 
 
 ### Phase 1 - the pure-Dart tier
 
-Port v3's seven pipeline modules plus the `maskText` orchestrator: `highRisk`, `rules`, `chatStructure`, `names`, `spans`, `pseudonymize`, `leakage`.
+Port v3's eight pipeline modules plus the `maskText` orchestrator: `highRisk`, `rules`, `labels`, `chatStructure`, `names`, `spans`, `pseudonymize`, `leakage`.
+Note that `rules.ts` and `highRisk.ts` import each other, so the shared types have to be split into their own file to break the cycle in Dart.
 Test against a fake detector, with golden fixtures.
 
 The risk is regex semantics, not transliteration.
