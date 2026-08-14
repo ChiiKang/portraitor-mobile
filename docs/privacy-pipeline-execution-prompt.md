@@ -1,7 +1,7 @@
 # Execution prompt - privacy pipeline (phase 1)
 
-> **Superseded by [`privacy-execution-prompt.md`](privacy-execution-prompt.md)**, which ships the whole
-> feature in one run. Keep this one as the smaller, safer option if the full run stalls on the native tier.
+> **Run and complete** on `feat/privacy-pipeline` (2026-08-14). Kept as the record of what phase 1 covered.
+> The next run is [`privacy-execution-prompt.md`](privacy-execution-prompt.md), phases 2 to 6.
 
 Paste this into a fresh session to start the work.
 Scoped to phase 1 of [`on-device-privacy-filtering-plan.md`](on-device-privacy-filtering-plan.md): the pure-Dart masking pipeline.
