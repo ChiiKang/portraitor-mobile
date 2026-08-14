@@ -8,6 +8,9 @@ import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/processing/application/processing_provider.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
+import 'package:portraitor_mobile/features/privacy/presentation/privacy_detail_screen.dart';
+import 'package:portraitor_mobile/features/privacy/presentation/privacy_masked_card.dart';
+import 'package:portraitor_mobile/features/privacy/privacy_providers.dart';
 import 'package:portraitor_mobile/shared/widgets/markdown_text.dart';
 import 'package:portraitor_mobile/shared/widgets/gradient_background.dart';
 import 'package:portraitor_mobile/shared/widgets/gradient_button.dart';
@@ -204,11 +207,43 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
                         ),
                       ),
                     const SizedBox(height: PortraitorTokens.space32),
-                    _ProgressSection(
-                      chunksCompleted: processing.chunksCompleted,
-                      chunksTotal: processing.chunksTotal,
-                      percentage: processing.percentage,
-                    ),
+                    if (processing.status == ProcessingStatus.masking)
+                      _ProgressSection(
+                        chunksCompleted: processing.maskingBlocksDone,
+                        chunksTotal: processing.maskingBlocksTotal,
+                        percentage: processing.maskingBlocksTotal == 0
+                            ? 0
+                            : processing.maskingBlocksDone /
+                                  processing.maskingBlocksTotal,
+                      )
+                    else
+                      _ProgressSection(
+                        chunksCompleted: processing.chunksCompleted,
+                        chunksTotal: processing.chunksTotal,
+                        percentage: processing.percentage,
+                      ),
+                    // Appears the moment masking finishes and stays for the
+                    // rest of the run, so the reassurance is on screen during
+                    // the wait rather than only at the end.
+                    if (processing.maskedCount case final n?) ...[
+                      const SizedBox(height: PortraitorTokens.space16),
+                      PrivacyMaskedCard(
+                        maskedCount: n,
+                        onTap: () {
+                          final session = ref.read(privacyFilterSessionProvider);
+                          if (session == null) return;
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => PrivacyDetailScreen(
+                                maskedText: session.maskedText,
+                                entities: session.entities,
+                                youName: widget.targetName,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                     const SizedBox(height: PortraitorTokens.space24),
                     Expanded(
                       flex: 3,

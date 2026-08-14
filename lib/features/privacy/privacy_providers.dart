@@ -80,3 +80,11 @@ Future<PrivacyFilterService> buildPrivacyFilterService({
     ),
   );
 }
+
+/// The mask for the conversation currently being generated, if any.
+///
+/// Null once the portrait is stored un-masked, or in a later app run, which is
+/// why the privacy card is only offered while the session is live.
+final privacyFilterSessionProvider = StateProvider<PrivacyMaskSession?>(
+  (ref) => null,
+);

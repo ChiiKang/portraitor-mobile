@@ -294,6 +294,10 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
     );
 
     _privacy = service;
+    // Publish the session so the result screen can offer the detail view. It is
+    // cleared once the portrait is stored un-masked, because from then on the
+    // map is not needed to render it.
+    _ref.read(privacyFilterSessionProvider.notifier).state = session;
 
     state = state.copyWith(
       maskedCount: session.maskedCount,

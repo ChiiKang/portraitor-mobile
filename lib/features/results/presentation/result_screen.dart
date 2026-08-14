@@ -8,6 +8,10 @@ import 'package:share_plus/share_plus.dart' show Share, XFile;
 
 import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
+import 'package:portraitor_mobile/features/privacy/presentation/privacy_detail_screen.dart';
+import 'package:portraitor_mobile/features/privacy/presentation/privacy_masked_card.dart';
+import 'package:portraitor_mobile/features/privacy/privacy_providers.dart';
+import 'package:portraitor_mobile/features/processing/application/processing_provider.dart';
 import 'package:portraitor_mobile/features/results/services/portrait_pdf_service.dart';
 import 'package:portraitor_mobile/shared/widgets/ghost_button.dart';
 import 'package:portraitor_mobile/shared/widgets/gradient_background.dart';
@@ -239,6 +243,21 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                         ),
                       ),
                     ),
+                    // Sits between the hero and the portrait so the first thing
+                    // after "here is your portrait" is what was protected to
+                    // make it. Only shown when a mask actually ran.
+                    if (ref.watch(processingProvider).maskedCount case final n?)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                          child: PrivacyMaskedCard(
+                            maskedCount: n,
+                            subtitle:
+                                'Done on this device - see what we sent',
+                            onTap: () => _openPrivacyDetail(context, ref, name),
+                          ),
+                        ),
+                      ),
                     // One card, the whole portrait, always laid out the same
                     // way. Nothing is collapsed: a reader who paid for this
                     // should not have to tap to see what they bought.
@@ -361,3 +380,23 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
   }
 }
 
+/// Opens "Exactly what we sent" for the portrait just generated.
+///
+/// Reads the live mask session rather than storage. Once the portrait is stored
+/// un-masked the map is no longer needed to render it, so this entry point is
+/// only meaningful for the conversation still in flight; a portrait reopened in
+/// a later run has no session and shows no card.
+void _openPrivacyDetail(BuildContext context, WidgetRef ref, String name) {
+  final session = ref.read(privacyFilterSessionProvider);
+  if (session == null) return;
+
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => PrivacyDetailScreen(
+        maskedText: session.maskedText,
+        entities: session.entities,
+        youName: name,
+      ),
+    ),
+  );
+}
