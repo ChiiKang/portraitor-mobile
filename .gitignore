@@ -78,3 +78,6 @@ docs/superpowers/specs/2026-06-03-whatsapp-import-flow-design.md
 
 # Lavish review artifacts (local review surfaces, not source)
 .lavish/
+
+# Local agent session artifacts (codex session ids, etc)
+.context/
