@@ -119,6 +119,94 @@ The spike ported `maskPipeline.js`, a propagate/fold/absorb design with placehol
 v3 ships something structurally different: a rules-first pass with explicit source precedence, a language-independent chat-structure detector for CJK names and acronyms, numbered `[PERSON1]` pseudonyms, and a second fail-closed scan of the masked output.
 Keeping the old shape would produce different masked text for the same chat.
 
+## Architecture: keep Android a plug-in, not a port
+
+Android is coming after iOS, so the platform boundary is designed in from the start rather than discovered later.
+
+### The good news
+
+Most of the runtime tier is already platform-neutral, which was not obvious until checked:
+
+- **The execution provider is already portable.** The spike runs `OrtProvider.XNNPACK, OrtProvider.CPU` and deliberately does not enable CoreML or NNAPI. XNNPACK works on both platforms, so there is no per-platform inference path to write.
+- **`flutter_onnxruntime` is a normal Flutter plugin** and supports both platforms.
+- **cargokit already builds the Rust tokenizer for Android.** `rust_builder/android/build.gradle` and `settings.gradle` exist on the spike branch alongside the iOS podspec.
+- **`_defaultModelPath()` already branches per platform**, so the idea of a platform-resolved model location is present, just not productionised.
+
+Resist the temptation to switch to CoreML on iOS for speed.
+It would buy a per-platform inference path, a second set of parity results, and the linker problem the Podfile note already describes.
+XNNPACK is the portable choice and it is the one that was measured.
+
+### One seam, and only one
+
+Everything above the model runtime is pure Dart and runs identically on both platforms.
+The single abstraction Android plugs into is the detector.
+
+```dart
+/// The only thing a platform has to satisfy.
+abstract interface class SpanDetector {
+  Future<void> load();
+  Future<List<DetectedSpan>> detect(List<String> texts); // batched, block strategy
+  Future<void> dispose();
+}
+```
+
+`PrivacyFilterService` already takes an injected detector, so this is formalising the shape the spike chose rather than inventing one.
+
+### Layout
+
+```
+lib/features/privacy/
+  pipeline/                  pure Dart, ZERO platform imports
+    high_risk.dart  rules.dart  chat_structure.dart  names.dart
+    spans.dart  pseudonymize.dart  leakage.dart  mask_text.dart
+  detector/
+    span_detector.dart       the seam (abstract)
+    gliner_onnx_detector.dart the only file that touches ONNX or the tokenizer
+    mock_detector.dart       host tests
+  model/
+    model_repository.dart    download, verify, install (platform-neutral logic)
+    model_storage.dart       SEAM: where the file lives, backup exclusion
+  device/
+    device_capability.dart   SEAM: RAM and thermal gating
+  privacy_filter_service.dart
+  presentation/              UI, platform-neutral
+```
+
+### The rule that keeps it honest
+
+**No `Platform.isAndroid` or `Platform.isIOS` anywhere outside `model_storage.dart` and `device_capability.dart`.**
+
+Worth enforcing with a test that greps `lib/features/privacy/pipeline/` and `detector/` for `dart:io` platform checks and fails if any appear.
+A rule nobody can accidentally break is worth more than a convention in a document.
+
+### Why this makes Android cheap
+
+The correctness surface is entirely in the pure-Dart tier, so the golden parity corpus runs on the host with no device at all.
+When Android arrives, masking correctness is already proven and cannot differ, because it is literally the same code executing the same tests.
+
+That reduces the Android task to runtime gates only:
+
+| Question | Needs a device? |
+|---|---|
+| Does masked output match the golden corpus? | No, host test, already passing |
+| Do the regexes behave identically? | No, host test |
+| Is the un-mask and storage path correct? | No, host test |
+| Does the Rust tokenizer load and tokenize identically? | Yes |
+| Does the ONNX session open and run? | Yes |
+| Latency and peak RSS within budget? | Yes |
+| Does a 3-4 GB device survive a 592 MB resident model? | Yes |
+
+### The three platform seams, stated plainly
+
+1. **Model storage.** iOS uses the documents or application support directory and must exclude the 175 MB file from iCloud backup. Android uses app-private external files and must keep it out of `android:allowBackup`. Same interface, two implementations.
+2. **Device capability.** 592 MB resident is comfortable on a 6 GB iPhone and marginal on a 3-4 GB Android. The gate reads available RAM and decides whether to proceed, and it is the natural place to hang the fail-closed behaviour on a device that cannot run the model.
+3. **Build configuration.** The iOS Podfile mixed static and dynamic linkage fix is iOS-only. Android needs its NDK toolchain wired for cargokit. Neither leaks into Dart.
+
+### Sequencing note
+
+Build the pure-Dart tier first and test it on the host, before any device work.
+It is the majority of the effort, it needs no hardware, and it is the part that must be identical on both platforms.
+
 ## Build phases
 
 ### Phase 1 - lift the runtime tier off the spike
@@ -184,9 +272,18 @@ Touches `storage_service.dart`, `runtime_config_provider.dart`, `result_screen.d
 
 ### Phase 6 - parity gates on real hardware
 
-Re-capture the golden corpus from the v3 fine-tune through v3's pipeline, then require mobile to reproduce it exactly, quirks included.
+Split the gates the way the architecture splits, so Android repeats only the second half.
+
+**Host gates, no device, run in CI.**
+Re-capture the golden corpus from the v3 fine-tune through v3's pipeline, then require the pure-Dart tier to reproduce it exactly, quirks included.
 Add a leak assertion: no regex-detectable contact detail, secret or account number survives in the payload.
-Run on iPhone and on a mid-range Android.
+Add the platform-purity check that fails if `dart:io` platform branching appears in `pipeline/` or `detector/`.
+These pass once and hold for every platform, because it is the same code.
+
+**Device gates, per platform.**
+Tokenizer parity, ONNX session opens and runs, end-to-end latency, peak RSS, and behaviour under memory pressure.
+Run on iPhone first, then on a mid-range Android when the device arrives.
+Only this half is repeated per platform.
 
 ## UI surfaces
 
@@ -272,6 +369,10 @@ The portrait is already stored un-masked on the device, so the email's real job 
 
 Android has never been run.
 Every measurement here comes from one iPhone 13 Pro, the ONNX and Rust paths have never executed on Android, and the iOS Podfile linkage fix has no Android counterpart.
+
+The architecture section above is the mitigation: keeping the correctness tier in pure Dart means Android inherits masking correctness for free and only has to clear runtime gates.
+Note that phases 1 to 3 and phase 5 need no Android hardware at all, so that work can proceed while a device is being sourced.
+The real Android unknown is memory headroom, not correctness: a 592 MB resident model is comfortable on a 6 GB iPhone and marginal on a 3-4 GB Android.
 
 The regex port in phase 2 is where parity will break, not the ONNX plumbing.
 
