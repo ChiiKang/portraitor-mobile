@@ -177,35 +177,35 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
           if (!hasPass)
             _PassDrawer(
               open: _passOpen,
-            description: FunnelTier.pass.planSubtitleFor(entitlements),
-            priceLabel: _priceFor(FunnelTier.pass, iap),
-            showPricePeriod:
-                kDemoIapPurchase || iap.priceFor(FunnelTier.pass) != null,
-            onToggle: () {
-              setState(() {
-                _passOpen = !_passOpen;
-                if (_passOpen) {
-                  ref
-                      .read(funnelDraftProvider.notifier)
-                      .selectTier(FunnelTier.pass);
-                } else if (selected == FunnelTier.pass) {
-                  ref
-                      .read(funnelDraftProvider.notifier)
-                      .selectTier(FunnelTier.you);
-                }
-              });
-            },
-            onShowPacks: () {
-              setState(() {
-                _passOpen = false;
-                if (selected == FunnelTier.pass) {
-                  ref
-                      .read(funnelDraftProvider.notifier)
-                      .selectTier(FunnelTier.you);
-                }
-              });
-            },
-          ),
+              description: FunnelTier.pass.planSubtitleFor(entitlements),
+              priceLabel: _priceFor(FunnelTier.pass, iap),
+              showPricePeriod:
+                  kDemoIapPurchase || iap.priceFor(FunnelTier.pass) != null,
+              onToggle: () {
+                setState(() {
+                  _passOpen = !_passOpen;
+                  if (_passOpen) {
+                    ref
+                        .read(funnelDraftProvider.notifier)
+                        .selectTier(FunnelTier.pass);
+                  } else if (selected == FunnelTier.pass) {
+                    ref
+                        .read(funnelDraftProvider.notifier)
+                        .selectTier(FunnelTier.you);
+                  }
+                });
+              },
+              onShowPacks: () {
+                setState(() {
+                  _passOpen = false;
+                  if (selected == FunnelTier.pass) {
+                    ref
+                        .read(funnelDraftProvider.notifier)
+                        .selectTier(FunnelTier.you);
+                  }
+                });
+              },
+            ),
         ],
       ),
     );
