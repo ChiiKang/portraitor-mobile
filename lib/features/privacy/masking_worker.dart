@@ -13,6 +13,7 @@ import 'dart:async';
 import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import 'detector/block_planner.dart';
 import 'detector/gliner_onnx_detector.dart';
@@ -98,9 +99,23 @@ class MaskingWorker implements Masker {
 
     responses.listen(_handleMessage);
 
+    // flutter_onnxruntime talks over MethodChannel('flutter_onnxruntime'), and
+    // a spawned isolate has no binary messenger, so every plugin call fails
+    // there until the root token is handed over. This is what made masking fail
+    // at model load with nothing useful in the logs.
+    final rootToken = RootIsolateToken.instance;
+    if (rootToken == null) {
+      throw const MaskingException(
+        MaskingFailureStage.init,
+        'No root isolate token, so the masking isolate cannot reach the ONNX '
+        'plugin.',
+      );
+    }
+
     _isolate = await Isolate.spawn(
       _workerMain,
       _WorkerBoot(
+        rootToken,
         responses.sendPort,
         modelPath,
         tokenizerPath,
@@ -201,6 +216,7 @@ class MaskingWorker implements Masker {
 
 class _WorkerBoot {
   const _WorkerBoot(
+    this.rootToken,
     this.responses,
     this.modelPath,
     this.tokenizerPath,
@@ -211,6 +227,9 @@ class _WorkerBoot {
     this.boolAsUint8,
     this.maxTokensPerBlock,
   );
+
+  /// Lets the isolate use platform channels, which the ONNX plugin needs.
+  final RootIsolateToken rootToken;
 
   final SendPort responses;
   final String modelPath;
@@ -225,6 +244,9 @@ class _WorkerBoot {
 
 /// Isolate entry point. Everything below runs off the UI thread.
 Future<void> _workerMain(_WorkerBoot boot) async {
+  // Must come before ANY plugin call, or MethodChannel throws here.
+  BackgroundIsolateBinaryMessenger.ensureInitialized(boot.rootToken);
+
   final commands = ReceivePort();
   boot.responses.send(commands.sendPort);
 

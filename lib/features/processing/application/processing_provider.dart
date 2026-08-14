@@ -11,6 +11,7 @@ import 'package:portraitor_mobile/core/api/sse_service.dart';
 import 'package:portraitor_mobile/core/storage/pending_job.dart';
 import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/features/privacy/pipeline/types.dart';
+import 'package:portraitor_mobile/features/privacy/masking_worker.dart';
 import 'package:portraitor_mobile/features/privacy/privacy_filter_service.dart';
 import 'package:portraitor_mobile/features/privacy/privacy_providers.dart';
 import 'package:portraitor_mobile/features/import/services/token_calculator.dart';
@@ -597,6 +598,12 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
       );
     } catch (e) {
       _stopHeartbeat();
+      // A masking failure is not "something interrupted generation": nothing
+      // was generated, and the cause is local and actionable. Log it loudly,
+      // because the generic error screen hid exactly this for two rounds.
+      if (e is PrivacyNotReadyException || e is MaskingException) {
+        debugPrint('[privacy] masking failed, generation blocked: $e');
+      }
       // Mark the pending job failed so recovery can show the state on next
       // launch. Error message stays in provider UI state — not persisted,
       // matching web behavior.
