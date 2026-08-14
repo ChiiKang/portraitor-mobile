@@ -79,6 +79,28 @@ class PIISpan {
     this.score,
   });
 
+  /// Decodes a span as the JS pipeline serialises it. Throws [FormatException]
+  /// on an unknown label or source rather than silently coercing, so a taxonomy
+  /// drift between the two implementations surfaces immediately.
+  factory PIISpan.fromJson(Map<String, dynamic> json) {
+    final label = PIILabel.fromWire(json['label'] as String);
+    if (label == null) {
+      throw FormatException('Unknown PII label: ${json['label']}');
+    }
+    final source = SpanSource.fromWire(json['source'] as String);
+    if (source == null) {
+      throw FormatException('Unknown span source: ${json['source']}');
+    }
+    return PIISpan(
+      label: label,
+      text: json['text'] as String,
+      start: (json['start'] as num).toInt(),
+      end: (json['end'] as num).toInt(),
+      source: source,
+      score: (json['score'] as num?)?.toDouble(),
+    );
+  }
+
   final PIILabel label;
   final String text;
   final int start;
@@ -87,6 +109,15 @@ class PIISpan {
   final double? score;
 
   int get length => end - start;
+
+  Map<String, dynamic> toJson() => {
+    'label': label.wire,
+    'text': text,
+    'start': start,
+    'end': end,
+    if (score != null) 'score': score,
+    'source': source.wire,
+  };
 
   PIISpan copyWith({
     PIILabel? label,

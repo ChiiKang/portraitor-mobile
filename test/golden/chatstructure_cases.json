@@ -1,0 +1,308 @@
+{
+  "cases": [
+    {
+      "text": "[27/11/2025, 9:20:00 AM] Natalia: hi Michael, my link is https://x.io/a\n[27/11/2025, 9:21:00 AM] Michael: thanks Natalia! email me at a@b.com",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Natalia",
+          "start": 25,
+          "end": 32,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Michael",
+          "start": 97,
+          "end": 104,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "b.com",
+          "start": 136,
+          "end": 141,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] Emma: morning\n[01/02/2025, 10:01:00 AM] James: hi Emma\n[01/02/2025, 10:02:00 AM] Emma: Emma again, and Emma once more",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 26,
+          "end": 30,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "James",
+          "start": 66,
+          "end": 71,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 107,
+          "end": 111,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] Ana: the placeholder [PERSON1] is literally in this chat\n[01/02/2025, 10:01:00 AM] Ana: ok",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Ana",
+          "start": 26,
+          "end": 29,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Ana",
+          "start": 109,
+          "end": 112,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] Bob: mail me bob@example.com now\n[01/02/2025, 10:01:00 AM] Bob: IBAN GB29NWBK60161331926819 ok",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Bob",
+          "start": 26,
+          "end": 29,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "example.com",
+          "start": 43,
+          "end": 54,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Bob",
+          "start": 85,
+          "end": 88,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] 绍陞: hello\n[01/02/2025, 10:01:00 AM] Наталия: hi 绍陞",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "绍陞",
+          "start": 26,
+          "end": 28,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] Zoe: 🎉🎉 party with Zoe\n[01/02/2025, 10:01:00 AM] Zoe: 👍 ok",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Zoe",
+          "start": 26,
+          "end": 29,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Zoe",
+          "start": 77,
+          "end": 80,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] Björn: hi\n[01/02/2025, 10:01:00 AM] Bjorn: different person",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Björn",
+          "start": 26,
+          "end": 31,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Bjorn",
+          "start": 62,
+          "end": 67,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "mail me bob@example.com or visit https://x.io/a and www.y.co/b",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "example.com",
+          "start": 12,
+          "end": 23,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "call +44 20 7946 0321 or 020 7946 0321 today",
+      "spans": []
+    },
+    {
+      "text": "IBAN GB29NWBK60161331926819 and account no: 12345678901",
+      "spans": []
+    },
+    {
+      "text": "sort code 40-47-84, routing number 021000021",
+      "spans": []
+    },
+    {
+      "text": "my ssn is 123-45-6789 and IC 900101-14-5678",
+      "spans": []
+    },
+    {
+      "text": "card 4242 4242 4242 4242 and 4242-4242-4242-4241",
+      "spans": []
+    },
+    {
+      "text": "your OTP is 483920, verification code 12345",
+      "spans": []
+    },
+    {
+      "text": "password: hunter2! and pwd = s3cr3tval",
+      "spans": []
+    },
+    {
+      "text": "api key sk-abcdefghijklmnopqrstuvwxyz012345 and ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123",
+      "spans": []
+    },
+    {
+      "text": "hash 5f4dcc3b5aa765d61d8327deb882cf995f4dcc3b5aa765d61d8327deb882cf99",
+      "spans": []
+    },
+    {
+      "text": "token abcDEF123456789012345678901234567890abcdEF12 here",
+      "spans": []
+    },
+    {
+      "text": "passport no A1234567 and national id 900101145678",
+      "spans": []
+    },
+    {
+      "text": "we live at Jalan Bukit Bintang 12 and 221B Baker Street now",
+      "spans": []
+    },
+    {
+      "text": "[24/02/2025, 11:41:30 PM] pick a ball: hello there",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "pick a ball",
+          "start": 26,
+          "end": 37,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "24/02/2025, 11:41 - Mac Chai: hi @CK and @⁦Zoe⁩",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Mac Chai",
+          "start": 20,
+          "end": 28,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "CK",
+          "start": 34,
+          "end": 36,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Zoe",
+          "start": 43,
+          "end": 46,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "[24/02/2025, 11:41:30 PM] ~ Push Name: with a push-name prefix",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Push Name",
+          "start": 28,
+          "end": 37,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "‎[24/02/2025, 11:41:30 PM] ‎Bidi Speaker: marked line",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Bidi Speaker",
+          "start": 28,
+          "end": 40,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "[24/02/2025, 11:41:30 PM] Messages and calls are end-to-end encrypted",
+      "spans": []
+    },
+    {
+      "text": "no pii at all in this line",
+      "spans": []
+    },
+    {
+      "text": "",
+      "spans": []
+    }
+  ]
+}

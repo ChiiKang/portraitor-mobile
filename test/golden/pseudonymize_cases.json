@@ -1,0 +1,290 @@
+{
+  "cases": [
+    {
+      "name": "smoke",
+      "text": "[27/11/2025, 9:20:00 AM] Natalia: hi Michael, my link is https://x.io/a\n[27/11/2025, 9:21:00 AM] Michael: thanks Natalia! email me at a@b.com",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Natalia",
+          "start": 25,
+          "end": 32,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Michael",
+          "start": 37,
+          "end": 44,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_url",
+          "text": "https://x.io/a",
+          "start": 57,
+          "end": 71,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Michael",
+          "start": 97,
+          "end": 104,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Natalia",
+          "start": 113,
+          "end": 120,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_email",
+          "text": "a@b.com",
+          "start": 134,
+          "end": 141,
+          "source": "rule",
+          "score": 1
+        }
+      ],
+      "map": {
+        "private_person:natalia": "[PERSON1]",
+        "private_person:michael": "[PERSON2]",
+        "private_url:https://x.io/a": "[URL1]",
+        "private_email:a@b.com": "[EMAIL1]"
+      },
+      "applied": "[27/11/2025, 9:20:00 AM] [PERSON1]: hi [PERSON2], my link is [URL1]\n[27/11/2025, 9:21:00 AM] [PERSON2]: thanks [PERSON1]! email me at [EMAIL1]"
+    },
+    {
+      "name": "propagation_repeat",
+      "text": "[01/02/2025, 10:00:00 AM] Emma: morning\n[01/02/2025, 10:01:00 AM] James: hi Emma\n[01/02/2025, 10:02:00 AM] Emma: Emma again, and Emma once more",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 26,
+          "end": 30,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "James",
+          "start": 66,
+          "end": 71,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 76,
+          "end": 80,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 107,
+          "end": 111,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 113,
+          "end": 117,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 129,
+          "end": 133,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        }
+      ],
+      "map": {
+        "private_person:emma": "[PERSON1]",
+        "private_person:james": "[PERSON2]"
+      },
+      "applied": "[01/02/2025, 10:00:00 AM] [PERSON1]: morning\n[01/02/2025, 10:01:00 AM] [PERSON2]: hi [PERSON1]\n[01/02/2025, 10:02:00 AM] [PERSON1]: [PERSON1] again, and [PERSON1] once more"
+    },
+    {
+      "name": "literal_token_in_source",
+      "text": "[01/02/2025, 10:00:00 AM] Ana: the placeholder [PERSON1] is literally in this chat\n[01/02/2025, 10:01:00 AM] Ana: ok",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Ana",
+          "start": 26,
+          "end": 29,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Ana",
+          "start": 109,
+          "end": 112,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ],
+      "map": {
+        "private_person:ana": "[PERSON1]"
+      },
+      "applied": "[01/02/2025, 10:00:00 AM] [PERSON1]: the placeholder [PERSON1] is literally in this chat\n[01/02/2025, 10:01:00 AM] [PERSON1]: ok"
+    },
+    {
+      "name": "leak_adjacent_to_token",
+      "text": "[01/02/2025, 10:00:00 AM] Bob: mail me bob@example.com now\n[01/02/2025, 10:01:00 AM] Bob: IBAN GB29NWBK60161331926819 ok",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Bob",
+          "start": 26,
+          "end": 29,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_email",
+          "text": "bob@example.com",
+          "start": 39,
+          "end": 54,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Bob",
+          "start": 85,
+          "end": 88,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "GB29NWBK60161331926819",
+          "start": 95,
+          "end": 117,
+          "source": "rule",
+          "score": 1
+        }
+      ],
+      "map": {
+        "private_person:bob": "[PERSON1]",
+        "private_email:bob@example.com": "[EMAIL1]",
+        "account_number:gb29nwbk60161331926819": "[ACCOUNT1]"
+      },
+      "applied": "[01/02/2025, 10:00:00 AM] [PERSON1]: mail me [EMAIL1] now\n[01/02/2025, 10:01:00 AM] [PERSON1]: IBAN [ACCOUNT1] ok"
+    },
+    {
+      "name": "cjk_and_cyrillic",
+      "text": "[01/02/2025, 10:00:00 AM] 绍陞: hello\n[01/02/2025, 10:01:00 AM] Наталия: hi 绍陞",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "绍陞",
+          "start": 26,
+          "end": 28,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Наталия",
+          "start": 62,
+          "end": 69,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "绍陞",
+          "start": 74,
+          "end": 76,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        }
+      ],
+      "map": {
+        "private_person:绍陞": "[PERSON1]",
+        "private_person:наталия": "[PERSON2]"
+      },
+      "applied": "[01/02/2025, 10:00:00 AM] [PERSON1]: hello\n[01/02/2025, 10:01:00 AM] [PERSON2]: hi [PERSON1]"
+    },
+    {
+      "name": "emoji_offsets",
+      "text": "[01/02/2025, 10:00:00 AM] Zoe: 🎉🎉 party with Zoe\n[01/02/2025, 10:01:00 AM] Zoe: 👍 ok",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Zoe",
+          "start": 26,
+          "end": 29,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Zoe",
+          "start": 47,
+          "end": 50,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "Zoe",
+          "start": 77,
+          "end": 80,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ],
+      "map": {
+        "private_person:zoe": "[PERSON1]"
+      },
+      "applied": "[01/02/2025, 10:00:00 AM] [PERSON1]: 🎉🎉 party with [PERSON1]\n[01/02/2025, 10:01:00 AM] [PERSON1]: 👍 ok"
+    },
+    {
+      "name": "accented_name",
+      "text": "[01/02/2025, 10:00:00 AM] Björn: hi\n[01/02/2025, 10:01:00 AM] Bjorn: different person",
+      "spans": [
+        {
+          "label": "private_person",
+          "text": "Björn",
+          "start": 26,
+          "end": 31,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Bjorn",
+          "start": 62,
+          "end": 67,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ],
+      "map": {
+        "private_person:björn": "[PERSON1]",
+        "private_person:bjorn": "[PERSON2]"
+      },
+      "applied": "[01/02/2025, 10:00:00 AM] [PERSON1]: hi\n[01/02/2025, 10:01:00 AM] [PERSON2]: different person"
+    }
+  ]
+}

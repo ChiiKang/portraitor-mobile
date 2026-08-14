@@ -1,0 +1,573 @@
+{
+  "cases": [
+    {
+      "name": "smoke",
+      "input": [
+        {
+          "label": "private_email",
+          "text": "a@b.com",
+          "start": 134,
+          "end": 141,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_url",
+          "text": "https://x.io/a",
+          "start": 57,
+          "end": 71,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Natalia",
+          "start": 25,
+          "end": 32,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Michael",
+          "start": 97,
+          "end": 104,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "b.com",
+          "start": 136,
+          "end": 141,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Natalia",
+          "start": 25,
+          "end": 32,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "Michael",
+          "start": 37,
+          "end": 44,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "Natalia",
+          "start": 113,
+          "end": 120,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        }
+      ],
+      "output": [
+        {
+          "label": "private_person",
+          "text": "Natalia",
+          "start": 25,
+          "end": 32,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Michael",
+          "start": 37,
+          "end": 44,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_url",
+          "text": "https://x.io/a",
+          "start": 57,
+          "end": 71,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Michael",
+          "start": 97,
+          "end": 104,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Natalia",
+          "start": 113,
+          "end": 120,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_email",
+          "text": "a@b.com",
+          "start": 134,
+          "end": 141,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "name": "propagation_repeat",
+      "input": [
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 26,
+          "end": 30,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "James",
+          "start": 66,
+          "end": 71,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 107,
+          "end": 111,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 26,
+          "end": 30,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "James",
+          "start": 66,
+          "end": 71,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 76,
+          "end": 80,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 113,
+          "end": 117,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 129,
+          "end": 133,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        }
+      ],
+      "output": [
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 26,
+          "end": 30,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "James",
+          "start": 66,
+          "end": 71,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 76,
+          "end": 80,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 107,
+          "end": 111,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 113,
+          "end": 117,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "Emma",
+          "start": 129,
+          "end": 133,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        }
+      ]
+    },
+    {
+      "name": "literal_token_in_source",
+      "input": [
+        {
+          "label": "private_person",
+          "text": "Ana",
+          "start": 26,
+          "end": 29,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Ana",
+          "start": 109,
+          "end": 112,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Ana",
+          "start": 26,
+          "end": 29,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        }
+      ],
+      "output": [
+        {
+          "label": "private_person",
+          "text": "Ana",
+          "start": 26,
+          "end": 29,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Ana",
+          "start": 109,
+          "end": 112,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "name": "leak_adjacent_to_token",
+      "input": [
+        {
+          "label": "private_email",
+          "text": "bob@example.com",
+          "start": 39,
+          "end": 54,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_phone",
+          "text": "60161331926819",
+          "start": 103,
+          "end": 117,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "GB29NWBK60161331926819",
+          "start": 95,
+          "end": 117,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "GB29NWBK60161331926819",
+          "start": 95,
+          "end": 117,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Bob",
+          "start": 26,
+          "end": 29,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "example.com",
+          "start": 43,
+          "end": 54,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Bob",
+          "start": 85,
+          "end": 88,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Bob",
+          "start": 26,
+          "end": 29,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "bob",
+          "start": 39,
+          "end": 42,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        }
+      ],
+      "output": [
+        {
+          "label": "private_person",
+          "text": "Bob",
+          "start": 26,
+          "end": 29,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_email",
+          "text": "bob@example.com",
+          "start": 39,
+          "end": 54,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Bob",
+          "start": 85,
+          "end": 88,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "GB29NWBK60161331926819",
+          "start": 95,
+          "end": 117,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "name": "cjk_and_cyrillic",
+      "input": [
+        {
+          "label": "private_person",
+          "text": "绍陞",
+          "start": 26,
+          "end": 28,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "绍陞",
+          "start": 26,
+          "end": 28,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "Наталия",
+          "start": 62,
+          "end": 69,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "绍陞",
+          "start": 74,
+          "end": 76,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        }
+      ],
+      "output": [
+        {
+          "label": "private_person",
+          "text": "绍陞",
+          "start": 26,
+          "end": 28,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Наталия",
+          "start": 62,
+          "end": 69,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "绍陞",
+          "start": 74,
+          "end": 76,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        }
+      ]
+    },
+    {
+      "name": "emoji_offsets",
+      "input": [
+        {
+          "label": "private_person",
+          "text": "Zoe",
+          "start": 26,
+          "end": 29,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Zoe",
+          "start": 77,
+          "end": 80,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Zoe",
+          "start": 26,
+          "end": 29,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "Zoe",
+          "start": 47,
+          "end": 50,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        }
+      ],
+      "output": [
+        {
+          "label": "private_person",
+          "text": "Zoe",
+          "start": 26,
+          "end": 29,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Zoe",
+          "start": 47,
+          "end": 50,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        },
+        {
+          "label": "private_person",
+          "text": "Zoe",
+          "start": 77,
+          "end": 80,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "name": "accented_name",
+      "input": [
+        {
+          "label": "private_person",
+          "text": "Björn",
+          "start": 26,
+          "end": 31,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Bjorn",
+          "start": 62,
+          "end": 67,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Björn",
+          "start": 26,
+          "end": 31,
+          "score": 0.9,
+          "source": "openai_privacy_filter"
+        }
+      ],
+      "output": [
+        {
+          "label": "private_person",
+          "text": "Björn",
+          "start": 26,
+          "end": 31,
+          "source": "chat_structure",
+          "score": 1
+        },
+        {
+          "label": "private_person",
+          "text": "Bjorn",
+          "start": 62,
+          "end": 67,
+          "source": "chat_structure",
+          "score": 1
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,743 @@
+{
+  "cases": [
+    {
+      "text": "[27/11/2025, 9:20:00 AM] Natalia: hi Michael, my link is https://x.io/a\n[27/11/2025, 9:21:00 AM] Michael: thanks Natalia! email me at a@b.com",
+      "raw": [
+        {
+          "start": 134,
+          "end": 141,
+          "text": "a@b.com",
+          "label": "private_email"
+        },
+        {
+          "start": 57,
+          "end": 71,
+          "text": "https://x.io/a",
+          "label": "private_url"
+        }
+      ],
+      "spans": [
+        {
+          "label": "private_email",
+          "text": "a@b.com",
+          "start": 134,
+          "end": 141,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_url",
+          "text": "https://x.io/a",
+          "start": 57,
+          "end": 71,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] Emma: morning\n[01/02/2025, 10:01:00 AM] James: hi Emma\n[01/02/2025, 10:02:00 AM] Emma: Emma again, and Emma once more",
+      "raw": [],
+      "spans": []
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] Ana: the placeholder [PERSON1] is literally in this chat\n[01/02/2025, 10:01:00 AM] Ana: ok",
+      "raw": [],
+      "spans": []
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] Bob: mail me bob@example.com now\n[01/02/2025, 10:01:00 AM] Bob: IBAN GB29NWBK60161331926819 ok",
+      "raw": [
+        {
+          "start": 39,
+          "end": 54,
+          "text": "bob@example.com",
+          "label": "private_email"
+        },
+        {
+          "start": 103,
+          "end": 117,
+          "text": "60161331926819",
+          "label": "private_phone"
+        },
+        {
+          "start": 95,
+          "end": 117,
+          "text": "GB29NWBK60161331926819",
+          "label": "account_number"
+        },
+        {
+          "start": 95,
+          "end": 117,
+          "text": "GB29NWBK60161331926819",
+          "label": "account_number"
+        }
+      ],
+      "spans": [
+        {
+          "label": "private_email",
+          "text": "bob@example.com",
+          "start": 39,
+          "end": 54,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_phone",
+          "text": "60161331926819",
+          "start": 103,
+          "end": 117,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "GB29NWBK60161331926819",
+          "start": 95,
+          "end": 117,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "GB29NWBK60161331926819",
+          "start": 95,
+          "end": 117,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] 绍陞: hello\n[01/02/2025, 10:01:00 AM] Наталия: hi 绍陞",
+      "raw": [],
+      "spans": []
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] Zoe: 🎉🎉 party with Zoe\n[01/02/2025, 10:01:00 AM] Zoe: 👍 ok",
+      "raw": [],
+      "spans": []
+    },
+    {
+      "text": "[01/02/2025, 10:00:00 AM] Björn: hi\n[01/02/2025, 10:01:00 AM] Bjorn: different person",
+      "raw": [],
+      "spans": []
+    },
+    {
+      "text": "mail me bob@example.com or visit https://x.io/a and www.y.co/b",
+      "raw": [
+        {
+          "start": 8,
+          "end": 23,
+          "text": "bob@example.com",
+          "label": "private_email"
+        },
+        {
+          "start": 33,
+          "end": 47,
+          "text": "https://x.io/a",
+          "label": "private_url"
+        },
+        {
+          "start": 52,
+          "end": 62,
+          "text": "www.y.co/b",
+          "label": "private_url"
+        }
+      ],
+      "spans": [
+        {
+          "label": "private_email",
+          "text": "bob@example.com",
+          "start": 8,
+          "end": 23,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_url",
+          "text": "https://x.io/a",
+          "start": 33,
+          "end": 47,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_url",
+          "text": "www.y.co/b",
+          "start": 52,
+          "end": 62,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "call +44 20 7946 0321 or 020 7946 0321 today",
+      "raw": [
+        {
+          "start": 5,
+          "end": 21,
+          "text": "+44 20 7946 0321",
+          "label": "private_phone"
+        },
+        {
+          "start": 25,
+          "end": 38,
+          "text": "020 7946 0321",
+          "label": "private_phone"
+        }
+      ],
+      "spans": [
+        {
+          "label": "private_phone",
+          "text": "+44 20 7946 0321",
+          "start": 5,
+          "end": 21,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_phone",
+          "text": "020 7946 0321",
+          "start": 25,
+          "end": 38,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "IBAN GB29NWBK60161331926819 and account no: 12345678901",
+      "raw": [
+        {
+          "start": 13,
+          "end": 27,
+          "text": "60161331926819",
+          "label": "private_phone"
+        },
+        {
+          "start": 44,
+          "end": 55,
+          "text": "12345678901",
+          "label": "private_phone"
+        },
+        {
+          "start": 5,
+          "end": 27,
+          "text": "GB29NWBK60161331926819",
+          "label": "account_number"
+        },
+        {
+          "start": 5,
+          "end": 27,
+          "text": "GB29NWBK60161331926819",
+          "label": "account_number"
+        }
+      ],
+      "spans": [
+        {
+          "label": "private_phone",
+          "text": "60161331926819",
+          "start": 13,
+          "end": 27,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_phone",
+          "text": "12345678901",
+          "start": 44,
+          "end": 55,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "GB29NWBK60161331926819",
+          "start": 5,
+          "end": 27,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "GB29NWBK60161331926819",
+          "start": 5,
+          "end": 27,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "sort code 40-47-84, routing number 021000021",
+      "raw": [
+        {
+          "start": 35,
+          "end": 44,
+          "text": "021000021",
+          "label": "private_phone"
+        },
+        {
+          "start": 10,
+          "end": 18,
+          "text": "40-47-84",
+          "label": "account_number"
+        },
+        {
+          "start": 35,
+          "end": 44,
+          "text": "021000021",
+          "label": "account_number"
+        }
+      ],
+      "spans": [
+        {
+          "label": "private_phone",
+          "text": "021000021",
+          "start": 35,
+          "end": 44,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "40-47-84",
+          "start": 10,
+          "end": 18,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "021000021",
+          "start": 35,
+          "end": 44,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "my ssn is 123-45-6789 and IC 900101-14-5678",
+      "raw": [
+        {
+          "start": 10,
+          "end": 21,
+          "text": "123-45-6789",
+          "label": "account_number"
+        },
+        {
+          "start": 29,
+          "end": 43,
+          "text": "900101-14-5678",
+          "label": "account_number"
+        },
+        {
+          "start": 29,
+          "end": 43,
+          "text": "900101-14-5678",
+          "label": "account_number"
+        }
+      ],
+      "spans": [
+        {
+          "label": "account_number",
+          "text": "123-45-6789",
+          "start": 10,
+          "end": 21,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "900101-14-5678",
+          "start": 29,
+          "end": 43,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "900101-14-5678",
+          "start": 29,
+          "end": 43,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "card 4242 4242 4242 4242 and 4242-4242-4242-4241",
+      "raw": [
+        {
+          "start": 5,
+          "end": 19,
+          "text": "4242 4242 4242",
+          "label": "private_phone"
+        },
+        {
+          "start": 29,
+          "end": 43,
+          "text": "4242-4242-4242",
+          "label": "private_phone"
+        },
+        {
+          "start": 5,
+          "end": 24,
+          "text": "4242 4242 4242 4242",
+          "label": "account_number"
+        }
+      ],
+      "spans": [
+        {
+          "label": "private_phone",
+          "text": "4242 4242 4242",
+          "start": 5,
+          "end": 19,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_phone",
+          "text": "4242-4242-4242",
+          "start": 29,
+          "end": 43,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "4242 4242 4242 4242",
+          "start": 5,
+          "end": 24,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "your OTP is 483920, verification code 12345",
+      "raw": [
+        {
+          "start": 12,
+          "end": 18,
+          "text": "483920",
+          "label": "secret"
+        },
+        {
+          "start": 38,
+          "end": 43,
+          "text": "12345",
+          "label": "secret"
+        }
+      ],
+      "spans": [
+        {
+          "label": "secret",
+          "text": "483920",
+          "start": 12,
+          "end": 18,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "secret",
+          "text": "12345",
+          "start": 38,
+          "end": 43,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "password: hunter2! and pwd = s3cr3tval",
+      "raw": [
+        {
+          "start": 10,
+          "end": 18,
+          "text": "hunter2!",
+          "label": "secret"
+        },
+        {
+          "start": 29,
+          "end": 38,
+          "text": "s3cr3tval",
+          "label": "secret"
+        }
+      ],
+      "spans": [
+        {
+          "label": "secret",
+          "text": "hunter2!",
+          "start": 10,
+          "end": 18,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "secret",
+          "text": "s3cr3tval",
+          "start": 29,
+          "end": 38,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "api key sk-abcdefghijklmnopqrstuvwxyz012345 and ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123",
+      "raw": [
+        {
+          "start": 8,
+          "end": 43,
+          "text": "sk-abcdefghijklmnopqrstuvwxyz012345",
+          "label": "secret"
+        },
+        {
+          "start": 48,
+          "end": 82,
+          "text": "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123",
+          "label": "secret"
+        }
+      ],
+      "spans": [
+        {
+          "label": "secret",
+          "text": "sk-abcdefghijklmnopqrstuvwxyz012345",
+          "start": 8,
+          "end": 43,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "secret",
+          "text": "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123",
+          "start": 48,
+          "end": 82,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "hash 5f4dcc3b5aa765d61d8327deb882cf995f4dcc3b5aa765d61d8327deb882cf99",
+      "raw": [
+        {
+          "start": 5,
+          "end": 69,
+          "text": "5f4dcc3b5aa765d61d8327deb882cf995f4dcc3b5aa765d61d8327deb882cf99",
+          "label": "secret"
+        },
+        {
+          "start": 5,
+          "end": 69,
+          "text": "5f4dcc3b5aa765d61d8327deb882cf995f4dcc3b5aa765d61d8327deb882cf99",
+          "label": "secret"
+        }
+      ],
+      "spans": [
+        {
+          "label": "secret",
+          "text": "5f4dcc3b5aa765d61d8327deb882cf995f4dcc3b5aa765d61d8327deb882cf99",
+          "start": 5,
+          "end": 69,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "secret",
+          "text": "5f4dcc3b5aa765d61d8327deb882cf995f4dcc3b5aa765d61d8327deb882cf99",
+          "start": 5,
+          "end": 69,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "token abcDEF123456789012345678901234567890abcdEF12 here",
+      "raw": [
+        {
+          "start": 6,
+          "end": 50,
+          "text": "abcDEF123456789012345678901234567890abcdEF12",
+          "label": "secret"
+        },
+        {
+          "start": 6,
+          "end": 50,
+          "text": "abcDEF123456789012345678901234567890abcdEF12",
+          "label": "secret"
+        }
+      ],
+      "spans": [
+        {
+          "label": "secret",
+          "text": "abcDEF123456789012345678901234567890abcdEF12",
+          "start": 6,
+          "end": 50,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "secret",
+          "text": "abcDEF123456789012345678901234567890abcdEF12",
+          "start": 6,
+          "end": 50,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "passport no A1234567 and national id 900101145678",
+      "raw": [
+        {
+          "start": 13,
+          "end": 20,
+          "text": "1234567",
+          "label": "private_phone"
+        },
+        {
+          "start": 37,
+          "end": 49,
+          "text": "900101145678",
+          "label": "private_phone"
+        },
+        {
+          "start": 4,
+          "end": 8,
+          "text": "port",
+          "label": "secret"
+        },
+        {
+          "start": 12,
+          "end": 20,
+          "text": "A1234567",
+          "label": "account_number"
+        },
+        {
+          "start": 37,
+          "end": 49,
+          "text": "900101145678",
+          "label": "account_number"
+        }
+      ],
+      "spans": [
+        {
+          "label": "private_phone",
+          "text": "1234567",
+          "start": 13,
+          "end": 20,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_phone",
+          "text": "900101145678",
+          "start": 37,
+          "end": 49,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "secret",
+          "text": "port",
+          "start": 4,
+          "end": 8,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "A1234567",
+          "start": 12,
+          "end": 20,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "account_number",
+          "text": "900101145678",
+          "start": 37,
+          "end": 49,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "we live at Jalan Bukit Bintang 12 and 221B Baker Street now",
+      "raw": [
+        {
+          "start": 11,
+          "end": 42,
+          "text": "Jalan Bukit Bintang 12 and 221B",
+          "label": "private_address"
+        },
+        {
+          "start": 49,
+          "end": 59,
+          "text": "Street now",
+          "label": "private_address"
+        }
+      ],
+      "spans": [
+        {
+          "label": "private_address",
+          "text": "Jalan Bukit Bintang 12 and 221B",
+          "start": 11,
+          "end": 42,
+          "source": "rule",
+          "score": 1
+        },
+        {
+          "label": "private_address",
+          "text": "Street now",
+          "start": 49,
+          "end": 59,
+          "source": "rule",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "text": "[24/02/2025, 11:41:30 PM] pick a ball: hello there",
+      "raw": [],
+      "spans": []
+    },
+    {
+      "text": "24/02/2025, 11:41 - Mac Chai: hi @CK and @⁦Zoe⁩",
+      "raw": [],
+      "spans": []
+    },
+    {
+      "text": "[24/02/2025, 11:41:30 PM] ~ Push Name: with a push-name prefix",
+      "raw": [],
+      "spans": []
+    },
+    {
+      "text": "‎[24/02/2025, 11:41:30 PM] ‎Bidi Speaker: marked line",
+      "raw": [],
+      "spans": []
+    },
+    {
+      "text": "[24/02/2025, 11:41:30 PM] Messages and calls are end-to-end encrypted",
+      "raw": [],
+      "spans": []
+    },
+    {
+      "text": "no pii at all in this line",
+      "raw": [],
+      "spans": []
+    },
+    {
+      "text": "",
+      "raw": [],
+      "spans": []
+    }
+  ]
+}

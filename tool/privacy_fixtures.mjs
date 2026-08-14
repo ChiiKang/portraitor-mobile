@@ -126,8 +126,149 @@ writeFileSync(
   JSON.stringify({ cases: maskCases }, null, 2) + "\n",
 );
 
-console.log(`label_cases.json  ${labelCases.length} cases`);
-console.log(`mask_cases.json   ${maskCases.length} cases`);
+// ── per-module goldens ──────────────────────────────────────────────────────
+// One file per ported module so each can be tested in isolation. Generated
+// centrally rather than by each porter, so the modules cannot disagree about
+// what the inputs were.
+const { highRiskSpans, detectHighRisk } = await load(
+  "pipeline/highRisk.ts",
+  ".fixtures.highrisk.mjs",
+);
+const { detectChatStructure } = await load(
+  "pipeline/chatStructure.ts",
+  ".fixtures.chatstructure.mjs",
+);
+const { propagateDetectedNames } = await load(
+  "pipeline/names.ts",
+  ".fixtures.names.mjs",
+);
+const { mergeOverlappingSpans } = await load(
+  "pipeline/spans.ts",
+  ".fixtures.spans.mjs",
+);
+const { buildPseudonymMap, applyPseudonymization } = await load(
+  "pipeline/pseudonymize.ts",
+  ".fixtures.pseudonymize.mjs",
+);
+
+// Texts that exercise the structured detectors. The fake_spans texts alone do
+// not reach OTP, password, SSN, card or street-address paths.
+const regexCorpus = [
+  "mail me bob@example.com or visit https://x.io/a and www.y.co/b",
+  "call +44 20 7946 0321 or 020 7946 0321 today",
+  "IBAN GB29NWBK60161331926819 and account no: 12345678901",
+  "sort code 40-47-84, routing number 021000021",
+  "my ssn is 123-45-6789 and IC 900101-14-5678",
+  "card 4242 4242 4242 4242 and 4242-4242-4242-4241",
+  "your OTP is 483920, verification code 12345",
+  "password: hunter2! and pwd = s3cr3tval",
+  "api key sk-abcdefghijklmnopqrstuvwxyz012345 and ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123",
+  "hash 5f4dcc3b5aa765d61d8327deb882cf995f4dcc3b5aa765d61d8327deb882cf99",
+  "token abcDEF123456789012345678901234567890abcdEF12 here",
+  "passport no A1234567 and national id 900101145678",
+  "we live at Jalan Bukit Bintang 12 and 221B Baker Street now",
+  "[24/02/2025, 11:41:30 PM] pick a ball: hello there",
+  "24/02/2025, 11:41 - Mac Chai: hi @CK and @⁦Zoe⁩",
+  "[24/02/2025, 11:41:30 PM] ~ Push Name: with a push-name prefix",
+  "‎[24/02/2025, 11:41:30 PM] ‎Bidi Speaker: marked line",
+  "[24/02/2025, 11:41:30 PM] Messages and calls are end-to-end encrypted",
+  "no pii at all in this line",
+  "",
+];
+
+const structuralTexts = [...fake.cases.map((c) => c.text), ...regexCorpus];
+
+const jsonOf = (v) => JSON.parse(JSON.stringify(v));
+
+writeFileSync(
+  resolve(repoRoot, "test/golden/highrisk_cases.json"),
+  JSON.stringify(
+    {
+      cases: structuralTexts.map((text) => ({
+        text,
+        raw: jsonOf(detectHighRisk(text)),
+        spans: jsonOf(highRiskSpans(text)),
+      })),
+    },
+    null,
+    2,
+  ) + "\n",
+);
+
+writeFileSync(
+  resolve(repoRoot, "test/golden/chatstructure_cases.json"),
+  JSON.stringify(
+    {
+      cases: structuralTexts.map((text) => ({
+        text,
+        spans: jsonOf(detectChatStructure(text)),
+      })),
+    },
+    null,
+    2,
+  ) + "\n",
+);
+
+// names, spans and pseudonymize take spans as input. Feed them the real
+// intermediate state from the fake_spans cases, exactly as index.ts composes it.
+const namesCases = [];
+const spansCases = [];
+const pseudoCases = [];
+
+for (const { name, text, spans } of fake.cases) {
+  const modelSpans = spans.map((e) => ({
+    label: normalizePrivacyLabel(e.label),
+    text: e.spanText,
+    start: e.start,
+    end: e.end,
+    score: e.score ?? 0,
+    source: "openai_privacy_filter",
+  }));
+  const structural = detectChatStructure(text);
+  const personSpans = [...structural, ...modelSpans];
+
+  const propagated = propagateDetectedNames(personSpans, text);
+  namesCases.push({
+    name,
+    text,
+    input: jsonOf(personSpans),
+    output: jsonOf(propagated),
+  });
+
+  const all = [...highRiskSpans(text), ...propagated];
+  const merged = mergeOverlappingSpans(all);
+  spansCases.push({ name, input: jsonOf(all), output: jsonOf(merged) });
+
+  const map = buildPseudonymMap(merged);
+  pseudoCases.push({
+    name,
+    text,
+    spans: jsonOf(merged),
+    map: jsonOf(map),
+    applied: applyPseudonymization(text, merged, map),
+  });
+}
+
+writeFileSync(
+  resolve(repoRoot, "test/golden/names_cases.json"),
+  JSON.stringify({ cases: namesCases }, null, 2) + "\n",
+);
+writeFileSync(
+  resolve(repoRoot, "test/golden/spans_cases.json"),
+  JSON.stringify({ cases: spansCases }, null, 2) + "\n",
+);
+writeFileSync(
+  resolve(repoRoot, "test/golden/pseudonymize_cases.json"),
+  JSON.stringify({ cases: pseudoCases }, null, 2) + "\n",
+);
+
+console.log(`label_cases.json          ${labelCases.length} cases`);
+console.log(`mask_cases.json           ${maskCases.length} cases`);
+console.log(`highrisk_cases.json       ${structuralTexts.length} cases`);
+console.log(`chatstructure_cases.json  ${structuralTexts.length} cases`);
+console.log(`names_cases.json          ${namesCases.length} cases`);
+console.log(`spans_cases.json          ${spansCases.length} cases`);
+console.log(`pseudonymize_cases.json   ${pseudoCases.length} cases`);
 for (const c of maskCases) {
   const leaked = c.leaks.length ? ` leaks=${c.leaks.length}` : "";
   console.log(`  ${c.name}: ${c.entities.length} entities${leaked}`);
