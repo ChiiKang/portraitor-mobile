@@ -33,7 +33,7 @@ class GlinerConfig {
     this.threshold = 0.08,
     this.maxWidth = 12,
     this.flatNer = true,
-    this.boolAsUint8 = true,
+    this.boolAsUint8 = false,
   });
 
   /// The six labels the web sends. Order is load-bearing: the decoder maps class
@@ -59,9 +59,15 @@ class GlinerConfig {
   final int maxWidth;
   final bool flatNer;
 
-  /// The uint8 model variant takes `span_mask` as uint8 rather than bool,
-  /// because onnxruntime-objc has no bool tensor type. It is a property of the
-  /// model file, not of the platform.
+  /// Whether `span_mask` goes as uint8 instead of bool.
+  ///
+  /// FALSE for the shipped R2 model, which declares `span_mask` as bool and
+  /// rejects the run outright with
+  /// `Unexpected input data type. Actual: (tensor(uint8)), expected: (tensor(bool))`.
+  ///
+  /// The spike used a hand-patched uint8-mask variant, which is where the old
+  /// default came from. It is a property of the MODEL FILE, not the platform,
+  /// so it stays configurable rather than being sniffed.
   final bool boolAsUint8;
 }
 
