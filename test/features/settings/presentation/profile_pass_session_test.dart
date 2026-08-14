@@ -146,6 +146,15 @@ void main() {
             'share the user asked for, so a broken sheet read as a working one',
       );
       expect(find.textContaining('Use Copy instead'), findsOneWidget);
+      // Messages this screen does keep have to clear the floating tab dock.
+      // Without a bottom margin they render behind it as a dark smear.
+      final snack = tester.widget<SnackBar>(find.byType(SnackBar));
+      expect(snack.behavior, SnackBarBehavior.floating);
+      expect(
+        (snack.margin as EdgeInsets?)?.bottom,
+        isNotNull,
+        reason: 'this screen used to post snack bars with no dock inset',
+      );
     });
   });
 
@@ -207,6 +216,69 @@ void main() {
             .text,
         'PORT-TEST-CODE',
         reason: 'signing back in should not mean retyping a saved code',
+      );
+    });
+
+    testWidgets('signing out stops the header claiming an active Pass', (
+      tester,
+    ) async {
+      await pumpProfile(tester);
+      expect(
+        find.byKey(const ValueKey('profile-pass-header')),
+        findsOneWidget,
+        reason: 'a Pass is in force, so the header is the truth',
+      );
+
+      await revealSignOut(tester);
+      await tester.tap(find.byKey(const ValueKey('profile-sign-out')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('profile-sign-out-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('profile-pass-header')),
+        findsNothing,
+        reason:
+            'it is headed YOUR PORTRAITOR PASS, so printing the cached code '
+            'there contradicts the card directly below it',
+      );
+      expect(
+        find.text('YOUR PORTRAITOR PASS'),
+        findsNothing,
+        reason: 'no Pass is in force, so nothing may be labelled as one',
+      );
+      // The code is still on the phone. It belongs in the sign-in field,
+      // which is the one place it is offered as a thing to use, not as a
+      // statement about current access.
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('profile-pass-code-input')),
+            )
+            .controller!
+            .text,
+        'PORT-TEST-CODE',
+      );
+    });
+
+    testWidgets('signing out shows no snack bar under the tab dock', (
+      tester,
+    ) async {
+      await pumpProfile(tester);
+      await revealSignOut(tester);
+
+      await tester.tap(find.byKey(const ValueKey('profile-sign-out')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('profile-sign-out-confirm')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(
+        find.byType(SnackBar),
+        findsNothing,
+        reason:
+            'the card already reads Signed out, and the message it repeated '
+            'landed behind the floating dock where nobody could read it',
       );
     });
 

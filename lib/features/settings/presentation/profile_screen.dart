@@ -118,6 +118,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  /// The single answer to "is a Pass in force on this device right now".
+  ///
+  /// The header and the membership card used to decide this separately, which
+  /// is how the screen came to print a Pass code under "YOUR PORTRAITOR PASS"
+  /// directly above a card saying the user was signed out.
+  bool get _hasActivePass =>
+      !_entitlementLoading && (_entitlement?.grantsAccess ?? false);
+
   @override
   Widget build(BuildContext context) {
     final bottomPad = mainTabContentBottomInset(context);
@@ -149,9 +157,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               const SizedBox(height: 16),
 
               // ── Pass header ─────────────────────────────────────
-              Row(
-                key: const ValueKey('profile-pass-header'),
-                crossAxisAlignment: CrossAxisAlignment.start,
+              //
+              // Only when a Pass is actually in force. It is headed "YOUR
+              // PORTRAITOR PASS", so printing a cached code under it while
+              // signed out states the opposite of what the card below says.
+              // The code is still on the phone and still offered in the
+              // sign-in field; what it is not is active.
+              if (_hasActivePass) ...[
+                Row(
+                  key: const ValueKey('profile-pass-header'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
                     width: 40,
@@ -204,10 +219,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+              ],
 
               // ── Privacy banner ──────────────────────────────────
               Container(
@@ -277,7 +293,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
 
     final entitlement = _entitlement;
-    if (entitlement == null || !entitlement.grantsAccess) {
+    // `entitlement == null` is redundant with _hasActivePass and kept only so
+    // the analyzer can promote the local below.
+    if (entitlement == null || !_hasActivePass) {
       return [
         const SizedBox(height: 10),
         Container(
@@ -516,8 +534,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     setState(() => _signOutBusy = true);
     try {
       await _credentialStore.clearSessionToken();
+      // No confirmation message. The card it was covering already says
+      // 'Signed out', so the snack bar only repeated what the screen shows.
       await _loadEntitlement();
-      if (mounted) _toast('Signed out of your Pass');
     } finally {
       if (mounted) setState(() => _signOutBusy = false);
     }
@@ -535,8 +554,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final session = await _passSessionApi.attach(passCode: code);
       await _credentialStore.writePassCode(code);
       await _credentialStore.writeSessionToken(session);
+      // Same as sign-out: the card turns into an active Pass with a usage
+      // bar, which says it better than a message sliding over the top of it.
       await _loadEntitlement();
-      if (mounted) _toast('Pass attached');
     } on PassSessionException catch (error) {
       if (mounted) _toast(error.message);
     } catch (_) {
@@ -590,11 +610,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   void _cancelSubscription() => _toast('Cancellation is handled on Stripe');
 
-  void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(behavior: SnackBarBehavior.floating, content: Text(message)),
-    );
-  }
+  /// A floating snack bar with no bottom inset lands underneath the tab dock,
+  /// where it reads as a dark smear behind the buttons rather than as a
+  /// message. Every other tab already routes through the shell's helper, which
+  /// clears the dock; this screen was the one that did not.
+  void _toast(String message) => showMainTabSnackBar(context, message);
 }
 
 class _MembershipCard extends StatelessWidget {
