@@ -104,11 +104,18 @@ class ModelSpec {
         '/gliner-small-finetuned-v3/v3/model_uint8.onnx',
     fileName: 'model_uint8.onnx',
     minBytes: 120 * 1024 * 1024,
-    approximateBytes: 175 * 1024 * 1024,
-    // TODO(privacy): pin the real digest once the R2 artifact is checksummed.
-    // Leaving it null keeps installs correct but costs full verification and
-    // download resume. Do not guess a value.
-    sha256Hex: null,
+    approximateBytes: 183385628,
+    // Computed from the artifact R2 actually serves, on 2026-08-14:
+    //   curl -s <url> | shasum -a 256   ->  197fd4ad...c98dad   (183,385,628 B)
+    // Pinning it turns the size floor into real verification AND enables
+    // resume, which is deliberately gated on having a digest: resumed bytes are
+    // two fetches concatenated, and only a digest can catch a remote object
+    // that changed in between. R2 advertises Accept-Ranges: bytes.
+    //
+    // If the model is ever re-exported this MUST be recomputed, or every
+    // install will fail verification and re-download forever.
+    sha256Hex:
+        '197fd4ad605311dae18f55ce02ebe7e4c43535c762facae6d6cfdcf647c98dad',
   );
 
   ModelSpec copyWith({String? version, String? sha256Hex}) => ModelSpec(

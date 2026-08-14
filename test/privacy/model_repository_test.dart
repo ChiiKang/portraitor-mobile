@@ -669,11 +669,16 @@ void main() {
       );
       expect(ModelSpec.gliner.version, 'v3');
       expect(ModelSpec.gliner.fileName, 'model_uint8.onnx');
-      // No digest is published for the R2 object yet. If this ever starts
-      // failing, someone pinned one - which is the goal, and which also turns
-      // on resume.
-      expect(ModelSpec.gliner.sha256Hex, isNull);
-      expect(ModelSpec.gliner.supportsResume, isFalse);
+      // Pinned on 2026-08-14 from the artifact R2 actually serves. If the
+      // model is ever re-exported this fails, which is the point: a stale
+      // digest would make every install verify-fail and re-download forever.
+      expect(
+        ModelSpec.gliner.sha256Hex,
+        '197fd4ad605311dae18f55ce02ebe7e4c43535c762facae6d6cfdcf647c98dad',
+      );
+      expect(ModelSpec.gliner.approximateBytes, 183385628);
+      // Resume is gated on having a digest, so pinning one turns it on.
+      expect(ModelSpec.gliner.supportsResume, isTrue);
     });
   });
 }
