@@ -51,17 +51,6 @@ class PrivacyPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return OnboardingCanvas(
       backgroundAsset: onboardingPrivacyBackground,
-      scrim: const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Color(0xB8FBFAFF),
-          Color(0x80FBFAFF),
-          Color(0xC7FBFAFF),
-          Color(0xEBFBFAFF),
-        ],
-        stops: [0, 0.26, 0.52, 1],
-      ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(26, 0, 26, 18),
         child: Column(
