@@ -78,6 +78,19 @@ void main() {
           'people',
           'portraits_completed',
           'active_person_index',
+          // Mobile-only. On-device masking runs for minutes between the
+          // purchase and the first generation request, so its progress has to
+          // survive a kill in that window, and the entity map is the only key
+          // that can turn [PERSON1] back into a real name in a resumed
+          // portrait. Web computes its mask in a session that cannot be
+          // killed mid-pass in the same way.
+          'masking_status',
+          'masking_progress',
+          'masking_total',
+          'model_version',
+          'input_hash',
+          'entity_map',
+          'masked_text',
           'created_at',
           'updated_at',
         };

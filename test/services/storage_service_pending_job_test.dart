@@ -100,6 +100,46 @@ Future<Database> _openLegacyV6TestDb() async {
   );
 }
 
+Future<Database> _openLegacyV8TestDb() async {
+  // Open at version 8 with the pending_jobs shape that shipped before the
+  // masking columns existed, so the v8 -> v9 ALTER runs against a real
+  // pre-existing install rather than a freshly created table.
+  return databaseFactoryFfi.openDatabase(
+    inMemoryDatabasePath,
+    options: OpenDatabaseOptions(
+      version: 8,
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE pending_jobs (
+            id TEXT PRIMARY KEY,
+            device_id TEXT NOT NULL,
+            client_conversation_ref TEXT NOT NULL,
+            input_text TEXT,
+            target_name TEXT,
+            date_range TEXT,
+            payment_session_id TEXT,
+            delivery_email TEXT,
+            public_uuid TEXT,
+            status TEXT DEFAULT 'processing',
+            chunks_completed INTEGER DEFAULT 0,
+            chunks_total INTEGER DEFAULT 0,
+            chunk_results TEXT DEFAULT '[]',
+            chunking_mode TEXT,
+            token_limit INTEGER,
+            chunk_overlap_tokens INTEGER,
+            tier TEXT DEFAULT 'you',
+            people TEXT DEFAULT '[]',
+            portraits_completed TEXT DEFAULT '[]',
+            active_person_index INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+          )
+        ''');
+      },
+    ),
+  );
+}
+
 PendingJob _makeJob({
   String id = 'conv_1',
   String? inputText = 'hello chat',
@@ -108,6 +148,13 @@ PendingJob _makeJob({
   int chunksTotal = 3,
   List<Map<String, dynamic>>? chunkResults,
   DateTime? createdAt,
+  String? maskingStatus,
+  int? maskingProgress,
+  int? maskingTotal,
+  String? modelVersion,
+  String? inputHash,
+  List<Map<String, dynamic>>? entityMap,
+  String? maskedText,
 }) {
   final now = createdAt ?? DateTime.utc(2026, 6, 6, 1);
   return PendingJob(
@@ -127,6 +174,33 @@ PendingJob _makeJob({
     chunkOverlapTokens: 250,
     createdAt: now,
     updatedAt: now,
+    maskingStatus: maskingStatus,
+    maskingProgress: maskingProgress,
+    maskingTotal: maskingTotal,
+    modelVersion: modelVersion,
+    inputHash: inputHash,
+    entityMap: entityMap,
+    maskedText: maskedText,
+  );
+}
+
+/// A job written in a masking state, as it exists between the purchase and the
+/// first generation request.
+PendingJob _makeMaskingJob({
+  String id = 'conv_1',
+  String maskingStatus = pendingJobMaskingPending,
+  int maskingProgress = 0,
+  int maskingTotal = 12,
+  List<Map<String, dynamic>>? entityMap,
+  String? maskedText,
+}) {
+  return _makeJob(
+    id: id,
+    maskingStatus: maskingStatus,
+    maskingProgress: maskingProgress,
+    maskingTotal: maskingTotal,
+    entityMap: entityMap,
+    maskedText: maskedText,
   );
 }
 
@@ -453,8 +527,8 @@ void main() {
           _makeJob(id: 'conv_stale', status: 'stale'),
         );
 
-        final resumable = await StorageService.instance
-            .getResumablePendingJobs();
+        final resumable =
+            await StorageService.instance.getResumablePendingJobs();
         expect(resumable.length, 1);
         expect(resumable.single.id, 'conv_active');
       },
@@ -670,6 +744,400 @@ void main() {
       await StorageService.onUpgradeSchema(db, 6, StorageService.dbVersion);
       await StorageService.onUpgradeSchema(db, 6, StorageService.dbVersion);
       expect(true, isTrue);
+    });
+  });
+
+  group('PendingJob masking fields', () {
+    test('round trips the mask through toDbMap/fromDbMap', () {
+      final now = DateTime.utc(2026, 8, 14, 9);
+      final job = PendingJob(
+        id: 'conv_mask',
+        deviceId: 'device_abc',
+        clientConversationRef: 'conv_mask',
+        inputText: 'Alice: call me on 07700 900000',
+        paymentSessionId: 'pi_mask',
+        chunksCompleted: 0,
+        chunksTotal: 1,
+        chunkResults: const [],
+        createdAt: now,
+        updatedAt: now,
+        maskingStatus: pendingJobMaskingDone,
+        maskingProgress: 4,
+        maskingTotal: 4,
+        modelVersion: 'gliner-small-finetuned-v3',
+        inputHash: 'sha256:abc123',
+        entityMap: const [
+          {
+            'token': '[PERSON1]',
+            'type': 'person',
+            'value': 'Alice',
+            'count': 1,
+          },
+        ],
+        maskedText: '[PERSON1]: call me on [PHONE1]',
+      );
+
+      final roundTrip = PendingJob.fromDbMap(job.toDbMap());
+
+      expect(roundTrip.maskingStatus, 'done');
+      expect(roundTrip.maskingProgress, 4);
+      expect(roundTrip.maskingTotal, 4);
+      expect(roundTrip.modelVersion, 'gliner-small-finetuned-v3');
+      expect(roundTrip.inputHash, 'sha256:abc123');
+      expect(roundTrip.entityMap, hasLength(1));
+      expect(roundTrip.entityMap!.single['token'], '[PERSON1]');
+      expect(roundTrip.entityMap!.single['value'], 'Alice');
+      expect(roundTrip.maskedText, '[PERSON1]: call me on [PHONE1]');
+    });
+
+    test('a mask that found nothing is not the same as no mask', () {
+      final now = DateTime.utc(2026, 8, 14, 9);
+      final unmasked = _makeJob(id: 'conv_none');
+      expect(unmasked.entityMap, isNull);
+      expect(unmasked.toDbMap()['entity_map'], isNull);
+
+      final ranAndFoundNothing = PendingJob(
+        id: 'conv_empty',
+        deviceId: 'device_abc',
+        clientConversationRef: 'conv_empty',
+        inputText: 'nothing private here',
+        paymentSessionId: 'pi_empty',
+        chunksCompleted: 0,
+        chunksTotal: 1,
+        chunkResults: const [],
+        createdAt: now,
+        updatedAt: now,
+        maskingStatus: pendingJobMaskingDone,
+        entityMap: const [],
+      );
+      expect(ranAndFoundNothing.toDbMap()['entity_map'], '[]');
+      expect(
+        PendingJob.fromDbMap(ranAndFoundNothing.toDbMap()).entityMap,
+        isEmpty,
+      );
+    });
+
+    test('fromDbMap reads a row that predates the masking columns', () {
+      final created = DateTime.utc(2026, 8, 1, 12);
+      final row = <String, Object?>{
+        'id': 'conv_pre_v9',
+        'device_id': 'd',
+        'client_conversation_ref': 'conv_pre_v9',
+        'input_text': 'hi',
+        'payment_session_id': 'pi_x',
+        'status': 'processing',
+        'chunks_completed': 0,
+        'chunks_total': 1,
+        'chunk_results': '[]',
+        'created_at': created.toIso8601String(),
+        'updated_at': created.toIso8601String(),
+      };
+
+      final job = PendingJob.fromDbMap(row);
+      expect(job.maskingStatus, isNull);
+      expect(job.maskingProgress, isNull);
+      expect(job.maskingTotal, isNull);
+      expect(job.modelVersion, isNull);
+      expect(job.inputHash, isNull);
+      expect(job.entityMap, isNull);
+      expect(job.maskedText, isNull);
+      expect(job.isResumable, isTrue);
+    });
+  });
+
+  group('StorageService masking writes', () {
+    late Database db;
+
+    setUp(() async {
+      db = await _openFreshTestDb();
+      StorageService.instance.initForTesting(db: db, deviceId: _testDeviceId);
+    });
+
+    tearDown(() async {
+      await StorageService.instance.resetForTesting();
+    });
+
+    test(
+      'a job can be persisted in a masking state before inference',
+      () async {
+        await StorageService.instance.savePendingJobRecord(_makeMaskingJob());
+
+        final read = await StorageService.instance.getPendingJobById('conv_1');
+        expect(read!.maskingStatus, pendingJobMaskingPending);
+        expect(read.maskingTotal, 12);
+        expect(read.maskingProgress, 0);
+        expect(read.entityMap, isNull);
+      },
+    );
+
+    test('progress checkpoints do not disturb the rest of the row', () async {
+      await StorageService.instance.savePendingJobRecord(_makeMaskingJob());
+
+      await StorageService.instance.updatePendingJobMasking(
+        'conv_1',
+        maskingStatus: pendingJobMaskingRunning,
+        maskingProgress: 7,
+      );
+
+      final read = await StorageService.instance.getPendingJobById('conv_1');
+      expect(read!.maskingStatus, pendingJobMaskingRunning);
+      expect(read.maskingProgress, 7);
+      expect(read.maskingTotal, 12, reason: 'omitted fields keep their value');
+      expect(read.inputText, 'hello chat');
+      expect(read.paymentSessionId, 'pi_1');
+    });
+
+    test('the entity map is readable back on its own', () async {
+      await StorageService.instance.savePendingJobRecord(_makeMaskingJob());
+      await StorageService.instance.updatePendingJobMasking(
+        'conv_1',
+        maskingStatus: pendingJobMaskingDone,
+        maskingProgress: 12,
+        modelVersion: 'gliner-small-finetuned-v3',
+        inputHash: 'sha256:abc123',
+        entityMap: const [
+          {'token': '[PERSON1]', 'type': 'person', 'value': 'Alice'},
+        ],
+        maskedText: '[PERSON1]: hello',
+      );
+
+      final entities = await StorageService.instance.getPendingJobEntityMap(
+        'conv_1',
+      );
+      expect(entities, hasLength(1));
+      expect(entities!.single['token'], '[PERSON1]');
+      expect(entities.single['value'], 'Alice');
+
+      final read = await StorageService.instance.getPendingJobById('conv_1');
+      expect(read!.maskingStatus, pendingJobMaskingDone);
+      expect(read.modelVersion, 'gliner-small-finetuned-v3');
+      expect(read.inputHash, 'sha256:abc123');
+      expect(read.maskedText, '[PERSON1]: hello');
+    });
+
+    test('getPendingJobEntityMap is null for an unmasked job', () async {
+      await StorageService.instance.savePendingJobRecord(_makeJob());
+      expect(
+        await StorageService.instance.getPendingJobEntityMap('conv_1'),
+        isNull,
+      );
+      expect(
+        await StorageService.instance.getPendingJobEntityMap('missing'),
+        isNull,
+      );
+    });
+
+    test('a masking write to a missing row fails loudly', () async {
+      await expectLater(
+        StorageService.instance.updatePendingJobMasking(
+          'missing',
+          maskingProgress: 1,
+        ),
+        throwsStateError,
+      );
+    });
+
+    test('a later generation write cannot erase the mask', () async {
+      // startProcessing rebuilds the row from generation state, which knows
+      // nothing about masking. Without deferral that replacing insert would
+      // drop the only key that can un-mask the portrait it is about to buy.
+      await StorageService.instance.savePendingJobRecord(_makeMaskingJob());
+      await StorageService.instance.updatePendingJobMasking(
+        'conv_1',
+        maskingStatus: pendingJobMaskingDone,
+        maskingProgress: 12,
+        entityMap: const [
+          {'token': '[PERSON1]', 'type': 'person', 'value': 'Alice'},
+        ],
+        maskedText: '[PERSON1]: hello',
+      );
+
+      await StorageService.instance.savePendingJobRecord(
+        _makeJob(
+          chunkResults: const [
+            {'index': 0, 'content': 'first chunk'},
+          ],
+        ),
+      );
+
+      final read = await StorageService.instance.getPendingJobById('conv_1');
+      expect(read!.entityMap, hasLength(1));
+      expect(read.maskedText, '[PERSON1]: hello');
+      expect(read.maskingStatus, pendingJobMaskingDone);
+      expect(read.chunkResults.single['content'], 'first chunk');
+    });
+
+    test('an explicit masking value still wins over the stored one', () async {
+      await StorageService.instance.savePendingJobRecord(_makeMaskingJob());
+      await StorageService.instance.updatePendingJobMasking(
+        'conv_1',
+        entityMap: const [
+          {'token': '[PERSON1]', 'value': 'Alice'},
+        ],
+      );
+
+      await StorageService.instance.savePendingJobRecord(
+        _makeMaskingJob(
+          maskingStatus: pendingJobMaskingDone,
+          entityMap: const [
+            {'token': '[PERSON1]', 'value': 'Bob'},
+          ],
+        ),
+      );
+
+      final read = await StorageService.instance.getPendingJobById('conv_1');
+      expect(read!.entityMap!.single['value'], 'Bob');
+      expect(read.maskingStatus, pendingJobMaskingDone);
+    });
+  });
+
+  group('v8 -> v9 migration (on-device masking)', () {
+    late Database db;
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    test('existing rows survive and read back with no mask', () async {
+      db = await _openLegacyV8TestDb();
+      // A paid, half-processed job that predates the masking columns.
+      await db.insert('pending_jobs', {
+        'id': 'legacy_v8',
+        'device_id': _testDeviceId,
+        'client_conversation_ref': 'legacy_v8',
+        'input_text': 'pre-upgrade text',
+        'target_name': 'Bob',
+        'date_range': 'Jan 1 - Feb 1',
+        'payment_session_id': 'pi_legacy_v8',
+        'delivery_email': 'buyer@example.com',
+        'public_uuid': 'uuid_legacy_v8',
+        'status': 'processing',
+        'chunks_completed': 1,
+        'chunks_total': 3,
+        'chunk_results': '[{"index":0,"content":"first"}]',
+        'chunking_mode': 'rolling',
+        'token_limit': 250000,
+        'chunk_overlap_tokens': 250,
+        'tier': 'partner',
+        'people': '["Bob","Carol"]',
+        'portraits_completed': '[]',
+        'active_person_index': 1,
+        'created_at': DateTime.utc(2026, 8, 13).toIso8601String(),
+        'updated_at': DateTime.utc(2026, 8, 13, 1).toIso8601String(),
+      });
+
+      await StorageService.onUpgradeSchema(db, 8, StorageService.dbVersion);
+
+      final rows = await db.query(
+        'pending_jobs',
+        where: 'id = ?',
+        whereArgs: ['legacy_v8'],
+      );
+      expect(rows, hasLength(1), reason: 'the migration must not drop rows');
+
+      // Every pre-existing value is untouched.
+      final row = rows.single;
+      expect(row['input_text'], 'pre-upgrade text');
+      expect(row['target_name'], 'Bob');
+      expect(row['date_range'], 'Jan 1 - Feb 1');
+      expect(row['payment_session_id'], 'pi_legacy_v8');
+      expect(row['delivery_email'], 'buyer@example.com');
+      expect(row['public_uuid'], 'uuid_legacy_v8');
+      expect(row['status'], 'processing');
+      expect(row['chunks_completed'], 1);
+      expect(row['chunks_total'], 3);
+      expect(row['chunk_results'], '[{"index":0,"content":"first"}]');
+      expect(row['chunking_mode'], 'rolling');
+      expect(row['token_limit'], 250000);
+      expect(row['chunk_overlap_tokens'], 250);
+      expect(row['tier'], 'partner');
+      expect(row['people'], '["Bob","Carol"]');
+      expect(row['active_person_index'], 1);
+      expect(row['created_at'], DateTime.utc(2026, 8, 13).toIso8601String());
+      expect(row['updated_at'], DateTime.utc(2026, 8, 13, 1).toIso8601String());
+
+      // And the new columns read null, which keeps meaning "never masked".
+      expect(row['masking_status'], isNull);
+      expect(row['masking_progress'], isNull);
+      expect(row['masking_total'], isNull);
+      expect(row['model_version'], isNull);
+      expect(row['input_hash'], isNull);
+      expect(row['entity_map'], isNull);
+      expect(row['masked_text'], isNull);
+
+      final job = PendingJob.fromDbMap(row);
+      expect(job.entityMap, isNull);
+      expect(job.maskingStatus, isNull);
+      expect(job.isResumable, isTrue, reason: 'an old job still resumes');
+    });
+
+    test('the new columns are writable after the upgrade', () async {
+      db = await _openLegacyV8TestDb();
+      await StorageService.onUpgradeSchema(db, 8, StorageService.dbVersion);
+
+      await db.insert('pending_jobs', {
+        'id': 'post_v9',
+        'device_id': _testDeviceId,
+        'client_conversation_ref': 'post_v9',
+        'input_text': 'post-upgrade text',
+        'payment_session_id': 'pi_post_v9',
+        'status': 'processing',
+        'chunks_completed': 0,
+        'chunks_total': 1,
+        'chunk_results': '[]',
+        'masking_status': pendingJobMaskingDone,
+        'masking_progress': 3,
+        'masking_total': 3,
+        'model_version': 'gliner-small-finetuned-v3',
+        'input_hash': 'sha256:abc123',
+        'entity_map': '[{"token":"[PERSON1]","value":"Alice"}]',
+        'masked_text': '[PERSON1]: hello',
+        'created_at': DateTime.utc(2026, 8, 14).toIso8601String(),
+        'updated_at': DateTime.utc(2026, 8, 14).toIso8601String(),
+      });
+
+      final rows = await db.query(
+        'pending_jobs',
+        where: 'id = ?',
+        whereArgs: ['post_v9'],
+      );
+      final job = PendingJob.fromDbMap(rows.single);
+      expect(job.maskingStatus, pendingJobMaskingDone);
+      expect(job.maskingProgress, 3);
+      expect(job.maskingTotal, 3);
+      expect(job.modelVersion, 'gliner-small-finetuned-v3');
+      expect(job.inputHash, 'sha256:abc123');
+      expect(job.entityMap!.single['value'], 'Alice');
+      expect(job.maskedText, '[PERSON1]: hello');
+    });
+
+    test('upgrade is idempotent — running twice does not error', () async {
+      db = await _openLegacyV8TestDb();
+      await StorageService.onUpgradeSchema(db, 8, StorageService.dbVersion);
+      await StorageService.onUpgradeSchema(db, 8, StorageService.dbVersion);
+      expect(true, isTrue);
+    });
+
+    test('a v4 install jumps straight to v9 with every column', () async {
+      db = await _openLegacyV4TestDb();
+      await StorageService.onUpgradeSchema(db, 4, StorageService.dbVersion);
+
+      final columns =
+          (await db.rawQuery(
+            'PRAGMA table_info(pending_jobs)',
+          )).map((r) => r['name'] as String).toSet();
+      expect(
+        columns,
+        containsAll(<String>[
+          'masking_status',
+          'masking_progress',
+          'masking_total',
+          'model_version',
+          'input_hash',
+          'entity_map',
+          'masked_text',
+        ]),
+      );
     });
   });
 }

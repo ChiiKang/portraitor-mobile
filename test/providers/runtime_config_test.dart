@@ -14,6 +14,7 @@ Map<String, dynamic> mobileConfigResponse({
   String thinkingDisplayMode = 'truncated',
   int thinkingDisplayWordLimit = 40,
   bool pdfDownloadEnabled = true,
+  bool privacyFilteringEnabled = true,
   String configVersion = 'abc123',
 }) {
   return {
@@ -36,6 +37,7 @@ Map<String, dynamic> mobileConfigResponse({
         'thinkingDisplayMode': thinkingDisplayMode,
         'thinkingDisplayWordLimit': thinkingDisplayWordLimit,
         'pdfDownloadEnabled': pdfDownloadEnabled,
+        'privacyFilteringEnabled': privacyFilteringEnabled,
       },
     },
   };
@@ -59,6 +61,7 @@ void main() {
       expect(config.thinkingDisplayMode, 'truncated');
       expect(config.thinkingDisplayWordLimit, 40);
       expect(config.pdfDownloadEnabled, isTrue);
+      expect(config.privacyFilteringEnabled, isTrue);
     });
   });
 
@@ -77,6 +80,7 @@ void main() {
           thinkingDisplayMode: 'hidden',
           thinkingDisplayWordLimit: 12,
           pdfDownloadEnabled: false,
+          privacyFilteringEnabled: false,
           configVersion: 'version-1',
         ),
       );
@@ -94,6 +98,30 @@ void main() {
       expect(config.thinkingDisplayMode, 'hidden');
       expect(config.thinkingDisplayWordLimit, 12);
       expect(config.pdfDownloadEnabled, isFalse);
+      expect(config.privacyFilteringEnabled, isFalse);
+    });
+
+    test('privacy filtering stays on when the backend omits the flag', () {
+      // The admin kill-switch is nullable on the backend and NULL means
+      // enabled, so an older or partial config must not quietly turn masking
+      // off. Absence has to read as on.
+      final config = RuntimeConfig.fromJson({
+        'data': {
+          'ui': {'thinkingDisplayMode': 'truncated'},
+        },
+      });
+
+      expect(config.privacyFilteringEnabled, isTrue);
+    });
+
+    test('privacy filtering parses a string flag', () {
+      final config = RuntimeConfig.fromJson({
+        'data': {
+          'ui': {'privacyFilteringEnabled': 'false'},
+        },
+      });
+
+      expect(config.privacyFilteringEnabled, isFalse);
     });
 
     test('does not require or parse old admin effective schema', () {

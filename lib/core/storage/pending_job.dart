@@ -8,6 +8,20 @@ import 'dart:convert';
 /// is spent from the funnel, not resumed.
 const String pendingJobCreditStatus = 'credit';
 
+/// The row exists and the mask has not started yet.
+///
+/// Written before inference so the paid purchase is already durable when the
+/// on-device pass begins. Masking runs for minutes after payment, so a kill in
+/// that window would otherwise strand money with nothing on disk to resume.
+const String pendingJobMaskingPending = 'pending';
+
+/// Inference is in flight and `masking_progress` is being checkpointed.
+const String pendingJobMaskingRunning = 'running';
+
+/// The mask is complete and `entity_map` holds the only key that can restore
+/// the real names into a generated portrait.
+const String pendingJobMaskingDone = 'done';
+
 class PendingJob {
   const PendingJob({
     required this.id,
@@ -32,6 +46,13 @@ class PendingJob {
     this.people = const [],
     this.portraitsCompleted = const [],
     this.activePersonIndex = 1,
+    this.maskingStatus,
+    this.maskingProgress,
+    this.maskingTotal,
+    this.modelVersion,
+    this.inputHash,
+    this.entityMap,
+    this.maskedText,
   });
 
   final String id;
@@ -68,6 +89,55 @@ class PendingJob {
   final List<String> people;
   final List<Map<String, dynamic>> portraitsCompleted;
   final int activePersonIndex;
+
+  /// How far the on-device privacy mask has got for this job.
+  ///
+  /// One of [pendingJobMaskingPending], [pendingJobMaskingRunning] or
+  /// [pendingJobMaskingDone]. Null on every row written before this feature,
+  /// and on any run where masking is switched off, so null must keep meaning
+  /// "this job never had a mask" rather than "the mask failed".
+  final String? maskingStatus;
+
+  /// Line blocks already through the model, and how many there are in total.
+  ///
+  /// Masking takes minutes on a phone, so the progress is checkpointed rather
+  /// than restarted: a resumed job can show real progress instead of jumping
+  /// back to zero for a portrait the customer has already paid for.
+  final int? maskingProgress;
+  final int? maskingTotal;
+
+  /// Which on-device model produced the mask.
+  ///
+  /// Two models can token the same chat differently, so a map made by one is
+  /// not safe to extend with another. Stored so a resume can tell that the
+  /// installed model has moved on and redo the pass instead of mixing them.
+  final String? modelVersion;
+
+  /// Hash of the normalized text the mask was computed from.
+  ///
+  /// The un-mask key is only valid for the exact text it was derived from.
+  /// This is what lets the send seam refuse to pair a stored mask with text
+  /// that has since changed, rather than shipping raw names to the backend.
+  final String? inputHash;
+
+  /// The detected entities, as decoded JSON objects.
+  ///
+  /// This is the only thing on the device that can turn `[PERSON1]` back into
+  /// a real name, so it is persisted before the first generation request, not
+  /// held for the session: chunks that come back after a kill are otherwise
+  /// unreadable. Null means no mask was ever computed. An empty list means a
+  /// mask ran and found nothing, which is a different and valid state.
+  ///
+  /// Kept as plain maps so storage does not depend on the privacy feature's
+  /// entity type, which owns its own encoding.
+  final List<Map<String, dynamic>>? entityMap;
+
+  /// The masked payload, when masking finished before generation started.
+  ///
+  /// Held so a resume can send exactly the text the entity map was built
+  /// against instead of re-running a three-minute pass to reproduce it.
+  final String? maskedText;
+
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -101,6 +171,15 @@ class PendingJob {
       'people': jsonEncode(people),
       'portraits_completed': jsonEncode(portraitsCompleted),
       'active_person_index': activePersonIndex,
+      'masking_status': maskingStatus,
+      'masking_progress': maskingProgress,
+      'masking_total': maskingTotal,
+      'model_version': modelVersion,
+      'input_hash': inputHash,
+      // Encoded only when a mask exists, so "never masked" stays distinct from
+      // "masked and found nothing", which encodes as '[]'.
+      'entity_map': entityMap == null ? null : jsonEncode(entityMap),
+      'masked_text': maskedText,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -122,6 +201,13 @@ class PendingJob {
         rawPortraits == null || rawPortraits.isEmpty
             ? const <dynamic>[]
             : jsonDecode(rawPortraits) as List<dynamic>;
+    // Stays null when the column is absent or blank: a job that never ran the
+    // mask must not read back as a job whose mask found nothing.
+    final rawEntities = row['entity_map'] as String?;
+    final decodedEntities =
+        rawEntities == null || rawEntities.isEmpty
+            ? null
+            : jsonDecode(rawEntities) as List<dynamic>;
 
     return PendingJob(
       id: row['id'] as String,
@@ -152,6 +238,16 @@ class PendingJob {
           .map((item) => Map<String, dynamic>.from(item))
           .toList(growable: false),
       activePersonIndex: (row['active_person_index'] as int?) ?? 1,
+      maskingStatus: row['masking_status'] as String?,
+      maskingProgress: row['masking_progress'] as int?,
+      maskingTotal: row['masking_total'] as int?,
+      modelVersion: row['model_version'] as String?,
+      inputHash: row['input_hash'] as String?,
+      entityMap: decodedEntities
+          ?.whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(growable: false),
+      maskedText: row['masked_text'] as String?,
       createdAt: DateTime.parse(row['created_at'] as String),
       updatedAt: DateTime.parse(
         (row['updated_at'] as String?) ?? row['created_at'] as String,

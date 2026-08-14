@@ -50,6 +50,14 @@ class RuntimeConfig {
   final int thinkingDisplayWordLimit;
   final bool pdfDownloadEnabled;
 
+  /// Whether chat text is masked on the device before it is sent.
+  ///
+  /// Defaults to true, matching the backend, where the admin kill-switch is
+  /// stored as nullable and a NULL means enabled. Defaulting to false would
+  /// turn a config request that never arrived into an unannounced downgrade of
+  /// the privacy promise, so absence has to mean on.
+  final bool privacyFilteringEnabled;
+
   const RuntimeConfig({
     this.configVersion = 'local-default',
     this.entitlements = const RuntimeEntitlements(),
@@ -61,6 +69,7 @@ class RuntimeConfig {
     this.thinkingDisplayMode = 'truncated',
     this.thinkingDisplayWordLimit = 40,
     this.pdfDownloadEnabled = true,
+    this.privacyFilteringEnabled = true,
   });
 
   /// Parse the response from GET /api/mobile-config.php.
@@ -93,6 +102,8 @@ class RuntimeConfig {
       thinkingDisplayWordLimit:
           _parseIntSafe(ui['thinkingDisplayWordLimit']) ?? 40,
       pdfDownloadEnabled: _parseBoolSafe(ui['pdfDownloadEnabled']) ?? true,
+      privacyFilteringEnabled:
+          _parseBoolSafe(ui['privacyFilteringEnabled']) ?? true,
     );
   }
 

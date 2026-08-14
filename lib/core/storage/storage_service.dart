@@ -14,7 +14,7 @@ class StorageService {
 
   static const String _deviceIdKey = 'portraitor_device_id';
   static const int _maxConversations = 100;
-  static const int _dbVersion = 8;
+  static const int _dbVersion = 9;
 
   Database? _db;
   String? _deviceId;
@@ -124,6 +124,13 @@ class StorageService {
             people TEXT DEFAULT '[]',
             portraits_completed TEXT DEFAULT '[]',
             active_person_index INTEGER DEFAULT 1,
+            masking_status TEXT,
+            masking_progress INTEGER,
+            masking_total INTEGER,
+            model_version TEXT,
+            input_hash TEXT,
+            entity_map TEXT,
+            masked_text TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT
           )
@@ -255,6 +262,24 @@ class StorageService {
       // finished. Rows written before this column simply carry no uuid; the
       // reassign call then fails loudly rather than discarding the portrait.
       await _addColumnIfMissing(db, 'pending_jobs', 'public_uuid TEXT');
+    }
+    if (oldVersion < 9) {
+      // On-device masking runs for minutes, after payment and before the first
+      // generation request, so the row has to exist and carry its progress
+      // through a kill in that window. The entity map is the only key that can
+      // put real names back into a portrait written about [PERSON1], so it is
+      // stored here rather than kept in memory for the session.
+      //
+      // Every column is nullable and additive: rows written before this
+      // migration keep their values and read back with no mask, which is the
+      // correct answer for a job that never had one.
+      await _addColumnIfMissing(db, 'pending_jobs', 'masking_status TEXT');
+      await _addColumnIfMissing(db, 'pending_jobs', 'masking_progress INTEGER');
+      await _addColumnIfMissing(db, 'pending_jobs', 'masking_total INTEGER');
+      await _addColumnIfMissing(db, 'pending_jobs', 'model_version TEXT');
+      await _addColumnIfMissing(db, 'pending_jobs', 'input_hash TEXT');
+      await _addColumnIfMissing(db, 'pending_jobs', 'entity_map TEXT');
+      await _addColumnIfMissing(db, 'pending_jobs', 'masked_text TEXT');
     }
   }
 
@@ -501,6 +526,18 @@ class StorageService {
 
   // ── Pending Jobs (typed, web-parity) ────────────────────────
 
+  /// Columns owned by the on-device masking pass. Written by masking only, so
+  /// a later generation write must never blank them.
+  static const List<String> _maskingColumns = [
+    'masking_status',
+    'masking_progress',
+    'masking_total',
+    'model_version',
+    'input_hash',
+    'entity_map',
+    'masked_text',
+  ];
+
   Future<void> savePendingJobRecord(PendingJob job) async {
     final db = _db;
     if (db == null) {
@@ -508,21 +545,37 @@ class StorageService {
     }
     await db.transaction((txn) async {
       final row = job.toDbMap();
-      // Only the purchase knows the buyer's correlation id, and every later
-      // write of this row comes from generation, which does not. A replacing
-      // insert would therefore erase the one field a cancel needs to free the
-      // purchase, so an empty incoming value defers to what is already stored.
-      if (job.publicUuid.isEmpty) {
+      // Only the purchase knows the buyer's correlation id, and only masking
+      // knows the entity map, yet every later write of this row comes from
+      // generation, which knows neither. A replacing insert would therefore
+      // erase the field a cancel needs to free the purchase and the only key
+      // that can un-mask the portrait, so an absent incoming value defers to
+      // what is already stored.
+      final needsPublicUuid = job.publicUuid.isEmpty;
+      final missingMaskingColumns =
+          _maskingColumns.where((column) => row[column] == null).toList();
+      if (needsPublicUuid || missingMaskingColumns.isNotEmpty) {
         final existing = await txn.query(
           'pending_jobs',
-          columns: ['public_uuid'],
+          columns: [
+            if (needsPublicUuid) 'public_uuid',
+            ...missingMaskingColumns,
+          ],
           where: 'id = ?',
           whereArgs: [job.id],
           limit: 1,
         );
-        final stored =
-            existing.isEmpty ? null : existing.first['public_uuid'] as String?;
-        if (stored != null && stored.isNotEmpty) row['public_uuid'] = stored;
+        if (existing.isNotEmpty) {
+          final stored = existing.first;
+          final storedUuid = stored['public_uuid'] as String?;
+          if (needsPublicUuid && storedUuid != null && storedUuid.isNotEmpty) {
+            row['public_uuid'] = storedUuid;
+          }
+          for (final column in missingMaskingColumns) {
+            final value = stored[column];
+            if (value != null) row[column] = value;
+          }
+        }
       }
       await txn.insert(
         'pending_jobs',
@@ -540,6 +593,81 @@ class StorageService {
         );
       }
     });
+  }
+
+  /// Record the state of the on-device masking pass for a pending job.
+  ///
+  /// Covers both the periodic progress checkpoint and the final write of the
+  /// entity map. Every argument is optional so a checkpoint touches only the
+  /// counters, and an omitted argument leaves the stored value alone rather
+  /// than blanking it.
+  ///
+  /// Throws when the row is not there. Masking sits between the purchase and
+  /// the first generation request, so a write that silently hit nothing would
+  /// leave a paid portrait with no key to un-mask it, and that has to surface
+  /// while it can still be retried.
+  Future<void> updatePendingJobMasking(
+    String id, {
+    String? maskingStatus,
+    int? maskingProgress,
+    int? maskingTotal,
+    String? modelVersion,
+    String? inputHash,
+    List<Map<String, dynamic>>? entityMap,
+    String? maskedText,
+  }) async {
+    final db = _db;
+    if (db == null) {
+      throw StateError('Pending-job storage is unavailable.');
+    }
+
+    final updates = <String, dynamic>{};
+    if (maskingStatus != null) updates['masking_status'] = maskingStatus;
+    if (maskingProgress != null) updates['masking_progress'] = maskingProgress;
+    if (maskingTotal != null) updates['masking_total'] = maskingTotal;
+    if (modelVersion != null) updates['model_version'] = modelVersion;
+    if (inputHash != null) updates['input_hash'] = inputHash;
+    // An empty list is a real result: the mask ran and found nothing. It is
+    // stored as '[]' so a resume can tell it apart from a mask that never ran.
+    if (entityMap != null) updates['entity_map'] = jsonEncode(entityMap);
+    if (maskedText != null) updates['masked_text'] = maskedText;
+    updates['updated_at'] = DateTime.now().toUtc().toIso8601String();
+
+    final updated = await db.update(
+      'pending_jobs',
+      updates,
+      where: 'id = ? AND device_id = ?',
+      whereArgs: [id, _deviceId],
+    );
+    if (updated != 1) {
+      throw StateError('Expected one pending job for $id, updated $updated.');
+    }
+  }
+
+  /// The stored un-mask key for a job, without loading its chat text.
+  ///
+  /// Null means no mask was ever computed for this job, so its output is
+  /// already in real names. An empty list means the mask ran and found nothing
+  /// to hide, and the output needs no restoring either.
+  Future<List<Map<String, dynamic>>?> getPendingJobEntityMap(String id) async {
+    final db = _db;
+    if (db == null) return null;
+    final rows = await db.query(
+      'pending_jobs',
+      columns: ['entity_map'],
+      where: 'id = ? AND device_id = ?',
+      whereArgs: [id, _deviceId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final raw = rows.first['entity_map'] as String?;
+    if (raw == null || raw.isEmpty) return null;
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) return null;
+    return decoded
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
   }
 
   /// Append a chunk result `{index, content}` to a pending job. Replaces an
