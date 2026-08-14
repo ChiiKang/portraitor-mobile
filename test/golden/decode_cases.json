@@ -1,0 +1,206 @@
+{
+  "cases": [
+    {
+      "name": "two_people",
+      "params": {
+        "batchSize": 1,
+        "inputLength": 3,
+        "maxWidth": 3,
+        "numEntities": 2,
+        "texts": [
+          "Natalia met Bob"
+        ],
+        "batchIds": [
+          0
+        ],
+        "batchWordsStartIdx": [
+          [
+            0,
+            8,
+            12
+          ]
+        ],
+        "batchWordsEndIdx": [
+          [
+            7,
+            11,
+            15
+          ]
+        ],
+        "idToClass": {
+          "1": "person name",
+          "2": "email address"
+        },
+        "modelOutput": [
+          5,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          5,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10
+        ],
+        "flatNer": true,
+        "threshold": 0.5,
+        "multiLabel": false
+      },
+      "expected": [
+        [
+          "Natalia",
+          0,
+          7,
+          "person name",
+          0.9933071490757153
+        ],
+        [
+          "Bob",
+          12,
+          15,
+          "person name",
+          0.9933071490757153
+        ]
+      ]
+    },
+    {
+      "name": "overlap_nms",
+      "params": {
+        "batchSize": 1,
+        "inputLength": 3,
+        "maxWidth": 3,
+        "numEntities": 2,
+        "texts": [
+          "Natalia met Bob"
+        ],
+        "batchIds": [
+          0
+        ],
+        "batchWordsStartIdx": [
+          [
+            0,
+            8,
+            12
+          ]
+        ],
+        "batchWordsEndIdx": [
+          [
+            7,
+            11,
+            15
+          ]
+        ],
+        "idToClass": {
+          "1": "person name",
+          "2": "email address"
+        },
+        "modelOutput": [
+          1,
+          -10,
+          5,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10
+        ],
+        "flatNer": true,
+        "threshold": 0.5,
+        "multiLabel": false
+      },
+      "expected": [
+        [
+          "Natalia met",
+          0,
+          11,
+          "person name",
+          0.9933071490757153
+        ]
+      ]
+    },
+    {
+      "name": "multi_entity_same_span",
+      "params": {
+        "batchSize": 1,
+        "inputLength": 3,
+        "maxWidth": 3,
+        "numEntities": 2,
+        "texts": [
+          "Natalia met Bob"
+        ],
+        "batchIds": [
+          0
+        ],
+        "batchWordsStartIdx": [
+          [
+            0,
+            8,
+            12
+          ]
+        ],
+        "batchWordsEndIdx": [
+          [
+            7,
+            11,
+            15
+          ]
+        ],
+        "idToClass": {
+          "1": "person name",
+          "2": "email address"
+        },
+        "modelOutput": [
+          5,
+          4,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10,
+          -10
+        ],
+        "flatNer": true,
+        "threshold": 0.5,
+        "multiLabel": false
+      },
+      "expected": [
+        [
+          "Natalia",
+          0,
+          7,
+          "person name",
+          0.9933071490757153
+        ]
+      ]
+    }
+  ]
+}

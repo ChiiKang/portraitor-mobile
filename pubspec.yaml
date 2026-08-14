@@ -37,6 +37,15 @@ dependencies:
   in_app_purchase: ^3.3.0
   in_app_purchase_android: ^0.5.0
   in_app_purchase_storekit: ^0.4.11
+  # On-device privacy filter (GLiNER). flutter_onnxruntime runs the model;
+  # the rust_lib crate is the HF `tokenizers` build that produces token IDs
+  # byte-identical to the browser. flutter_rust_bridge is pinned exactly
+  # because the generated bindings in lib/src/rust are version-stamped.
+  flutter_onnxruntime: ^1.8.0
+  flutter_rust_bridge: 2.12.0
+  rust_lib_portraitor_mobile:
+    path: rust_builder
+  diacritic: ^0.1.6
 
 dev_dependencies:
   flutter_test:
@@ -58,6 +67,7 @@ flutter:
         - asset: assets/fonts/Inter-Variable.ttf
   assets:
     - assets/images/
+    - assets/tokenizer/
     - assets/brand/portraitor-logo.png
     - docs/handover_mobile_01-04/assets/01-welcome-bg.png
     - docs/handover_mobile_01-04/assets/02-howitworks-bg.png

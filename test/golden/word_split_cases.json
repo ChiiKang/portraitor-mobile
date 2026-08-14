@@ -1,0 +1,807 @@
+{
+  "cases": [
+    {
+      "text": "hello world",
+      "words": [
+        {
+          "token": "hello",
+          "start": 0,
+          "end": 5
+        },
+        {
+          "token": "world",
+          "start": 6,
+          "end": 11
+        }
+      ]
+    },
+    {
+      "text": "Mac Chai said hi",
+      "words": [
+        {
+          "token": "Mac",
+          "start": 0,
+          "end": 3
+        },
+        {
+          "token": "Chai",
+          "start": 4,
+          "end": 8
+        },
+        {
+          "token": "said",
+          "start": 9,
+          "end": 13
+        },
+        {
+          "token": "hi",
+          "start": 14,
+          "end": 16
+        }
+      ]
+    },
+    {
+      "text": "e-mail me at a@b.com",
+      "words": [
+        {
+          "token": "e-mail",
+          "start": 0,
+          "end": 6
+        },
+        {
+          "token": "me",
+          "start": 7,
+          "end": 9
+        },
+        {
+          "token": "at",
+          "start": 10,
+          "end": 12
+        },
+        {
+          "token": "a",
+          "start": 13,
+          "end": 14
+        },
+        {
+          "token": "@",
+          "start": 14,
+          "end": 15
+        },
+        {
+          "token": "b",
+          "start": 15,
+          "end": 16
+        },
+        {
+          "token": ".",
+          "start": 16,
+          "end": 17
+        },
+        {
+          "token": "com",
+          "start": 17,
+          "end": 20
+        }
+      ]
+    },
+    {
+      "text": "snake_case and kebab-case and mixed_a-b_c",
+      "words": [
+        {
+          "token": "snake_case",
+          "start": 0,
+          "end": 10
+        },
+        {
+          "token": "and",
+          "start": 11,
+          "end": 14
+        },
+        {
+          "token": "kebab-case",
+          "start": 15,
+          "end": 25
+        },
+        {
+          "token": "and",
+          "start": 26,
+          "end": 29
+        },
+        {
+          "token": "mixed_a-b_c",
+          "start": 30,
+          "end": 41
+        }
+      ]
+    },
+    {
+      "text": "[27/11/2025, 9:20:00 AM] Natalia: hi Michael",
+      "words": [
+        {
+          "token": "[",
+          "start": 0,
+          "end": 1
+        },
+        {
+          "token": "27",
+          "start": 1,
+          "end": 3
+        },
+        {
+          "token": "/",
+          "start": 3,
+          "end": 4
+        },
+        {
+          "token": "11",
+          "start": 4,
+          "end": 6
+        },
+        {
+          "token": "/",
+          "start": 6,
+          "end": 7
+        },
+        {
+          "token": "2025",
+          "start": 7,
+          "end": 11
+        },
+        {
+          "token": ",",
+          "start": 11,
+          "end": 12
+        },
+        {
+          "token": "9",
+          "start": 13,
+          "end": 14
+        },
+        {
+          "token": ":",
+          "start": 14,
+          "end": 15
+        },
+        {
+          "token": "20",
+          "start": 15,
+          "end": 17
+        },
+        {
+          "token": ":",
+          "start": 17,
+          "end": 18
+        },
+        {
+          "token": "00",
+          "start": 18,
+          "end": 20
+        },
+        {
+          "token": "AM",
+          "start": 21,
+          "end": 23
+        },
+        {
+          "token": "]",
+          "start": 23,
+          "end": 24
+        },
+        {
+          "token": "Natalia",
+          "start": 25,
+          "end": 32
+        },
+        {
+          "token": ":",
+          "start": 32,
+          "end": 33
+        },
+        {
+          "token": "hi",
+          "start": 34,
+          "end": 36
+        },
+        {
+          "token": "Michael",
+          "start": 37,
+          "end": 44
+        }
+      ]
+    },
+    {
+      "text": "24/02/2025, 11:41 - Mac Chai: hi @CK",
+      "words": [
+        {
+          "token": "24",
+          "start": 0,
+          "end": 2
+        },
+        {
+          "token": "/",
+          "start": 2,
+          "end": 3
+        },
+        {
+          "token": "02",
+          "start": 3,
+          "end": 5
+        },
+        {
+          "token": "/",
+          "start": 5,
+          "end": 6
+        },
+        {
+          "token": "2025",
+          "start": 6,
+          "end": 10
+        },
+        {
+          "token": ",",
+          "start": 10,
+          "end": 11
+        },
+        {
+          "token": "11",
+          "start": 12,
+          "end": 14
+        },
+        {
+          "token": ":",
+          "start": 14,
+          "end": 15
+        },
+        {
+          "token": "41",
+          "start": 15,
+          "end": 17
+        },
+        {
+          "token": "-",
+          "start": 18,
+          "end": 19
+        },
+        {
+          "token": "Mac",
+          "start": 20,
+          "end": 23
+        },
+        {
+          "token": "Chai",
+          "start": 24,
+          "end": 28
+        },
+        {
+          "token": ":",
+          "start": 28,
+          "end": 29
+        },
+        {
+          "token": "hi",
+          "start": 30,
+          "end": 32
+        },
+        {
+          "token": "@",
+          "start": 33,
+          "end": 34
+        },
+        {
+          "token": "CK",
+          "start": 34,
+          "end": 36
+        }
+      ]
+    },
+    {
+      "text": "绍陞 said hello",
+      "words": [
+        {
+          "token": "绍",
+          "start": 0,
+          "end": 1
+        },
+        {
+          "token": "陞",
+          "start": 1,
+          "end": 2
+        },
+        {
+          "token": "said",
+          "start": 3,
+          "end": 7
+        },
+        {
+          "token": "hello",
+          "start": 8,
+          "end": 13
+        }
+      ]
+    },
+    {
+      "text": "Наталия Иванова",
+      "words": [
+        {
+          "token": "Н",
+          "start": 0,
+          "end": 1
+        },
+        {
+          "token": "а",
+          "start": 1,
+          "end": 2
+        },
+        {
+          "token": "т",
+          "start": 2,
+          "end": 3
+        },
+        {
+          "token": "а",
+          "start": 3,
+          "end": 4
+        },
+        {
+          "token": "л",
+          "start": 4,
+          "end": 5
+        },
+        {
+          "token": "и",
+          "start": 5,
+          "end": 6
+        },
+        {
+          "token": "я",
+          "start": 6,
+          "end": 7
+        },
+        {
+          "token": "И",
+          "start": 8,
+          "end": 9
+        },
+        {
+          "token": "в",
+          "start": 9,
+          "end": 10
+        },
+        {
+          "token": "а",
+          "start": 10,
+          "end": 11
+        },
+        {
+          "token": "н",
+          "start": 11,
+          "end": 12
+        },
+        {
+          "token": "о",
+          "start": 12,
+          "end": 13
+        },
+        {
+          "token": "в",
+          "start": 13,
+          "end": 14
+        },
+        {
+          "token": "а",
+          "start": 14,
+          "end": 15
+        }
+      ]
+    },
+    {
+      "text": "🎉🎉 party with Zoe",
+      "words": [
+        {
+          "token": "\ud83c",
+          "start": 0,
+          "end": 1
+        },
+        {
+          "token": "\udf89",
+          "start": 1,
+          "end": 2
+        },
+        {
+          "token": "\ud83c",
+          "start": 2,
+          "end": 3
+        },
+        {
+          "token": "\udf89",
+          "start": 3,
+          "end": 4
+        },
+        {
+          "token": "party",
+          "start": 5,
+          "end": 10
+        },
+        {
+          "token": "with",
+          "start": 11,
+          "end": 15
+        },
+        {
+          "token": "Zoe",
+          "start": 16,
+          "end": 19
+        }
+      ]
+    },
+    {
+      "text": "Björn and Bjorn",
+      "words": [
+        {
+          "token": "Bj",
+          "start": 0,
+          "end": 2
+        },
+        {
+          "token": "ö",
+          "start": 2,
+          "end": 3
+        },
+        {
+          "token": "rn",
+          "start": 3,
+          "end": 5
+        },
+        {
+          "token": "and",
+          "start": 6,
+          "end": 9
+        },
+        {
+          "token": "Bjorn",
+          "start": 10,
+          "end": 15
+        }
+      ]
+    },
+    {
+      "text": "IBAN GB29NWBK60161331926819",
+      "words": [
+        {
+          "token": "IBAN",
+          "start": 0,
+          "end": 4
+        },
+        {
+          "token": "GB29NWBK60161331926819",
+          "start": 5,
+          "end": 27
+        }
+      ]
+    },
+    {
+      "text": "  leading and trailing   ",
+      "words": [
+        {
+          "token": "leading",
+          "start": 2,
+          "end": 9
+        },
+        {
+          "token": "and",
+          "start": 10,
+          "end": 13
+        },
+        {
+          "token": "trailing",
+          "start": 14,
+          "end": 22
+        }
+      ]
+    },
+    {
+      "text": "",
+      "words": []
+    },
+    {
+      "text": "   ",
+      "words": []
+    },
+    {
+      "text": "a",
+      "words": [
+        {
+          "token": "a",
+          "start": 0,
+          "end": 1
+        }
+      ]
+    },
+    {
+      "text": "!!!",
+      "words": [
+        {
+          "token": "!",
+          "start": 0,
+          "end": 1
+        },
+        {
+          "token": "!",
+          "start": 1,
+          "end": 2
+        },
+        {
+          "token": "!",
+          "start": 2,
+          "end": 3
+        }
+      ]
+    },
+    {
+      "text": "multi\nline\ntext here",
+      "words": [
+        {
+          "token": "multi",
+          "start": 0,
+          "end": 5
+        },
+        {
+          "token": "line",
+          "start": 6,
+          "end": 10
+        },
+        {
+          "token": "text",
+          "start": 11,
+          "end": 15
+        },
+        {
+          "token": "here",
+          "start": 16,
+          "end": 20
+        }
+      ]
+    },
+    {
+      "text": "tabs\tand\tspaces",
+      "words": [
+        {
+          "token": "tabs",
+          "start": 0,
+          "end": 4
+        },
+        {
+          "token": "and",
+          "start": 5,
+          "end": 8
+        },
+        {
+          "token": "spaces",
+          "start": 9,
+          "end": 15
+        }
+      ]
+    },
+    {
+      "text": "https://x.io/a?b=c&d=e",
+      "words": [
+        {
+          "token": "https",
+          "start": 0,
+          "end": 5
+        },
+        {
+          "token": ":",
+          "start": 5,
+          "end": 6
+        },
+        {
+          "token": "/",
+          "start": 6,
+          "end": 7
+        },
+        {
+          "token": "/",
+          "start": 7,
+          "end": 8
+        },
+        {
+          "token": "x",
+          "start": 8,
+          "end": 9
+        },
+        {
+          "token": ".",
+          "start": 9,
+          "end": 10
+        },
+        {
+          "token": "io",
+          "start": 10,
+          "end": 12
+        },
+        {
+          "token": "/",
+          "start": 12,
+          "end": 13
+        },
+        {
+          "token": "a",
+          "start": 13,
+          "end": 14
+        },
+        {
+          "token": "?",
+          "start": 14,
+          "end": 15
+        },
+        {
+          "token": "b",
+          "start": 15,
+          "end": 16
+        },
+        {
+          "token": "=",
+          "start": 16,
+          "end": 17
+        },
+        {
+          "token": "c",
+          "start": 17,
+          "end": 18
+        },
+        {
+          "token": "&",
+          "start": 18,
+          "end": 19
+        },
+        {
+          "token": "d",
+          "start": 19,
+          "end": 20
+        },
+        {
+          "token": "=",
+          "start": 20,
+          "end": 21
+        },
+        {
+          "token": "e",
+          "start": 21,
+          "end": 22
+        }
+      ]
+    },
+    {
+      "text": "don't split apostrophes wrongly",
+      "words": [
+        {
+          "token": "don",
+          "start": 0,
+          "end": 3
+        },
+        {
+          "token": "'",
+          "start": 3,
+          "end": 4
+        },
+        {
+          "token": "t",
+          "start": 4,
+          "end": 5
+        },
+        {
+          "token": "split",
+          "start": 6,
+          "end": 11
+        },
+        {
+          "token": "apostrophes",
+          "start": 12,
+          "end": 23
+        },
+        {
+          "token": "wrongly",
+          "start": 24,
+          "end": 31
+        }
+      ]
+    },
+    {
+      "text": "1234 5678 9012 3456",
+      "words": [
+        {
+          "token": "1234",
+          "start": 0,
+          "end": 4
+        },
+        {
+          "token": "5678",
+          "start": 5,
+          "end": 9
+        },
+        {
+          "token": "9012",
+          "start": 10,
+          "end": 14
+        },
+        {
+          "token": "3456",
+          "start": 15,
+          "end": 19
+        }
+      ]
+    },
+    {
+      "text": "‎[24/02/2025] ‎Bidi Speaker: marked",
+      "words": [
+        {
+          "token": "‎",
+          "start": 0,
+          "end": 1
+        },
+        {
+          "token": "[",
+          "start": 1,
+          "end": 2
+        },
+        {
+          "token": "24",
+          "start": 2,
+          "end": 4
+        },
+        {
+          "token": "/",
+          "start": 4,
+          "end": 5
+        },
+        {
+          "token": "02",
+          "start": 5,
+          "end": 7
+        },
+        {
+          "token": "/",
+          "start": 7,
+          "end": 8
+        },
+        {
+          "token": "2025",
+          "start": 8,
+          "end": 12
+        },
+        {
+          "token": "]",
+          "start": 12,
+          "end": 13
+        },
+        {
+          "token": "‎",
+          "start": 14,
+          "end": 15
+        },
+        {
+          "token": "Bidi",
+          "start": 15,
+          "end": 19
+        },
+        {
+          "token": "Speaker",
+          "start": 20,
+          "end": 27
+        },
+        {
+          "token": ":",
+          "start": 27,
+          "end": 28
+        },
+        {
+          "token": "marked",
+          "start": 29,
+          "end": 35
+        }
+      ]
+    }
+  ]
+}
