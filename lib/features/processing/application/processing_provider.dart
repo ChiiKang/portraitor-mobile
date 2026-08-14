@@ -272,13 +272,16 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
 
     state = state.copyWith(
       status: ProcessingStatus.masking,
-      statusMessage: 'Masking private details on this device...',
+      statusMessage: 'Preparing the privacy filter...',
       thinkingPhaseLabel: 'Privacy filter',
       maskingBlocksDone: 0,
       maskingBlocksTotal: 0,
       maskedCount: null,
     );
 
+    // The builder downloads and verifies the model if needed. Nothing else in
+    // the app triggers that, so without it the first generation on a device
+    // fails closed having already taken the payment.
     final service = await _ref.read(privacyFilterBuilderProvider)();
     if (service == null) return null;
 

@@ -63,8 +63,21 @@ Future<String> materialiseTokenizer({
 Future<PrivacyFilterService> buildPrivacyFilterService({
   required ModelRepository repository,
   int maxTokensPerBlock = 256,
+  void Function(ModelStatus)? onModelStatus,
 }) async {
-  final status = await repository.refresh();
+  // ensureReady, not refresh. Nothing else in the app downloads the model, so
+  // refresh alone means the first generation on any device throws "not
+  // installed" and fails closed having already taken the payment. ensureReady
+  // returns without touching the network once a verified copy exists, so this
+  // costs nothing on later runs.
+  final sub = onModelStatus == null ? null : repository.statuses.listen(onModelStatus);
+  final ModelStatus status;
+  try {
+    status = await repository.ensureReady();
+  } finally {
+    await sub?.cancel();
+  }
+
   if (status is! ModelReady) {
     throw PrivacyNotReadyException(
       'The privacy model is not installed ($status), so the conversation '
