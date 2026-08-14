@@ -1,12 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uuid/uuid.dart';
 
 import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
+import 'package:portraitor_mobile/features/payment/application/pass_funding_provider.dart';
+import 'package:portraitor_mobile/features/payment/domain/purchase_outcome.dart';
+import 'package:portraitor_mobile/features/payment/presentation/save_pass_screen.dart';
 import 'package:portraitor_mobile/shared/widgets/funnel_chrome.dart';
 
 /// Step 2/4 — Who is this portrait for?
@@ -47,6 +53,12 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     final selected = draft.selectedTier;
     final iap = ref.watch(iapProvider);
     final entitlements = ref.watch(runtimeEntitlementsProvider);
+
+    // Nobody is sold what they already own. A holder's portraits come out of
+    // the Pass at confirm & pay, so a gold "Want more than one bundle?" card
+    // above the bundles is an upsell aimed at the one person it cannot help.
+    final hasPass =
+        ref.watch(passFundingProvider).valueOrNull?.grantsAccess ?? false;
     final selectedProductReady =
         kDemoIapPurchase || iap.priceFor(selected) != null;
     final pricesLoading =
@@ -85,6 +97,14 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
               content: Text('The Pass needs a store-enabled build.'),
             ),
           );
+          return;
+        }
+        // Subscribing buys a Pass; it does not configure a portrait. Routing
+        // it through the rest of the funnel asked for a date range and a
+        // delivery address a subscription never uses, and only reached
+        // payment two screens later.
+        if (_passOpen) {
+          unawaited(_subscribe(context));
           return;
         }
         context.push('/funnel/configure');
@@ -154,8 +174,9 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                       ],
                     ),
           ),
-          _PassDrawer(
-            open: _passOpen,
+          if (!hasPass)
+            _PassDrawer(
+              open: _passOpen,
             description: FunnelTier.pass.planSubtitleFor(entitlements),
             priceLabel: _priceFor(FunnelTier.pass, iap),
             showPricePeriod:
@@ -193,6 +214,83 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
   String _ctaLabel(FunnelTier tier, bool passOpen) {
     if (passOpen || tier == FunnelTier.pass) return 'Subscribe';
     return 'Continue with ${tier.label}';
+  }
+
+  /// Fold the drawer away and put the selection back on a buyable bundle.
+  ///
+  /// Shared by "show me the packs" and by a completed subscription, because
+  /// both leave the screen in the same state: bundles visible, and the Pass no
+  /// longer the tier being purchased.
+  void _closePassDrawer() {
+    setState(() {
+      _passOpen = false;
+      if (ref.read(funnelDraftProvider).selectedTier == FunnelTier.pass) {
+        ref.read(funnelDraftProvider.notifier).selectTier(FunnelTier.you);
+      }
+    });
+  }
+
+  /// Buy the Pass on the screen that offered it.
+  ///
+  /// A subscription is not a portrait: it has no people, no date range and no
+  /// delivery address, so the two funnel steps between this button and payment
+  /// collected nothing it could use. Verification writes the Pass code and the
+  /// session token, so the device is signed in by the time this returns and
+  /// the portrait already in progress is funded by the Pass at confirm & pay.
+  Future<void> _subscribe(BuildContext context) async {
+    // The server binds the payment row to this ref, so it has to exist before
+    // the money moves even though a subscription queues no generation.
+    final conversationRef =
+        'conv_${DateTime.now().millisecondsSinceEpoch}_'
+        '${const Uuid().v4().substring(0, 8)}';
+
+    final outcome = await ref
+        .read(iapProvider.notifier)
+        .buy(FunnelTier.pass, clientConversationRef: conversationRef);
+    if (!context.mounted) return;
+
+    switch (outcome) {
+      case PurchaseVerified(:final passCode):
+        // Revealed exactly once and unrecoverable from the server, so this is
+        // not skippable on the grounds that the device is already signed in.
+        if (passCode != null && passCode.isNotEmpty) {
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder:
+                  (_) => SavePassScreen(
+                    passCode: passCode,
+                    onContinue: () => Navigator.of(context).pop(),
+                  ),
+            ),
+          );
+          if (!context.mounted) return;
+        }
+        // The answer to "does this device hold a Pass" just changed, and the
+        // drawer, confirm & pay and the home chip all read it.
+        ref.invalidate(passFundingProvider);
+        _closePassDrawer();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Your Pass is active. This portrait comes out of it.',
+            ),
+          ),
+        );
+      case PurchasePending():
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Waiting for approval. Your Pass starts once it is approved.',
+            ),
+          ),
+        );
+      case PurchaseCancelled():
+        break;
+      case PurchaseFailed(:final message):
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 }
 

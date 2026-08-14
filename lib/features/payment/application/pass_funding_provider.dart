@@ -18,6 +18,7 @@ class PassFunding {
     this.grantsAccess = false,
     this.usesRemaining = 0,
     this.usesTotal = 0,
+    this.accessUntil,
   });
 
   static const none = PassFunding();
@@ -32,6 +33,13 @@ class PassFunding {
   /// pool instead of a fixed number. Nothing decides funding from it - that is
   /// [canCover]'s job.
   final int usesTotal;
+
+  /// When the allowance refills, as the server's ISO-8601 string.
+  ///
+  /// Display only, like [usesTotal]. Confirm & pay tells a Pass holder when
+  /// the portraits come back, which is the difference between "9 left" reading
+  /// as a countdown to nothing and as a monthly allowance.
+  final String? accessUntil;
 
   bool get isUsable =>
       sessionToken != null && grantsAccess && usesRemaining > 0;
@@ -72,6 +80,7 @@ class PassFundingResolver {
         grantsAccess: entitlement.grantsAccess,
         usesRemaining: entitlement.usesRemaining,
         usesTotal: entitlement.usesTotal,
+        accessUntil: entitlement.accessUntil,
       );
     } catch (_) {
       return PassFunding.none;
