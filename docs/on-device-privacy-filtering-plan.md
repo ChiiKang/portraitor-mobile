@@ -1,6 +1,16 @@
 # On-device privacy filtering - mobile plan
 
-Status: planned, not started. Revised after independent review (see [Review history](#review-history)).
+Status: **built and running on both platforms.** Revised after independent review (see [Review history](#review-history)).
+
+Masking verified end to end with the real R2 model on 2026-08-14, producing identical output on all three:
+
+```
+node (shipped JS) | iOS simulator | Android emulator (arm64-v8a)
+[27/11/2025, 9:20:00 AM] [PERSON1]: hi [PERSON2], my link is [URL1]
+[27/11/2025, 9:21:00 AM] [PERSON2]: thanks [PERSON1]! email me at [EMAIL1]
+```
+
+Reproduce with `flutter test integration_test/masking_end_to_end_test.dart -d DEVICE`.
 Date: 2026-08-14.
 Target branch: `v2/ui-prototype-port`.
 Source of truth for behaviour: `portraitor_v3/privacy/` (shipped web implementation).
