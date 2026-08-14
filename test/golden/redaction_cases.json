@@ -1,0 +1,2951 @@
+{
+  "cases": [
+    {
+      "name": "smoke",
+      "maskedText": "[27/11/2025, 9:20:00 AM] [PERSON1]: hi [PERSON2], my link is [URL1]\n[27/11/2025, 9:21:00 AM] [PERSON2]: thanks [PERSON1]! email me at [EMAIL1]",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Natalia",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Michael",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://x.io/a",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "a@b.com",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": null,
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[27/11/2025, 9:20:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Natalia",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": hi "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON2]",
+            "type": "person",
+            "value": "Michael",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ", my link is "
+          },
+          {
+            "mask": true,
+            "token": "[URL1]",
+            "type": "url",
+            "value": "https://x.io/a",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": "\n[27/11/2025, 9:21:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON2]",
+            "type": "person",
+            "value": "Michael",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": thanks "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Natalia",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": "! email me at "
+          },
+          {
+            "mask": true,
+            "token": "[EMAIL1]",
+            "type": "email",
+            "value": "a@b.com",
+            "you": false
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Natalia",
+                "count": 2,
+                "you": false
+              },
+              {
+                "token": "[PERSON2]",
+                "value": "Michael",
+                "count": 2,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "email",
+            "group": "Emails",
+            "unit": "emails",
+            "rows": [
+              {
+                "token": "[EMAIL1]",
+                "value": "a@b.com",
+                "count": 1,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "url",
+            "group": "Links",
+            "unit": "links",
+            "rows": [
+              {
+                "token": "[URL1]",
+                "value": "https://x.io/a",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 6,
+        "totalEntities": 4
+      }
+    },
+    {
+      "name": "smoke__you",
+      "maskedText": "[27/11/2025, 9:20:00 AM] [PERSON1]: hi [PERSON2], my link is [URL1]\n[27/11/2025, 9:21:00 AM] [PERSON2]: thanks [PERSON1]! email me at [EMAIL1]",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Natalia",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Michael",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://x.io/a",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "a@b.com",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": "Natalia",
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[27/11/2025, 9:20:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Natalia",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": hi "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON2]",
+            "type": "person",
+            "value": "Michael",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ", my link is "
+          },
+          {
+            "mask": true,
+            "token": "[URL1]",
+            "type": "url",
+            "value": "https://x.io/a",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": "\n[27/11/2025, 9:21:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON2]",
+            "type": "person",
+            "value": "Michael",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": thanks "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Natalia",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": "! email me at "
+          },
+          {
+            "mask": true,
+            "token": "[EMAIL1]",
+            "type": "email",
+            "value": "a@b.com",
+            "you": false
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Natalia",
+                "count": 2,
+                "you": true
+              },
+              {
+                "token": "[PERSON2]",
+                "value": "Michael",
+                "count": 2,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "email",
+            "group": "Emails",
+            "unit": "emails",
+            "rows": [
+              {
+                "token": "[EMAIL1]",
+                "value": "a@b.com",
+                "count": 1,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "url",
+            "group": "Links",
+            "unit": "links",
+            "rows": [
+              {
+                "token": "[URL1]",
+                "value": "https://x.io/a",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 6,
+        "totalEntities": 4
+      }
+    },
+    {
+      "name": "propagation_repeat",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: morning\n[01/02/2025, 10:01:00 AM] [PERSON2]: hi [PERSON1]\n[01/02/2025, 10:02:00 AM] [PERSON1]: [PERSON1] again, and [PERSON1] once more",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Emma",
+          "count": 5,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "James",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": null,
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Emma",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": morning\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON2]",
+            "type": "person",
+            "value": "James",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": hi "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Emma",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": "\n[01/02/2025, 10:02:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Emma",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Emma",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " again, and "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Emma",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " once more"
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Emma",
+                "count": 5,
+                "you": false
+              },
+              {
+                "token": "[PERSON2]",
+                "value": "James",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 6,
+        "totalEntities": 2
+      }
+    },
+    {
+      "name": "propagation_repeat__you",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: morning\n[01/02/2025, 10:01:00 AM] [PERSON2]: hi [PERSON1]\n[01/02/2025, 10:02:00 AM] [PERSON1]: [PERSON1] again, and [PERSON1] once more",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Emma",
+          "count": 5,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "James",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": "Emma",
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Emma",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": morning\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON2]",
+            "type": "person",
+            "value": "James",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": hi "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Emma",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": "\n[01/02/2025, 10:02:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Emma",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Emma",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": " again, and "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Emma",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": " once more"
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Emma",
+                "count": 5,
+                "you": true
+              },
+              {
+                "token": "[PERSON2]",
+                "value": "James",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 6,
+        "totalEntities": 2
+      }
+    },
+    {
+      "name": "literal_token_in_source",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: the placeholder [PERSON1] is literally in this chat\n[01/02/2025, 10:01:00 AM] [PERSON1]: ok",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ana",
+          "count": 2,
+          "you": false
+        }
+      ],
+      "youName": null,
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Ana",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": the placeholder "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Ana",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " is literally in this chat\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Ana",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": ok"
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Ana",
+                "count": 2,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 2,
+        "totalEntities": 1
+      }
+    },
+    {
+      "name": "literal_token_in_source__you",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: the placeholder [PERSON1] is literally in this chat\n[01/02/2025, 10:01:00 AM] [PERSON1]: ok",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ana",
+          "count": 2,
+          "you": false
+        }
+      ],
+      "youName": "Ana",
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Ana",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": the placeholder "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Ana",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": " is literally in this chat\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Ana",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": ok"
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Ana",
+                "count": 2,
+                "you": true
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 2,
+        "totalEntities": 1
+      }
+    },
+    {
+      "name": "leak_adjacent_to_token",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: mail me [EMAIL1] now\n[01/02/2025, 10:01:00 AM] [PERSON1]: IBAN [ACCOUNT1] ok",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bob",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "bob@example.com",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": null,
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Bob",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": mail me "
+          },
+          {
+            "mask": true,
+            "token": "[EMAIL1]",
+            "type": "email",
+            "value": "bob@example.com",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " now\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Bob",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": IBAN "
+          },
+          {
+            "mask": true,
+            "token": "[ACCOUNT1]",
+            "type": "account",
+            "value": "GB29NWBK60161331926819",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " ok"
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Bob",
+                "count": 2,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "email",
+            "group": "Emails",
+            "unit": "emails",
+            "rows": [
+              {
+                "token": "[EMAIL1]",
+                "value": "bob@example.com",
+                "count": 1,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "account",
+            "group": "Account numbers",
+            "unit": "account numbers",
+            "rows": [
+              {
+                "token": "[ACCOUNT1]",
+                "value": "GB29NWBK60161331926819",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 4,
+        "totalEntities": 3
+      }
+    },
+    {
+      "name": "leak_adjacent_to_token__you",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: mail me [EMAIL1] now\n[01/02/2025, 10:01:00 AM] [PERSON1]: IBAN [ACCOUNT1] ok",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bob",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "bob@example.com",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": "Bob",
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Bob",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": mail me "
+          },
+          {
+            "mask": true,
+            "token": "[EMAIL1]",
+            "type": "email",
+            "value": "bob@example.com",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " now\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Bob",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": IBAN "
+          },
+          {
+            "mask": true,
+            "token": "[ACCOUNT1]",
+            "type": "account",
+            "value": "GB29NWBK60161331926819",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " ok"
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Bob",
+                "count": 2,
+                "you": true
+              }
+            ]
+          },
+          {
+            "category": "email",
+            "group": "Emails",
+            "unit": "emails",
+            "rows": [
+              {
+                "token": "[EMAIL1]",
+                "value": "bob@example.com",
+                "count": 1,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "account",
+            "group": "Account numbers",
+            "unit": "account numbers",
+            "rows": [
+              {
+                "token": "[ACCOUNT1]",
+                "value": "GB29NWBK60161331926819",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 4,
+        "totalEntities": 3
+      }
+    },
+    {
+      "name": "cjk_and_cyrillic",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: hello\n[01/02/2025, 10:01:00 AM] [PERSON2]: hi [PERSON1]",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "绍陞",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Наталия",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": null,
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "绍陞",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": hello\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON2]",
+            "type": "person",
+            "value": "Наталия",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": hi "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "绍陞",
+            "you": false
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "绍陞",
+                "count": 2,
+                "you": false
+              },
+              {
+                "token": "[PERSON2]",
+                "value": "Наталия",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 3,
+        "totalEntities": 2
+      }
+    },
+    {
+      "name": "cjk_and_cyrillic__you",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: hello\n[01/02/2025, 10:01:00 AM] [PERSON2]: hi [PERSON1]",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "绍陞",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Наталия",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": "绍陞",
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "绍陞",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": hello\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON2]",
+            "type": "person",
+            "value": "Наталия",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": hi "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "绍陞",
+            "you": true
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "绍陞",
+                "count": 2,
+                "you": true
+              },
+              {
+                "token": "[PERSON2]",
+                "value": "Наталия",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 3,
+        "totalEntities": 2
+      }
+    },
+    {
+      "name": "emoji_offsets",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: 🎉🎉 party with [PERSON1]\n[01/02/2025, 10:01:00 AM] [PERSON1]: 👍 ok",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 3,
+          "you": false
+        }
+      ],
+      "youName": null,
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Zoe",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": 🎉🎉 party with "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Zoe",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": "\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Zoe",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": 👍 ok"
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Zoe",
+                "count": 3,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 3,
+        "totalEntities": 1
+      }
+    },
+    {
+      "name": "emoji_offsets__you",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: 🎉🎉 party with [PERSON1]\n[01/02/2025, 10:01:00 AM] [PERSON1]: 👍 ok",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 3,
+          "you": false
+        }
+      ],
+      "youName": "Zoe",
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Zoe",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": 🎉🎉 party with "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Zoe",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": "\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Zoe",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": 👍 ok"
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Zoe",
+                "count": 3,
+                "you": true
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 3,
+        "totalEntities": 1
+      }
+    },
+    {
+      "name": "accented_name",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: hi\n[01/02/2025, 10:01:00 AM] [PERSON2]: different person",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Björn",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Bjorn",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": null,
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Björn",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": hi\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON2]",
+            "type": "person",
+            "value": "Bjorn",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": different person"
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Björn",
+                "count": 1,
+                "you": false
+              },
+              {
+                "token": "[PERSON2]",
+                "value": "Bjorn",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 2,
+        "totalEntities": 2
+      }
+    },
+    {
+      "name": "accented_name__you",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: hi\n[01/02/2025, 10:01:00 AM] [PERSON2]: different person",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Björn",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Bjorn",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": "Björn",
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Björn",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": hi\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON2]",
+            "type": "person",
+            "value": "Bjorn",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": different person"
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Björn",
+                "count": 1,
+                "you": true
+              },
+              {
+                "token": "[PERSON2]",
+                "value": "Bjorn",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 2,
+        "totalEntities": 2
+      }
+    },
+    {
+      "name": "dash_format_and_mentions",
+      "maskedText": "24/02/2025, 11:41 - [PERSON1]: hi @[PERSON2] and @⁦[PERSON3]⁩ here\n24/02/2025, 11:42 - [PERSON2]: thanks [PERSON1]",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Mac Chai",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "CK",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": null,
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "24/02/2025, 11:41 - "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Mac Chai",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": hi @"
+          },
+          {
+            "mask": true,
+            "token": "[PERSON2]",
+            "type": "person",
+            "value": "CK",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " and @⁦"
+          },
+          {
+            "mask": true,
+            "token": "[PERSON3]",
+            "type": "person",
+            "value": "Zoe",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": "⁩ here\n24/02/2025, 11:42 - "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON2]",
+            "type": "person",
+            "value": "CK",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": thanks "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Mac Chai",
+            "you": false
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Mac Chai",
+                "count": 2,
+                "you": false
+              },
+              {
+                "token": "[PERSON2]",
+                "value": "CK",
+                "count": 2,
+                "you": false
+              },
+              {
+                "token": "[PERSON3]",
+                "value": "Zoe",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 5,
+        "totalEntities": 3
+      }
+    },
+    {
+      "name": "dash_format_and_mentions__you",
+      "maskedText": "24/02/2025, 11:41 - [PERSON1]: hi @[PERSON2] and @⁦[PERSON3]⁩ here\n24/02/2025, 11:42 - [PERSON2]: thanks [PERSON1]",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Mac Chai",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "CK",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": "Mac Chai",
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "24/02/2025, 11:41 - "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Mac Chai",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": hi @"
+          },
+          {
+            "mask": true,
+            "token": "[PERSON2]",
+            "type": "person",
+            "value": "CK",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " and @⁦"
+          },
+          {
+            "mask": true,
+            "token": "[PERSON3]",
+            "type": "person",
+            "value": "Zoe",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": "⁩ here\n24/02/2025, 11:42 - "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON2]",
+            "type": "person",
+            "value": "CK",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": thanks "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Mac Chai",
+            "you": true
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Mac Chai",
+                "count": 2,
+                "you": true
+              },
+              {
+                "token": "[PERSON2]",
+                "value": "CK",
+                "count": 2,
+                "you": false
+              },
+              {
+                "token": "[PERSON3]",
+                "value": "Zoe",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 5,
+        "totalEntities": 3
+      }
+    },
+    {
+      "name": "bidi_and_push_name",
+      "maskedText": "‎[24/02/2025, 11:41:30 PM] ‎[PERSON1]: marked line\n[24/02/2025, 11:42:00 PM] ~ [PERSON2]: with a [PERSON3]-[PERSON4] prefix",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bidi Speaker",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Push Name",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "push",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON4]",
+          "type": "person",
+          "value": "name",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": null,
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "‎[24/02/2025, 11:41:30 PM] ‎"
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Bidi Speaker",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": marked line\n[24/02/2025, 11:42:00 PM] ~ "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON2]",
+            "type": "person",
+            "value": "Push Name",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": with a "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON3]",
+            "type": "person",
+            "value": "push",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": "-"
+          },
+          {
+            "mask": true,
+            "token": "[PERSON4]",
+            "type": "person",
+            "value": "name",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " prefix"
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Bidi Speaker",
+                "count": 1,
+                "you": false
+              },
+              {
+                "token": "[PERSON2]",
+                "value": "Push Name",
+                "count": 1,
+                "you": false
+              },
+              {
+                "token": "[PERSON3]",
+                "value": "push",
+                "count": 1,
+                "you": false
+              },
+              {
+                "token": "[PERSON4]",
+                "value": "name",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 4,
+        "totalEntities": 4
+      }
+    },
+    {
+      "name": "bidi_and_push_name__you",
+      "maskedText": "‎[24/02/2025, 11:41:30 PM] ‎[PERSON1]: marked line\n[24/02/2025, 11:42:00 PM] ~ [PERSON2]: with a [PERSON3]-[PERSON4] prefix",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bidi Speaker",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Push Name",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "push",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON4]",
+          "type": "person",
+          "value": "name",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": "Bidi Speaker",
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "‎[24/02/2025, 11:41:30 PM] ‎"
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Bidi Speaker",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": marked line\n[24/02/2025, 11:42:00 PM] ~ "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON2]",
+            "type": "person",
+            "value": "Push Name",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": with a "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON3]",
+            "type": "person",
+            "value": "push",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": "-"
+          },
+          {
+            "mask": true,
+            "token": "[PERSON4]",
+            "type": "person",
+            "value": "name",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " prefix"
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Bidi Speaker",
+                "count": 1,
+                "you": true
+              },
+              {
+                "token": "[PERSON2]",
+                "value": "Push Name",
+                "count": 1,
+                "you": false
+              },
+              {
+                "token": "[PERSON3]",
+                "value": "push",
+                "count": 1,
+                "you": false
+              },
+              {
+                "token": "[PERSON4]",
+                "value": "name",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 4,
+        "totalEntities": 4
+      }
+    },
+    {
+      "name": "contacts_email_url_phone",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: mail [EMAIL1] or call [PHONE1]\n[01/02/2025, 10:01:00 AM] [PERSON1]: repairs at [URL1]",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Dana",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "dave@oakwoodlettings.co.uk",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PHONE1]",
+          "type": "phone",
+          "value": "020 7946 0321",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://oakwoodlettings.co.uk/repairs",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": null,
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Dana",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": mail "
+          },
+          {
+            "mask": true,
+            "token": "[EMAIL1]",
+            "type": "email",
+            "value": "dave@oakwoodlettings.co.uk",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " or call "
+          },
+          {
+            "mask": true,
+            "token": "[PHONE1]",
+            "type": "phone",
+            "value": "020 7946 0321",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": "\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Dana",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": repairs at "
+          },
+          {
+            "mask": true,
+            "token": "[URL1]",
+            "type": "url",
+            "value": "https://oakwoodlettings.co.uk/repairs",
+            "you": false
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Dana",
+                "count": 2,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "email",
+            "group": "Emails",
+            "unit": "emails",
+            "rows": [
+              {
+                "token": "[EMAIL1]",
+                "value": "dave@oakwoodlettings.co.uk",
+                "count": 1,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "phone",
+            "group": "Phone numbers",
+            "unit": "phones",
+            "rows": [
+              {
+                "token": "[PHONE1]",
+                "value": "020 7946 0321",
+                "count": 1,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "url",
+            "group": "Links",
+            "unit": "links",
+            "rows": [
+              {
+                "token": "[URL1]",
+                "value": "https://oakwoodlettings.co.uk/repairs",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 5,
+        "totalEntities": 4
+      }
+    },
+    {
+      "name": "contacts_email_url_phone__you",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: mail [EMAIL1] or call [PHONE1]\n[01/02/2025, 10:01:00 AM] [PERSON1]: repairs at [URL1]",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Dana",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "dave@oakwoodlettings.co.uk",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PHONE1]",
+          "type": "phone",
+          "value": "020 7946 0321",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://oakwoodlettings.co.uk/repairs",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": "Dana",
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Dana",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": mail "
+          },
+          {
+            "mask": true,
+            "token": "[EMAIL1]",
+            "type": "email",
+            "value": "dave@oakwoodlettings.co.uk",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " or call "
+          },
+          {
+            "mask": true,
+            "token": "[PHONE1]",
+            "type": "phone",
+            "value": "020 7946 0321",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": "\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Dana",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": repairs at "
+          },
+          {
+            "mask": true,
+            "token": "[URL1]",
+            "type": "url",
+            "value": "https://oakwoodlettings.co.uk/repairs",
+            "you": false
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Dana",
+                "count": 2,
+                "you": true
+              }
+            ]
+          },
+          {
+            "category": "email",
+            "group": "Emails",
+            "unit": "emails",
+            "rows": [
+              {
+                "token": "[EMAIL1]",
+                "value": "dave@oakwoodlettings.co.uk",
+                "count": 1,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "phone",
+            "group": "Phone numbers",
+            "unit": "phones",
+            "rows": [
+              {
+                "token": "[PHONE1]",
+                "value": "020 7946 0321",
+                "count": 1,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "url",
+            "group": "Links",
+            "unit": "links",
+            "rows": [
+              {
+                "token": "[URL1]",
+                "value": "https://oakwoodlettings.co.uk/repairs",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 5,
+        "totalEntities": 4
+      }
+    },
+    {
+      "name": "credentials_otp_password_card",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: your OTP is [SECRET1] and password: [SECRET2]\n[01/02/2025, 10:01:00 AM] [PERSON1]: card [ACCOUNT1] on file",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Sam",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "483920",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET2]",
+          "type": "secret",
+          "value": "hunter2x",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "4242 4242 4242 4242",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": null,
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Sam",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": your OTP is "
+          },
+          {
+            "mask": true,
+            "token": "[SECRET1]",
+            "type": "secret",
+            "value": "483920",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " and password: "
+          },
+          {
+            "mask": true,
+            "token": "[SECRET2]",
+            "type": "secret",
+            "value": "hunter2x",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": "\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Sam",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": card "
+          },
+          {
+            "mask": true,
+            "token": "[ACCOUNT1]",
+            "type": "account",
+            "value": "4242 4242 4242 4242",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " on file"
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Sam",
+                "count": 2,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "secret",
+            "group": "Secrets",
+            "unit": "secrets",
+            "rows": [
+              {
+                "token": "[SECRET1]",
+                "value": "483920",
+                "count": 1,
+                "you": false
+              },
+              {
+                "token": "[SECRET2]",
+                "value": "hunter2x",
+                "count": 1,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "account",
+            "group": "Account numbers",
+            "unit": "account numbers",
+            "rows": [
+              {
+                "token": "[ACCOUNT1]",
+                "value": "4242 4242 4242 4242",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 5,
+        "totalEntities": 4
+      }
+    },
+    {
+      "name": "credentials_otp_password_card__you",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: your OTP is [SECRET1] and password: [SECRET2]\n[01/02/2025, 10:01:00 AM] [PERSON1]: card [ACCOUNT1] on file",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Sam",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "483920",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET2]",
+          "type": "secret",
+          "value": "hunter2x",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "4242 4242 4242 4242",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": "Sam",
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Sam",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": your OTP is "
+          },
+          {
+            "mask": true,
+            "token": "[SECRET1]",
+            "type": "secret",
+            "value": "483920",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " and password: "
+          },
+          {
+            "mask": true,
+            "token": "[SECRET2]",
+            "type": "secret",
+            "value": "hunter2x",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": "\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Sam",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": card "
+          },
+          {
+            "mask": true,
+            "token": "[ACCOUNT1]",
+            "type": "account",
+            "value": "4242 4242 4242 4242",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " on file"
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Sam",
+                "count": 2,
+                "you": true
+              }
+            ]
+          },
+          {
+            "category": "secret",
+            "group": "Secrets",
+            "unit": "secrets",
+            "rows": [
+              {
+                "token": "[SECRET1]",
+                "value": "483920",
+                "count": 1,
+                "you": false
+              },
+              {
+                "token": "[SECRET2]",
+                "value": "hunter2x",
+                "count": 1,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "account",
+            "group": "Account numbers",
+            "unit": "account numbers",
+            "rows": [
+              {
+                "token": "[ACCOUNT1]",
+                "value": "4242 4242 4242 4242",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 5,
+        "totalEntities": 4
+      }
+    },
+    {
+      "name": "account_and_national_ids",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: IBAN [ACCOUNT1] sort code [ACCOUNT2]\n[01/02/2025, 10:01:00 AM] [PERSON1]: ssn [ACCOUNT3] and pass[SECRET1] no [ACCOUNT4]",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ravi",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT2]",
+          "type": "account",
+          "value": "40-47-84",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT3]",
+          "type": "account",
+          "value": "123-45-6789",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "port",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT4]",
+          "type": "account",
+          "value": "A1234567",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": null,
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Ravi",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": IBAN "
+          },
+          {
+            "mask": true,
+            "token": "[ACCOUNT1]",
+            "type": "account",
+            "value": "GB29NWBK60161331926819",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " sort code "
+          },
+          {
+            "mask": true,
+            "token": "[ACCOUNT2]",
+            "type": "account",
+            "value": "40-47-84",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": "\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Ravi",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": ": ssn "
+          },
+          {
+            "mask": true,
+            "token": "[ACCOUNT3]",
+            "type": "account",
+            "value": "123-45-6789",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " and pass"
+          },
+          {
+            "mask": true,
+            "token": "[SECRET1]",
+            "type": "secret",
+            "value": "port",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " no "
+          },
+          {
+            "mask": true,
+            "token": "[ACCOUNT4]",
+            "type": "account",
+            "value": "A1234567",
+            "you": false
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Ravi",
+                "count": 2,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "secret",
+            "group": "Secrets",
+            "unit": "secrets",
+            "rows": [
+              {
+                "token": "[SECRET1]",
+                "value": "port",
+                "count": 1,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "account",
+            "group": "Account numbers",
+            "unit": "account numbers",
+            "rows": [
+              {
+                "token": "[ACCOUNT1]",
+                "value": "GB29NWBK60161331926819",
+                "count": 1,
+                "you": false
+              },
+              {
+                "token": "[ACCOUNT2]",
+                "value": "40-47-84",
+                "count": 1,
+                "you": false
+              },
+              {
+                "token": "[ACCOUNT3]",
+                "value": "123-45-6789",
+                "count": 1,
+                "you": false
+              },
+              {
+                "token": "[ACCOUNT4]",
+                "value": "A1234567",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 7,
+        "totalEntities": 6
+      }
+    },
+    {
+      "name": "account_and_national_ids__you",
+      "maskedText": "[01/02/2025, 10:00:00 AM] [PERSON1]: IBAN [ACCOUNT1] sort code [ACCOUNT2]\n[01/02/2025, 10:01:00 AM] [PERSON1]: ssn [ACCOUNT3] and pass[SECRET1] no [ACCOUNT4]",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ravi",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT2]",
+          "type": "account",
+          "value": "40-47-84",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT3]",
+          "type": "account",
+          "value": "123-45-6789",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "port",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT4]",
+          "type": "account",
+          "value": "A1234567",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": "Ravi",
+      "expected": {
+        "segments": [
+          {
+            "mask": false,
+            "text": "[01/02/2025, 10:00:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Ravi",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": IBAN "
+          },
+          {
+            "mask": true,
+            "token": "[ACCOUNT1]",
+            "type": "account",
+            "value": "GB29NWBK60161331926819",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " sort code "
+          },
+          {
+            "mask": true,
+            "token": "[ACCOUNT2]",
+            "type": "account",
+            "value": "40-47-84",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": "\n[01/02/2025, 10:01:00 AM] "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Ravi",
+            "you": true
+          },
+          {
+            "mask": false,
+            "text": ": ssn "
+          },
+          {
+            "mask": true,
+            "token": "[ACCOUNT3]",
+            "type": "account",
+            "value": "123-45-6789",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " and pass"
+          },
+          {
+            "mask": true,
+            "token": "[SECRET1]",
+            "type": "secret",
+            "value": "port",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " no "
+          },
+          {
+            "mask": true,
+            "token": "[ACCOUNT4]",
+            "type": "account",
+            "value": "A1234567",
+            "you": false
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Ravi",
+                "count": 2,
+                "you": true
+              }
+            ]
+          },
+          {
+            "category": "secret",
+            "group": "Secrets",
+            "unit": "secrets",
+            "rows": [
+              {
+                "token": "[SECRET1]",
+                "value": "port",
+                "count": 1,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "account",
+            "group": "Account numbers",
+            "unit": "account numbers",
+            "rows": [
+              {
+                "token": "[ACCOUNT1]",
+                "value": "GB29NWBK60161331926819",
+                "count": 1,
+                "you": false
+              },
+              {
+                "token": "[ACCOUNT2]",
+                "value": "40-47-84",
+                "count": 1,
+                "you": false
+              },
+              {
+                "token": "[ACCOUNT3]",
+                "value": "123-45-6789",
+                "count": 1,
+                "you": false
+              },
+              {
+                "token": "[ACCOUNT4]",
+                "value": "A1234567",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 7,
+        "totalEntities": 6
+      }
+    },
+    {
+      "name": "orphan_token_without_entity",
+      "maskedText": "[PERSON1] met [PERSON42] yesterday",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Natalia",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Michael",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://x.io/a",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "a@b.com",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "youName": null,
+      "expected": {
+        "segments": [
+          {
+            "mask": true,
+            "token": "[PERSON1]",
+            "type": "person",
+            "value": "Natalia",
+            "you": false
+          },
+          {
+            "mask": false,
+            "text": " met "
+          },
+          {
+            "mask": true,
+            "token": "[PERSON42]"
+          },
+          {
+            "mask": false,
+            "text": " yesterday"
+          }
+        ],
+        "byCategory": [
+          {
+            "category": "person",
+            "group": "People",
+            "unit": "people",
+            "rows": [
+              {
+                "token": "[PERSON1]",
+                "value": "Natalia",
+                "count": 2,
+                "you": false
+              },
+              {
+                "token": "[PERSON2]",
+                "value": "Michael",
+                "count": 2,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "email",
+            "group": "Emails",
+            "unit": "emails",
+            "rows": [
+              {
+                "token": "[EMAIL1]",
+                "value": "a@b.com",
+                "count": 1,
+                "you": false
+              }
+            ]
+          },
+          {
+            "category": "url",
+            "group": "Links",
+            "unit": "links",
+            "rows": [
+              {
+                "token": "[URL1]",
+                "value": "https://x.io/a",
+                "count": 1,
+                "you": false
+              }
+            ]
+          }
+        ],
+        "totalOccurrences": 6,
+        "totalEntities": 4
+      }
+    }
+  ]
+}

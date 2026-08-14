@@ -1,0 +1,570 @@
+{
+  "cases": [
+    {
+      "name": "smoke",
+      "text": "[PERSON1] shows up as grounded and encouraging. Notes on [PERSON1]. Notes on [PERSON2]. Notes on [URL1]. Notes on [EMAIL1]. Finally, [EMAIL1] again.",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Natalia",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Michael",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://x.io/a",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "a@b.com",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": "Natalia shows up as grounded and encouraging. Notes on Natalia. Notes on Michael. Notes on https://x.io/a. Notes on a@b.com. Finally, a@b.com again."
+    },
+    {
+      "name": "propagation_repeat",
+      "text": "[PERSON1] shows up as grounded and encouraging. Notes on [PERSON1]. Notes on [PERSON2]. Finally, [PERSON2] again.",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Emma",
+          "count": 5,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "James",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": "Emma shows up as grounded and encouraging. Notes on Emma. Notes on James. Finally, James again."
+    },
+    {
+      "name": "literal_token_in_source",
+      "text": "[PERSON1] shows up as grounded and encouraging. Notes on [PERSON1]. Finally, [PERSON1] again.",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ana",
+          "count": 2,
+          "you": false
+        }
+      ],
+      "expected": "Ana shows up as grounded and encouraging. Notes on Ana. Finally, Ana again."
+    },
+    {
+      "name": "leak_adjacent_to_token",
+      "text": "[PERSON1] shows up as grounded and encouraging. Notes on [PERSON1]. Notes on [EMAIL1]. Notes on [ACCOUNT1]. Finally, [ACCOUNT1] again.",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bob",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "bob@example.com",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": "Bob shows up as grounded and encouraging. Notes on Bob. Notes on bob@example.com. Notes on GB29NWBK60161331926819. Finally, GB29NWBK60161331926819 again."
+    },
+    {
+      "name": "cjk_and_cyrillic",
+      "text": "[PERSON1] shows up as grounded and encouraging. Notes on [PERSON1]. Notes on [PERSON2]. Finally, [PERSON2] again.",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "绍陞",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Наталия",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": "绍陞 shows up as grounded and encouraging. Notes on 绍陞. Notes on Наталия. Finally, Наталия again."
+    },
+    {
+      "name": "emoji_offsets",
+      "text": "[PERSON1] shows up as grounded and encouraging. Notes on [PERSON1]. Finally, [PERSON1] again.",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 3,
+          "you": false
+        }
+      ],
+      "expected": "Zoe shows up as grounded and encouraging. Notes on Zoe. Finally, Zoe again."
+    },
+    {
+      "name": "accented_name",
+      "text": "[PERSON1] shows up as grounded and encouraging. Notes on [PERSON1]. Notes on [PERSON2]. Finally, [PERSON2] again.",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Björn",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Bjorn",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": "Björn shows up as grounded and encouraging. Notes on Björn. Notes on Bjorn. Finally, Bjorn again."
+    },
+    {
+      "name": "dash_format_and_mentions",
+      "text": "[PERSON1] shows up as grounded and encouraging. Notes on [PERSON1]. Notes on [PERSON2]. Notes on [PERSON3]. Finally, [PERSON3] again.",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Mac Chai",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "CK",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": "Mac Chai shows up as grounded and encouraging. Notes on Mac Chai. Notes on CK. Notes on Zoe. Finally, Zoe again."
+    },
+    {
+      "name": "bidi_and_push_name",
+      "text": "[PERSON1] shows up as grounded and encouraging. Notes on [PERSON1]. Notes on [PERSON2]. Notes on [PERSON3]. Notes on [PERSON4]. Finally, [PERSON4] again.",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bidi Speaker",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Push Name",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "push",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON4]",
+          "type": "person",
+          "value": "name",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": "Bidi Speaker shows up as grounded and encouraging. Notes on Bidi Speaker. Notes on Push Name. Notes on push. Notes on name. Finally, name again."
+    },
+    {
+      "name": "contacts_email_url_phone",
+      "text": "[PERSON1] shows up as grounded and encouraging. Notes on [PERSON1]. Notes on [EMAIL1]. Notes on [PHONE1]. Notes on [URL1]. Finally, [URL1] again.",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Dana",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "dave@oakwoodlettings.co.uk",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PHONE1]",
+          "type": "phone",
+          "value": "020 7946 0321",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://oakwoodlettings.co.uk/repairs",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": "Dana shows up as grounded and encouraging. Notes on Dana. Notes on dave@oakwoodlettings.co.uk. Notes on 020 7946 0321. Notes on https://oakwoodlettings.co.uk/repairs. Finally, https://oakwoodlettings.co.uk/repairs again."
+    },
+    {
+      "name": "credentials_otp_password_card",
+      "text": "[PERSON1] shows up as grounded and encouraging. Notes on [PERSON1]. Notes on [SECRET1]. Notes on [SECRET2]. Notes on [ACCOUNT1]. Finally, [ACCOUNT1] again.",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Sam",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "483920",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET2]",
+          "type": "secret",
+          "value": "hunter2x",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "4242 4242 4242 4242",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": "Sam shows up as grounded and encouraging. Notes on Sam. Notes on 483920. Notes on hunter2x. Notes on 4242 4242 4242 4242. Finally, 4242 4242 4242 4242 again."
+    },
+    {
+      "name": "account_and_national_ids",
+      "text": "[PERSON1] shows up as grounded and encouraging. Notes on [PERSON1]. Notes on [ACCOUNT1]. Notes on [ACCOUNT2]. Notes on [ACCOUNT3]. Notes on [SECRET1]. Notes on [ACCOUNT4]. Finally, [ACCOUNT4] again.",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ravi",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT2]",
+          "type": "account",
+          "value": "40-47-84",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT3]",
+          "type": "account",
+          "value": "123-45-6789",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "port",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT4]",
+          "type": "account",
+          "value": "A1234567",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": "Ravi shows up as grounded and encouraging. Notes on Ravi. Notes on GB29NWBK60161331926819. Notes on 40-47-84. Notes on 123-45-6789. Notes on port. Notes on A1234567. Finally, A1234567 again."
+    },
+    {
+      "name": "unknown_token_left_alone",
+      "text": "[PERSON9] was never issued",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Natalia",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Michael",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://x.io/a",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "a@b.com",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": "[PERSON9] was never issued"
+    },
+    {
+      "name": "no_tokens",
+      "text": "plain prose with no tokens at all",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Natalia",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Michael",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://x.io/a",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "a@b.com",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": "plain prose with no tokens at all"
+    },
+    {
+      "name": "empty_text",
+      "text": "",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Natalia",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Michael",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://x.io/a",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "a@b.com",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": ""
+    },
+    {
+      "name": "no_entities",
+      "text": "[PERSON1] and [EMAIL1] stay put",
+      "entities": [],
+      "expected": "[PERSON1] and [EMAIL1] stay put"
+    },
+    {
+      "name": "adjacent_tokens",
+      "text": "[PERSON1][PERSON2] together",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Natalia",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Michael",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://x.io/a",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "a@b.com",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": "NataliaMichael together"
+    },
+    {
+      "name": "lowercase_is_not_a_token",
+      "text": "[person1] is not a token",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Natalia",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Michael",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://x.io/a",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "a@b.com",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": "[person1] is not a token"
+    },
+    {
+      "name": "no_digits_is_not_a_token",
+      "text": "[PERSON] is not a token",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Natalia",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Michael",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://x.io/a",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "a@b.com",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": "[PERSON] is not a token"
+    },
+    {
+      "name": "value_containing_dollar",
+      "text": "[PERSON1] earned money",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "$&Ann$1",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "expected": "$&Ann$1 earned money"
+    }
+  ]
+}

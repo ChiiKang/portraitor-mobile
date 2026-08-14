@@ -1,0 +1,1698 @@
+{
+  "cases": [
+    {
+      "name": "smoke:\"Natalia\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Natalia",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Michael",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://x.io/a",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "a@b.com",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Natalia",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "smoke:\"NATALIA\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Natalia",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Michael",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://x.io/a",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "a@b.com",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "NATALIA",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "smoke:\"  Natalia  \"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Natalia",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Michael",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://x.io/a",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "a@b.com",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "  Natalia  ",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "smoke:\"Someone Not Present\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Natalia",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Michael",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://x.io/a",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "a@b.com",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Someone Not Present",
+      "expected": "Someone Not Present"
+    },
+    {
+      "name": "smoke:\"\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Natalia",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Michael",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://x.io/a",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "a@b.com",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "",
+      "expected": ""
+    },
+    {
+      "name": "propagation_repeat:\"Emma\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Emma",
+          "count": 5,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "James",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Emma",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "propagation_repeat:\"EMMA\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Emma",
+          "count": 5,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "James",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "EMMA",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "propagation_repeat:\"  Emma  \"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Emma",
+          "count": 5,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "James",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "  Emma  ",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "propagation_repeat:\"Someone Not Present\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Emma",
+          "count": 5,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "James",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Someone Not Present",
+      "expected": "Someone Not Present"
+    },
+    {
+      "name": "propagation_repeat:\"\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Emma",
+          "count": 5,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "James",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "",
+      "expected": ""
+    },
+    {
+      "name": "literal_token_in_source:\"Ana\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ana",
+          "count": 2,
+          "you": false
+        }
+      ],
+      "input": "Ana",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "literal_token_in_source:\"ANA\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ana",
+          "count": 2,
+          "you": false
+        }
+      ],
+      "input": "ANA",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "literal_token_in_source:\"  Ana  \"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ana",
+          "count": 2,
+          "you": false
+        }
+      ],
+      "input": "  Ana  ",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "literal_token_in_source:\"Someone Not Present\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ana",
+          "count": 2,
+          "you": false
+        }
+      ],
+      "input": "Someone Not Present",
+      "expected": "Someone Not Present"
+    },
+    {
+      "name": "literal_token_in_source:\"\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ana",
+          "count": 2,
+          "you": false
+        }
+      ],
+      "input": "",
+      "expected": ""
+    },
+    {
+      "name": "leak_adjacent_to_token:\"Bob\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bob",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "bob@example.com",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Bob",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "leak_adjacent_to_token:\"BOB\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bob",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "bob@example.com",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "BOB",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "leak_adjacent_to_token:\"  Bob  \"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bob",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "bob@example.com",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "  Bob  ",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "leak_adjacent_to_token:\"Someone Not Present\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bob",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "bob@example.com",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Someone Not Present",
+      "expected": "Someone Not Present"
+    },
+    {
+      "name": "leak_adjacent_to_token:\"\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bob",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "bob@example.com",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "",
+      "expected": ""
+    },
+    {
+      "name": "cjk_and_cyrillic:\"绍陞\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "绍陞",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Наталия",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "绍陞",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "cjk_and_cyrillic:\"绍陞\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "绍陞",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Наталия",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "绍陞",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "cjk_and_cyrillic:\"  绍陞  \"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "绍陞",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Наталия",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "  绍陞  ",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "cjk_and_cyrillic:\"Someone Not Present\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "绍陞",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Наталия",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Someone Not Present",
+      "expected": "Someone Not Present"
+    },
+    {
+      "name": "cjk_and_cyrillic:\"\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "绍陞",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Наталия",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "",
+      "expected": ""
+    },
+    {
+      "name": "emoji_offsets:\"Zoe\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 3,
+          "you": false
+        }
+      ],
+      "input": "Zoe",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "emoji_offsets:\"ZOE\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 3,
+          "you": false
+        }
+      ],
+      "input": "ZOE",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "emoji_offsets:\"  Zoe  \"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 3,
+          "you": false
+        }
+      ],
+      "input": "  Zoe  ",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "emoji_offsets:\"Someone Not Present\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 3,
+          "you": false
+        }
+      ],
+      "input": "Someone Not Present",
+      "expected": "Someone Not Present"
+    },
+    {
+      "name": "emoji_offsets:\"\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 3,
+          "you": false
+        }
+      ],
+      "input": "",
+      "expected": ""
+    },
+    {
+      "name": "accented_name:\"Björn\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Björn",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Bjorn",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Björn",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "accented_name:\"BJÖRN\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Björn",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Bjorn",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "BJÖRN",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "accented_name:\"  Björn  \"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Björn",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Bjorn",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "  Björn  ",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "accented_name:\"Someone Not Present\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Björn",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Bjorn",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Someone Not Present",
+      "expected": "Someone Not Present"
+    },
+    {
+      "name": "accented_name:\"\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Björn",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Bjorn",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "",
+      "expected": ""
+    },
+    {
+      "name": "dash_format_and_mentions:\"Mac Chai\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Mac Chai",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "CK",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Mac Chai",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "dash_format_and_mentions:\"MAC CHAI\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Mac Chai",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "CK",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "MAC CHAI",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "dash_format_and_mentions:\"  Mac Chai  \"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Mac Chai",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "CK",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "  Mac Chai  ",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "dash_format_and_mentions:\"Someone Not Present\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Mac Chai",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "CK",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Someone Not Present",
+      "expected": "Someone Not Present"
+    },
+    {
+      "name": "dash_format_and_mentions:\"\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Mac Chai",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "CK",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "Zoe",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "",
+      "expected": ""
+    },
+    {
+      "name": "bidi_and_push_name:\"Bidi Speaker\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bidi Speaker",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Push Name",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "push",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON4]",
+          "type": "person",
+          "value": "name",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Bidi Speaker",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "bidi_and_push_name:\"BIDI SPEAKER\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bidi Speaker",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Push Name",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "push",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON4]",
+          "type": "person",
+          "value": "name",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "BIDI SPEAKER",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "bidi_and_push_name:\"  Bidi Speaker  \"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bidi Speaker",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Push Name",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "push",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON4]",
+          "type": "person",
+          "value": "name",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "  Bidi Speaker  ",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "bidi_and_push_name:\"Someone Not Present\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bidi Speaker",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Push Name",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "push",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON4]",
+          "type": "person",
+          "value": "name",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Someone Not Present",
+      "expected": "Someone Not Present"
+    },
+    {
+      "name": "bidi_and_push_name:\"\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Bidi Speaker",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON2]",
+          "type": "person",
+          "value": "Push Name",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON3]",
+          "type": "person",
+          "value": "push",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PERSON4]",
+          "type": "person",
+          "value": "name",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "",
+      "expected": ""
+    },
+    {
+      "name": "contacts_email_url_phone:\"Dana\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Dana",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "dave@oakwoodlettings.co.uk",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PHONE1]",
+          "type": "phone",
+          "value": "020 7946 0321",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://oakwoodlettings.co.uk/repairs",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Dana",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "contacts_email_url_phone:\"DANA\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Dana",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "dave@oakwoodlettings.co.uk",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PHONE1]",
+          "type": "phone",
+          "value": "020 7946 0321",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://oakwoodlettings.co.uk/repairs",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "DANA",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "contacts_email_url_phone:\"  Dana  \"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Dana",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "dave@oakwoodlettings.co.uk",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PHONE1]",
+          "type": "phone",
+          "value": "020 7946 0321",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://oakwoodlettings.co.uk/repairs",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "  Dana  ",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "contacts_email_url_phone:\"Someone Not Present\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Dana",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "dave@oakwoodlettings.co.uk",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PHONE1]",
+          "type": "phone",
+          "value": "020 7946 0321",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://oakwoodlettings.co.uk/repairs",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Someone Not Present",
+      "expected": "Someone Not Present"
+    },
+    {
+      "name": "contacts_email_url_phone:\"\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Dana",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "dave@oakwoodlettings.co.uk",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[PHONE1]",
+          "type": "phone",
+          "value": "020 7946 0321",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[URL1]",
+          "type": "url",
+          "value": "https://oakwoodlettings.co.uk/repairs",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "",
+      "expected": ""
+    },
+    {
+      "name": "credentials_otp_password_card:\"Sam\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Sam",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "483920",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET2]",
+          "type": "secret",
+          "value": "hunter2x",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "4242 4242 4242 4242",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Sam",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "credentials_otp_password_card:\"SAM\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Sam",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "483920",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET2]",
+          "type": "secret",
+          "value": "hunter2x",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "4242 4242 4242 4242",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "SAM",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "credentials_otp_password_card:\"  Sam  \"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Sam",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "483920",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET2]",
+          "type": "secret",
+          "value": "hunter2x",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "4242 4242 4242 4242",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "  Sam  ",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "credentials_otp_password_card:\"Someone Not Present\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Sam",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "483920",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET2]",
+          "type": "secret",
+          "value": "hunter2x",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "4242 4242 4242 4242",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Someone Not Present",
+      "expected": "Someone Not Present"
+    },
+    {
+      "name": "credentials_otp_password_card:\"\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Sam",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "483920",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET2]",
+          "type": "secret",
+          "value": "hunter2x",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "4242 4242 4242 4242",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "",
+      "expected": ""
+    },
+    {
+      "name": "account_and_national_ids:\"Ravi\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ravi",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT2]",
+          "type": "account",
+          "value": "40-47-84",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT3]",
+          "type": "account",
+          "value": "123-45-6789",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "port",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT4]",
+          "type": "account",
+          "value": "A1234567",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Ravi",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "account_and_national_ids:\"RAVI\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ravi",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT2]",
+          "type": "account",
+          "value": "40-47-84",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT3]",
+          "type": "account",
+          "value": "123-45-6789",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "port",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT4]",
+          "type": "account",
+          "value": "A1234567",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "RAVI",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "account_and_national_ids:\"  Ravi  \"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ravi",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT2]",
+          "type": "account",
+          "value": "40-47-84",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT3]",
+          "type": "account",
+          "value": "123-45-6789",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "port",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT4]",
+          "type": "account",
+          "value": "A1234567",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "  Ravi  ",
+      "expected": "[PERSON1]"
+    },
+    {
+      "name": "account_and_national_ids:\"Someone Not Present\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ravi",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT2]",
+          "type": "account",
+          "value": "40-47-84",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT3]",
+          "type": "account",
+          "value": "123-45-6789",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "port",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT4]",
+          "type": "account",
+          "value": "A1234567",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Someone Not Present",
+      "expected": "Someone Not Present"
+    },
+    {
+      "name": "account_and_national_ids:\"\"",
+      "entities": [
+        {
+          "token": "[PERSON1]",
+          "type": "person",
+          "value": "Ravi",
+          "count": 2,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT1]",
+          "type": "account",
+          "value": "GB29NWBK60161331926819",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT2]",
+          "type": "account",
+          "value": "40-47-84",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT3]",
+          "type": "account",
+          "value": "123-45-6789",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[SECRET1]",
+          "type": "secret",
+          "value": "port",
+          "count": 1,
+          "you": false
+        },
+        {
+          "token": "[ACCOUNT4]",
+          "type": "account",
+          "value": "A1234567",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "",
+      "expected": ""
+    },
+    {
+      "name": "email_entity_is_not_a_person",
+      "entities": [
+        {
+          "token": "[EMAIL1]",
+          "type": "email",
+          "value": "Dana",
+          "count": 1,
+          "you": false
+        }
+      ],
+      "input": "Dana",
+      "expected": "Dana"
+    }
+  ]
+}
