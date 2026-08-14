@@ -233,7 +233,10 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                        child: HeroCard(name: name),
+                        child: HeroCard(
+                          title: 'Psychological Analysis Report',
+                          name: name,
+                        ),
                       ),
                     ),
                     // One card, the whole portrait, always laid out the same
