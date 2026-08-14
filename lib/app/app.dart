@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
+import 'package:portraitor_mobile/core/navigation/tab_transitions.dart';
 import 'package:portraitor_mobile/core/theme/theme.dart';
 import 'package:portraitor_mobile/features/funnel/presentation/add_conversation_screen.dart';
 import 'package:portraitor_mobile/features/funnel/presentation/confirm_pay_screen.dart';
@@ -50,17 +51,32 @@ final router = GoRouter(
         GoRoute(
           path: '/home',
           name: 'home',
-          builder: (context, state) => const HomeScreen(),
+          pageBuilder:
+              (context, state) => TabTransitions.page(
+                state: state,
+                index: 0,
+                child: const HomeScreen(),
+              ),
         ),
         GoRoute(
           path: '/library',
           name: 'library',
-          builder: (context, state) => const LibraryScreen(),
+          pageBuilder:
+              (context, state) => TabTransitions.page(
+                state: state,
+                index: 1,
+                child: const LibraryScreen(),
+              ),
         ),
         GoRoute(
           path: '/profile',
           name: 'profile',
-          builder: (context, state) => const ProfileScreen(),
+          pageBuilder:
+              (context, state) => TabTransitions.page(
+                state: state,
+                index: 2,
+                child: const ProfileScreen(),
+              ),
         ),
       ],
     ),
