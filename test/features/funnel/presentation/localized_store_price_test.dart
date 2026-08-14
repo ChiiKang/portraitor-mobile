@@ -90,6 +90,9 @@ void main() {
       final notifier = _LocalizedIapNotifier();
       final container = ProviderContainer(
         overrides: [
+        // Funnel tests, not masking tests. Declaring the model ready keeps them
+        // off the network; the gate itself is covered in test/privacy/.
+        privacyModelReadyProvider.overrideWithValue(true),
           iapProvider.overrideWith((ref) => notifier),
           runtimeEntitlementsProvider.overrideWithValue(_entitlements),
         ],
