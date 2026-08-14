@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
+import 'package:portraitor_mobile/features/privacy/presentation/privacy_model_gate.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/funnel/presentation/confirm_pay_screen.dart';
 import 'package:portraitor_mobile/features/import/services/chat_normalizer.dart';
@@ -20,6 +21,10 @@ void main() {
     final notifier = _FailedIapNotifier();
     final container = ProviderContainer(
       overrides: [
+        // These tests exercise the funnel, not masking. Declaring the model
+        // ready keeps them off the network; the gate itself is covered in
+        // test/privacy/.
+        privacyModelReadyProvider.overrideWithValue(true),
         iapProvider.overrideWith((ref) => notifier),
         runtimeEntitlementsProvider.overrideWithValue(
           const RuntimeEntitlements(),

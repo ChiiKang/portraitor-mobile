@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
+import 'package:portraitor_mobile/features/privacy/presentation/privacy_model_gate.dart';
 import 'package:portraitor_mobile/core/theme/theme.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/funnel/presentation/confirm_pay_screen.dart';
@@ -55,6 +56,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+        // These tests exercise the funnel, not masking. Declaring the model
+        // ready keeps them off the network; the gate itself is covered in
+        // test/privacy/.
+        privacyModelReadyProvider.overrideWithValue(true),
           iapProvider.overrideWith((ref) => notifier),
           runtimeEntitlementsProvider.overrideWithValue(_entitlements),
         ],

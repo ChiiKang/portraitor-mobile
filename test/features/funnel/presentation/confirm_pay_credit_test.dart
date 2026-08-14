@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
+import 'package:portraitor_mobile/features/privacy/presentation/privacy_model_gate.dart';
 import 'package:portraitor_mobile/core/storage/pending_job.dart';
 import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
@@ -85,6 +86,10 @@ void main() {
   }) async {
     final container = ProviderContainer(
       overrides: [
+        // These tests exercise the funnel, not masking. Declaring the model
+        // ready keeps them off the network; the gate itself is covered in
+        // test/privacy/.
+        privacyModelReadyProvider.overrideWithValue(true),
         iapProvider.overrideWith((ref) => _QuietIapNotifier()),
         runtimeEntitlementsProvider.overrideWithValue(
           const RuntimeEntitlements(),

@@ -8,6 +8,7 @@ import 'package:portraitor_mobile/core/config/runtime_config_provider.dart';
 import 'package:portraitor_mobile/core/storage/pending_job.dart';
 import 'package:portraitor_mobile/core/storage/storage_service.dart';
 import 'package:portraitor_mobile/core/theme/tokens.dart';
+import 'package:portraitor_mobile/features/privacy/presentation/privacy_model_gate.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/iap_provider.dart';
 import 'package:portraitor_mobile/features/payment/application/pass_funding_provider.dart';
@@ -163,6 +164,8 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
             ? iapState.error
             : null;
 
+    final privacyReady = ref.watch(privacyModelReadyProvider);
+
     return FunnelChrome(
       step: 4,
       title: 'Confirm & pay',
@@ -178,13 +181,19 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
                       ? 'Use my Pass'
                       : passChecking
                           ? 'Checking your Pass…'
-                          : 'Pay ${_priceFor(draft.selectedTier)}',
+                          : (!kDemoIapPurchase && !privacyReady)
+                              ? 'Preparing privacy filter…'
+                              : 'Pay ${_priceFor(draft.selectedTier)}',
       // The email gates the purchase. The server re-validates it, but letting
       // Opening the store without one would take money we cannot deliver against.
       ctaEnabled:
           !purchaseBusy &&
           (!passChecking || freedCredit != null) &&
           _emailValid &&
+          // No payment until the chat can actually be masked. Taking money and
+          // only then discovering a 175 MB download is the failure this gate
+          // exists to prevent. Demo runs never reach a backend, so they skip it.
+          (kDemoIapPurchase || privacyReady) &&
           // Neither a freed credit nor a Pass-funded run needs a purchasable
           // tier or a store price, so both bypass the store gates rather than
           // relaxing them.
@@ -196,6 +205,9 @@ class _ConfirmPayScreenState extends ConsumerState<ConfirmPayScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Starts the download and shows progress. Placed first so the wait is
+          // visible while the user is still reading this screen.
+          if (!kDemoIapPurchase && !privacyReady) const PrivacyModelGate(),
           _DeliveryEmailField(
             controller: _emailController,
             showError: _emailTouched && !_emailValid,
