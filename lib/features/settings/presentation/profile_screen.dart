@@ -13,6 +13,7 @@ import 'package:portraitor_mobile/features/payment/presentation/manage_subscript
 import 'package:portraitor_mobile/features/payment/services/entitlement_api.dart';
 import 'package:portraitor_mobile/features/payment/services/pass_credential_store.dart';
 import 'package:portraitor_mobile/features/payment/services/pass_session_api.dart';
+import 'package:portraitor_mobile/shared/utils/share_origin.dart';
 import 'package:portraitor_mobile/shared/widgets/main_tab_shell.dart';
 
 /// Profile tab root, ported from the `portraitor-ios.html` prototype
@@ -51,6 +52,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _entitlementLoading = true;
   bool _restoreBusy = false;
   bool _attachBusy = false;
+  bool _signOutBusy = false;
   String? _entitlementError;
   String? _passId;
   Entitlement? _entitlement;
@@ -88,6 +90,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             _entitlement = null;
             _entitlementLoading = false;
             _entitlementError = null;
+            // Signing back in should not mean retyping a code the phone
+            // already holds. Never overwrite what the user is typing.
+            if (_passCodeController.text.isEmpty && passCode != null) {
+              _passCodeController.text = passCode;
+            }
           });
         }
         return;
@@ -285,7 +292,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'No active Pass',
+                'Signed out',
                 style: TextStyle(
                   fontFamily: PortraitorTokens.fontBody,
                   fontWeight: FontWeight.w700,
@@ -295,7 +302,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               const SizedBox(height: 6),
               Text(
                 _entitlementError ??
-                    'Use a Pass code from any platform, or restore a purchase made with this store account.',
+                    (_passId != null && _passId!.isNotEmpty
+                        // Sign-out keeps the code, so this is one tap away.
+                        ? 'Your Pass code is still saved on this phone. Sign '
+                              'back in to use it, or enter a different one.'
+                        : 'Sign in with a Pass code from any platform, or '
+                              'restore a purchase made with this store account.'),
                 style: PortraitorTokens.bodySm.copyWith(
                   color: PortraitorTokens.onboardingInkSoft,
                 ),
@@ -314,7 +326,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               FilledButton(
                 key: const ValueKey('profile-attach-pass'),
                 onPressed: _attachBusy ? null : _attachPass,
-                child: Text(_attachBusy ? 'Attaching…' : 'Use Pass code'),
+                child: Text(_attachBusy ? 'Signing in…' : 'Sign in with Pass'),
               ),
               Align(
                 alignment: Alignment.centerLeft,
@@ -407,13 +419,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         cancelPending: entitlement.cancelPending,
         usesRemaining: entitlement.usesRemaining,
       ),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton(
-          key: const ValueKey('profile-restore-purchases'),
-          onPressed: _restoreBusy ? null : _restorePurchases,
-          child: Text(_restoreBusy ? 'Restoring…' : 'Restore purchases'),
-        ),
+      // Wrap, not Row: at a large text scale these two labels are wider than
+      // the card, and a Row would clip the way out of the Pass rather than
+      // move it to its own line.
+      Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          TextButton(
+            key: const ValueKey('profile-restore-purchases'),
+            onPressed: _restoreBusy ? null : _restorePurchases,
+            child: Text(_restoreBusy ? 'Restoring…' : 'Restore purchases'),
+          ),
+          TextButton(
+            key: const ValueKey('profile-sign-out'),
+            onPressed: _signOutBusy ? null : _signOut,
+            child: Text(
+              _signOutBusy ? 'Signing out…' : 'Sign out',
+              style: const TextStyle(color: PortraitorTokens.error),
+            ),
+          ),
+        ],
       ),
     ];
   }
@@ -448,6 +474,55 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  /// Sign this device out of the Pass.
+  ///
+  /// Clears the session token and nothing else. The Pass code is deliberately
+  /// kept: it is revealed exactly once and cannot be reissued from the server,
+  /// so a sign-out that quietly deleted it would destroy paid access that no
+  /// support action could restore. The session is the credential that grants
+  /// access, and it is always reissuable from the code, which is what makes it
+  /// the safe thing to throw away.
+  Future<void> _signOut() async {
+    if (_signOutBusy) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: const Key('profile-sign-out-dialog'),
+        title: const Text('Sign out of this Pass?'),
+        content: const Text(
+          'This phone loses access until you sign back in. Your Pass code '
+          'stays saved here, and the Pass itself is untouched on your other '
+          'devices.',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('profile-sign-out-dismiss'),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Stay signed in'),
+          ),
+          TextButton(
+            key: const Key('profile-sign-out-confirm'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Sign out',
+              style: TextStyle(color: PortraitorTokens.error),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _signOutBusy = true);
+    try {
+      await _credentialStore.clearSessionToken();
+      await _loadEntitlement();
+      if (mounted) _toast('Signed out of your Pass');
+    } finally {
+      if (mounted) setState(() => _signOutBusy = false);
+    }
+  }
+
   Future<void> _attachPass() async {
     if (_attachBusy) return;
     final code = _passCodeController.text.trim();
@@ -479,17 +554,35 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _toast('Pass ID copied');
   }
 
-  Future<void> _sharePass() async {
+  /// Hand the Pass to the OS share sheet, so it can go to WhatsApp, Telegram,
+  /// Messages, or anything else installed.
+  ///
+  /// [origin] comes from the button the user actually tapped. Omitting it used
+  /// to make the platform call throw, and the old `catch` turned that into a
+  /// silent clipboard copy, so the button looked broken: no sheet, just a
+  /// toast about copying something the user never asked to copy.
+  Future<void> _sharePass(Rect origin) async {
     final passId = _passId;
-    if (passId == null || passId.isEmpty) return;
+    if (passId == null || passId.isEmpty) {
+      _toast('This device does not have your Pass code saved.');
+      return;
+    }
     final text =
         'Join my Portraitor Pass: $passId\nhttps://portraitor.ai/#$passId';
     try {
-      await Share.share(text, subject: 'Portraitor Pass');
-    } catch (_) {
-      await Clipboard.setData(ClipboardData(text: text));
+      await Share.share(
+        text,
+        subject: 'Portraitor Pass',
+        sharePositionOrigin: origin,
+      );
+    } catch (e) {
+      // The old fallback copied to the clipboard and said so, which read as a
+      // successful share of something the user never asked to copy. Copy is
+      // its own button two positions to the left, so the honest thing here is
+      // to report the failure and point at it.
+      debugPrint('[Profile] share sheet failed: $e');
       if (!mounted) return;
-      _toast('Share text copied');
+      _toast('Could not open the share sheet. Use Copy instead.');
     }
   }
 
@@ -530,7 +623,7 @@ class _MembershipCard extends StatelessWidget {
   final bool passHidden;
   final VoidCallback onToggleVisibility;
   final VoidCallback onCopy;
-  final VoidCallback onShare;
+  final ValueChanged<Rect> onShare;
   final String periodLabel;
   final String periodDate;
   final String entitlementState;
@@ -978,7 +1071,9 @@ class _PassIconButton extends StatelessWidget {
 class _SharePassButton extends StatelessWidget {
   const _SharePassButton({super.key, required this.onTap});
 
-  final VoidCallback onTap;
+  /// Receives the button's own rectangle, because only the tapped widget
+  /// knows where the sheet should appear to come from.
+  final ValueChanged<Rect> onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -988,7 +1083,7 @@ class _SharePassButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: () => onTap(shareOriginFor(context)),
           borderRadius: BorderRadius.circular(10),
           child: Ink(
             height: 36,

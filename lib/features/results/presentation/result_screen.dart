@@ -16,6 +16,7 @@ import 'package:portraitor_mobile/features/results/services/portrait_pdf_service
 import 'package:portraitor_mobile/shared/widgets/ghost_button.dart';
 import 'package:portraitor_mobile/shared/widgets/gradient_background.dart';
 import 'package:portraitor_mobile/shared/widgets/gradient_button.dart';
+import 'package:portraitor_mobile/shared/utils/share_origin.dart';
 import 'package:portraitor_mobile/shared/widgets/hero_card.dart';
 import 'package:portraitor_mobile/shared/widgets/portrait_document.dart';
 
@@ -112,23 +113,10 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     setState(() => _selectedPortrait = index);
   }
 
-  Rect _shareOrigin(BuildContext sourceContext) {
-    final sourceBox = sourceContext.findRenderObject();
-    final overlayBox =
-        Overlay.maybeOf(sourceContext)?.context.findRenderObject();
-    if (sourceBox is RenderBox &&
-        overlayBox is RenderBox &&
-        sourceBox.hasSize &&
-        overlayBox.hasSize &&
-        sourceBox.size.width > 0 &&
-        sourceBox.size.height > 0) {
-      return sourceBox.localToGlobal(Offset.zero, ancestor: overlayBox) &
-          sourceBox.size;
-    }
-
-    final size = MediaQuery.sizeOf(context);
-    return Rect.fromLTWH(size.width / 2, size.height / 2, 1, 1);
-  }
+  // One definition, shared with the Pass share on the profile screen. Two
+  // copies of an anchor rule is how one of them ends up wrong.
+  Rect _shareOrigin(BuildContext sourceContext) =>
+      shareOriginFor(sourceContext);
 
   void _share(BuildContext sourceContext) {
     final name = _currentName;

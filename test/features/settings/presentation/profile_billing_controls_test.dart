@@ -120,7 +120,9 @@ void main() {
   ) async {
     await pumpProfile(tester, hasSession: false);
 
-    expect(find.text('No active Pass'), findsOneWidget);
+    // Was 'No active Pass'. The state is the same; the heading now names what
+    // the user can do about it, because signing back in is the way out.
+    expect(find.text('Signed out'), findsOneWidget);
     expect(find.text('Active Pass'), findsNothing);
     expect(find.byKey(const ValueKey('profile-membership-card')), findsNothing);
     expect(find.byKey(const ValueKey('profile-cancel')), findsNothing);
