@@ -48,8 +48,21 @@ class MaskingException implements Exception {
   String toString() => 'MaskingException(${stage.name}: $message)';
 }
 
+/// What [PrivacyFilterService] needs from a masker.
+///
+/// Exists so the fail-closed gate can be tested without loading a 175 MB model.
+/// The production implementation is [MaskingWorker].
+abstract interface class Masker {
+  Future<MaskResult> mask(
+    String text, {
+    void Function(MaskingProgress)? onProgress,
+  });
+
+  Future<void> dispose();
+}
+
 /// Masks chat text on a background isolate.
-class MaskingWorker {
+class MaskingWorker implements Masker {
   MaskingWorker({
     required this.modelPath,
     required this.tokenizerPath,
@@ -141,6 +154,7 @@ class MaskingWorker {
   }
 
   /// Masks [text]. One call at a time; the model is a single session.
+  @override
   Future<MaskResult> mask(
     String text, {
     void Function(MaskingProgress)? onProgress,
@@ -157,6 +171,7 @@ class MaskingWorker {
   }
 
   /// Tears the worker down and frees the model.
+  @override
   Future<void> dispose() async {
     _commands?.send({'type': 'dispose'});
     // Give the isolate a moment to release the session before killing it, so
