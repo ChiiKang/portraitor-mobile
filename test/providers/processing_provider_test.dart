@@ -326,6 +326,10 @@ void main() {
           runtimeConfigProvider.overrideWith(
             (ref) async => const RuntimeConfig(),
           ),
+          // These tests exercise generation, not masking. Returning null takes
+          // the same path as the admin kill-switch. Masking itself is covered
+          // in test/privacy/.
+          privacyFilterBuilderProvider.overrideWithValue(() async => null),
         ],
       );
       notifier = container.read(processingProvider.notifier);
@@ -661,6 +665,10 @@ void main() {
           runtimeConfigProvider.overrideWith(
             (ref) async => const RuntimeConfig(),
           ),
+          // These tests exercise generation, not masking. Returning null takes
+          // the same path as the admin kill-switch. Masking itself is covered
+          // in test/privacy/.
+          privacyFilterBuilderProvider.overrideWithValue(() async => null),
         ],
       );
       notifier = container.read(processingProvider.notifier);

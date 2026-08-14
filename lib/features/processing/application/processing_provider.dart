@@ -10,6 +10,9 @@ import 'package:portraitor_mobile/features/processing/domain/portrait_pack_conte
 import 'package:portraitor_mobile/core/api/sse_service.dart';
 import 'package:portraitor_mobile/core/storage/pending_job.dart';
 import 'package:portraitor_mobile/core/storage/storage_service.dart';
+import 'package:portraitor_mobile/features/privacy/pipeline/types.dart';
+import 'package:portraitor_mobile/features/privacy/privacy_filter_service.dart';
+import 'package:portraitor_mobile/features/privacy/privacy_providers.dart';
 import 'package:portraitor_mobile/features/import/services/token_calculator.dart';
 import 'package:portraitor_mobile/features/funnel/application/funnel_draft_provider.dart';
 import 'package:portraitor_mobile/features/results/application/portraits_provider.dart';
@@ -114,6 +117,19 @@ class ProcessingState {
   }
 }
 
+/// Builds the privacy filter for a generation.
+///
+/// Overridden in tests so the generation pipeline can be exercised without a
+/// 175 MB model. Returning null skips masking, which is the same path the admin
+/// kill-switch takes, and is the ONLY way to skip it: there is no unmasked
+/// fallback when a build is attempted and fails.
+final privacyFilterBuilderProvider =
+    Provider<Future<PrivacyFilterService?> Function()>((ref) {
+      return () => buildPrivacyFilterService(
+        repository: ref.read(privacyModelRepositoryProvider),
+      );
+    });
+
 final processingProvider =
     StateNotifierProvider<ProcessingNotifier, ProcessingState>((ref) {
       return ProcessingNotifier(ref, api: ref.read(processingApiProvider));
@@ -124,6 +140,10 @@ final processingApiProvider = Provider<ApiService>(
 );
 
 class ProcessingNotifier extends StateNotifier<ProcessingState> {
+  /// The mask for the conversation being generated. Held so the streamed result
+  /// and the stored portrait can be un-masked before the user ever sees them.
+  PrivacyFilterService? _privacy;
+
   final Ref _ref;
   final ApiService _api;
   String? _leaseToken;
@@ -231,6 +251,58 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
   /// Apple/Google payments row with no Stripe customer, so the backend has
   /// no recipient to resolve and refuses the run with "Payment email not
   /// found" unless it finds `metadata.delivery_email` on the request itself.
+  /// Result of the on-device masking phase, or null when filtering is off.
+  ///
+  /// The service is returned rather than just the text because the caller also
+  /// needs [PrivacyFilterService.maskedTargetName], and both must come from the
+  /// SAME session or the prompt and the transcript disagree.
+  Future<({PrivacyFilterService service, PrivacyMaskSession session})?>
+  _maskOnDevice({
+    required RuntimeConfig config,
+    required String conversationId,
+    required String rawText,
+  }) async {
+    // An administrator can switch filtering off for the whole fleet. That is a
+    // deliberate override, so it is the one path that sends unmasked text.
+    if (!config.privacyFilteringEnabled) return null;
+
+    // A demo portrait never reaches a backend, so there is nothing to protect
+    // and no reason to make the user wait for a 175 MB model.
+    if (kDemoIapPurchase) return null;
+
+    state = state.copyWith(
+      status: ProcessingStatus.masking,
+      statusMessage: 'Masking private details on this device...',
+      thinkingPhaseLabel: 'Privacy filter',
+      maskingBlocksDone: 0,
+      maskingBlocksTotal: 0,
+      maskedCount: null,
+    );
+
+    final service = await _ref.read(privacyFilterBuilderProvider)();
+    if (service == null) return null;
+
+    final session = await service.maskForGeneration(
+      conversationId: conversationId,
+      rawText: rawText,
+      modelVersion: _ref.read(privacyModelRepositoryProvider).spec.version,
+      onProgress: (p) => state = state.copyWith(
+        maskingBlocksDone: p.done,
+        maskingBlocksTotal: p.total,
+        statusMessage: 'Masking private details on this device...',
+      ),
+    );
+
+    _privacy = service;
+
+    state = state.copyWith(
+      maskedCount: session.maskedCount,
+      maskingBlocksDone: state.maskingBlocksTotal,
+    );
+
+    return (service: service, session: session);
+  }
+
   Future<void> startProcessing({
     required String conversationId,
     required String paymentSessionId,
@@ -293,6 +365,50 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
 
     try {
       final config = await readLatestRuntimeConfig(_ref);
+
+      // The job row is written BEFORE masking, not just before the queue.
+      // Masking runs on device for minutes AFTER the user has paid, so a kill
+      // during it would otherwise strand a paid purchase with nothing to
+      // resume from. chunksTotal is unknown until the text is masked, so it is
+      // filled in on the second write below.
+      final now = DateTime.now().toUtc();
+      await StorageService.instance.savePendingJobRecord(
+        PendingJob(
+          id: conversationId,
+          deviceId: StorageService.instance.deviceId,
+          clientConversationRef: conversationId,
+          inputText: normalizedText,
+          targetName: targetName,
+          dateRange: dateRange,
+          paymentSessionId: paymentSessionId,
+          deliveryEmail: deliveryEmail,
+          status: 'processing',
+          chunksCompleted: 0,
+          chunksTotal: 0,
+          chunkResults: const [],
+          chunkingMode: config.chunkingMode,
+          tokenLimit: config.tokenLimit,
+          chunkOverlapTokens: config.chunkOverlapTokens,
+          maskingStatus: pendingJobMaskingPending,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+
+      // Mask on device. From here on `normalizedText` IS the masked payload and
+      // `targetName` IS its token, so every downstream path sends masked text
+      // without having to remember to. The real values stay only in the entity
+      // map, which was persisted before this returned.
+      final privacy = await _maskOnDevice(
+        config: config,
+        conversationId: conversationId,
+        rawText: normalizedText,
+      );
+      if (privacy != null) {
+        normalizedText = privacy.service.outgoingText(normalizedText);
+        targetName = privacy.service.maskedTargetName(targetName);
+      }
+
       final chunks = TokenCalculator.splitForProcessing(
         normalizedText,
         tokenLimit: config.tokenLimit,
@@ -300,10 +416,6 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
         chunkingMode: config.chunkingMode,
       );
 
-      // Save the pending job BEFORE joining the queue so a kill during the
-      // queue wait is still recoverable. Matches web savePendingJob at
-      // storageManager.js:477 (web writes the row before queue join).
-      final now = DateTime.now().toUtc();
       await StorageService.instance.savePendingJobRecord(
         PendingJob(
           id: conversationId,
@@ -396,7 +508,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
         estimatedSecondsRemaining: -1,
       );
 
-      final validatedResult = await _callWithRetry(
+      final maskedValidatedResult = await _callWithRetry(
         (forceFallback) => _runValidation(
           text: analysisResult,
           clientConversationRef: conversationId,
@@ -409,6 +521,12 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
         paymentSessionId: paymentSessionId,
         conversationRef: conversationId,
       );
+
+      // Un-mask before ANYTHING durable or user-visible is written. The backend
+      // only ever saw [PERSON1], so without this the portrait, the stored
+      // conversation and the PDF would all read "PERSON1 shows up as grounded".
+      final validatedResult =
+          _privacy?.unmask(maskedValidatedResult) ?? maskedValidatedResult;
 
       // Server-side processing is done after validation. Stop the queue lease
       // before local PDF preparation so the backend slot is released promptly.
@@ -760,7 +878,7 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
         estimatedSecondsRemaining: -1,
       );
 
-      final validatedResult = await _callWithRetry(
+      final maskedValidatedResult = await _callWithRetry(
         (forceFallback) => _runValidation(
           text: analysisResult,
           clientConversationRef: job.id,
@@ -773,6 +891,19 @@ class ProcessingNotifier extends StateNotifier<ProcessingState> {
         paymentSessionId: job.paymentSessionId,
         conversationRef: job.id,
       );
+
+      // Resume runs in a later app process, so there is no in-memory mask. The
+      // entity map persisted before the first request is the only key, which is
+      // exactly why it is written that early.
+      final resumeEntities = job.entityMap
+          ?.map((e) => MaskEntity.fromJson(e))
+          .toList(growable: false);
+      final validatedResult = resumeEntities == null
+          ? (_privacy?.unmask(maskedValidatedResult) ?? maskedValidatedResult)
+          : PrivacyFilterService.unmaskWith(
+              maskedValidatedResult,
+              resumeEntities,
+            );
 
       _stopHeartbeat();
 
